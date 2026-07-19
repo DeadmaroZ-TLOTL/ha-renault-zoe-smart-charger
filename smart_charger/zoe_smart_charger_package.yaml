@@ -1,0 +1,332 @@
+# EDIT IF NEEDED throughout this file:
+#   Nord Pool: sensor.nordpool_kwh_lv_eur_3_10_021
+#   Zoe SOC: sensor.battery
+#   Start/stop: button.start_charge / button.stop_charge
+#   Location guard: binary_sensor.renault_zoe_new_smart_charging_location_allowed
+
+input_boolean:
+  zoe_smart_charging:
+    name: Zoe smart charging
+    icon: mdi:ev-station
+  zoe_max_price_enabled:
+    name: Zoe maximum energy price enabled
+    icon: mdi:cash-lock
+
+input_number:
+  zoe_charge_target:
+    name: Zoe charge target
+    min: 50
+    max: 100
+    step: 1
+    mode: slider
+    unit_of_measurement: "%"
+    icon: mdi:battery-charging-100
+  zoe_max_energy_price:
+    name: Zoe maximum spot price including VAT
+    min: -20
+    max: 100
+    step: 0.1
+    mode: box
+    unit_of_measurement: "c/kWh"
+    icon: mdi:cash-lock-outline
+
+input_datetime:
+  zoe_ready_by:
+    name: Zoe ready by
+    has_date: true
+    has_time: true
+    icon: mdi:calendar-clock
+  zoe_last_charge_command:
+    name: Zoe last charge command
+    has_date: true
+    has_time: true
+    icon: mdi:cloud-sync-outline
+
+input_text:
+  zoe_smart_charge_status:
+    name: Zoe smart charge status
+    max: 255
+    icon: mdi:text-box-check-outline
+
+template:
+  - sensor:
+      - name: Zoe charging mode display
+        unique_id: zoe_charging_mode_display
+        icon: mdi:ev-station
+        state: >-
+          {% set mode = states('select.renault_zoe_new_charging_mode') | lower %}
+          {{ 'Delayed' if mode in ['unknown', 'unavailable', 'none', '', 'scheduled', 'schedule_mode', 'delegated']
+             else 'Always' if mode in ['always', 'always_charging']
+             else 'Delayed' }}
+
+      - name: Zoe adaptive charging power
+        unique_id: zoe_adaptive_charging_power_package
+        icon: mdi:lightning-bolt
+        unit_of_measurement: kW
+        device_class: power
+        state_class: measurement
+        state: >-
+          {% set learned = states('sensor.zoe_charge_history_power') %}
+          {{ learned | float(11) if learned | is_number else 11 }}
+        attributes:
+          battery_capacity_kwh: 52
+          charging_efficiency: 0.9
+          grid_kwh_per_soc_percent: 0.5778
+
+      - name: Zoe planned charging times
+        unique_id: zoe_planned_charging_times_package
+        icon: mdi:calendar-clock
+        state: >-
+          {% set price_entity = 'sensor.nordpool_kwh_lv_eur_3_10_021' %}
+          {% set soc = states('sensor.battery') | float(0) %}
+          {% set target = states('input_number.zoe_charge_target') | float(100) %}
+          {% set power = states('sensor.zoe_adaptive_charging_power') | float(11) %}
+          {% set ready = states('input_datetime.zoe_ready_by') %}
+          {% set deadline = now() + timedelta(hours=12) if ready in ['unknown', 'unavailable', '']
+             else as_local(as_datetime(as_timestamp(ready))) %}
+          {% set needed = ([target - soc, 0] | max) * 52 / 100 / 0.9 %}
+          {% set slot_count = (needed / (power * 0.25)) | round(0, 'ceil') | int if power > 0 else 0 %}
+          {% set cap = states('input_number.zoe_max_energy_price') | float(100) %}
+          {% set cap_on = is_state('input_boolean.zoe_max_price_enabled', 'on') %}
+          {% set slots = (state_attr(price_entity, 'raw_today') or []) +
+                         (state_attr(price_entity, 'raw_tomorrow') or []) %}
+          {% set ns = namespace(eligible=[], ranges=[], start='', end='') %}
+          {% for grouped in slots | groupby('start') %}
+            {% set slot = grouped.list[0] %}
+            {% if as_datetime(slot.end) > now() and as_datetime(slot.end) <= deadline and
+                  (not cap_on or slot.value | float(0) <= cap) %}
+              {% set ns.eligible = ns.eligible + [slot] %}
+            {% endif %}
+          {% endfor %}
+          {% for slot in (ns.eligible | sort(attribute='value'))[:slot_count] | sort(attribute='start') %}
+            {% if ns.start == '' %}
+              {% set ns.start, ns.end = slot.start, slot.end %}
+            {% elif slot.start == ns.end %}
+              {% set ns.end = slot.end %}
+            {% else %}
+              {% set ns.ranges = ns.ranges + [[ns.start, ns.end]] %}
+              {% set ns.start, ns.end = slot.start, slot.end %}
+            {% endif %}
+          {% endfor %}
+          {% if ns.start != '' %}
+            {% set ns.ranges = ns.ranges + [[ns.start, ns.end]] %}
+          {% endif %}
+          {% if not is_state('input_boolean.zoe_smart_charging', 'on') %}
+            Planner disabled
+          {% elif needed <= 0 %}
+            No charging needed
+          {% elif ns.ranges | count == 0 %}
+            {{ 'No slots below maximum price' if cap_on else 'Waiting for price data' }}
+          {% else %}
+            {% set out = namespace(value='') %}
+            {% for period in ns.ranges %}
+              {% set start = as_local(as_datetime(period[0])) %}
+              {% set end = as_local(as_datetime(period[1])) %}
+              {% set label = start.strftime('%d.%m %H:%M') ~ '-' ~
+                 (end.strftime('%H:%M') if start.date() == end.date() else end.strftime('%d.%m %H:%M')) %}
+              {% set out.value = out.value ~ ('; ' if out.value else '') ~ label %}
+            {% endfor %}
+            {{ out.value[:255] }}
+          {% endif %}
+
+      - name: Zoe planned charge level
+        unique_id: zoe_planned_charge_level_package
+        icon: mdi:battery-clock-outline
+        unit_of_measurement: "%"
+        device_class: battery
+        state_class: measurement
+        state: >-
+          {% set price_entity = 'sensor.nordpool_kwh_lv_eur_3_10_021' %}
+          {% set soc = states('sensor.battery') | float(0) %}
+          {% set target = states('input_number.zoe_charge_target') | float(100) %}
+          {% set power = states('sensor.zoe_adaptive_charging_power') | float(11) %}
+          {% set ready = states('input_datetime.zoe_ready_by') %}
+          {% set deadline = now() + timedelta(hours=12) if ready in ['unknown', 'unavailable', '']
+             else as_local(as_datetime(as_timestamp(ready))) %}
+          {% set needed = ([target - soc, 0] | max) * 52 / 100 / 0.9 %}
+          {% set slot_count = (needed / (power * 0.25)) | round(0, 'ceil') | int if power > 0 else 0 %}
+          {% set cap = states('input_number.zoe_max_energy_price') | float(100) %}
+          {% set cap_on = is_state('input_boolean.zoe_max_price_enabled', 'on') %}
+          {% set slots = (state_attr(price_entity, 'raw_today') or []) +
+                         (state_attr(price_entity, 'raw_tomorrow') or []) %}
+          {% set ns = namespace(count=0) %}
+          {% for grouped in slots | groupby('start') %}
+            {% set slot = grouped.list[0] %}
+            {% if as_datetime(slot.end) > now() and as_datetime(slot.end) <= deadline and
+                  (not cap_on or slot.value | float(0) <= cap) %}
+              {% set ns.count = ns.count + 1 %}
+            {% endif %}
+          {% endfor %}
+          {% set selected = [ns.count, slot_count] | min %}
+          {% set planned_soc = soc + [selected * power * 0.25, needed] | min * 0.9 / 52 * 100 %}
+          {{ ([planned_soc, target, 100] | min) | round(1) }}
+
+      - name: Zoe estimated charge cost
+        unique_id: zoe_estimated_charge_cost_package
+        icon: mdi:cash-clock
+        unit_of_measurement: EUR
+        device_class: monetary
+        state_class: measurement
+        state: >-
+          {% set price_entity = 'sensor.nordpool_kwh_lv_eur_3_10_021' %}
+          {% set soc = states('sensor.battery') | float(0) %}
+          {% set target = states('input_number.zoe_charge_target') | float(100) %}
+          {% set power = states('sensor.zoe_adaptive_charging_power') | float(11) %}
+          {% set ready = states('input_datetime.zoe_ready_by') %}
+          {% set deadline = now() + timedelta(hours=12) if ready in ['unknown', 'unavailable', '']
+             else as_local(as_datetime(as_timestamp(ready))) %}
+          {% set needed = ([target - soc, 0] | max) * 52 / 100 / 0.9 %}
+          {% set slot_count = (needed / (power * 0.25)) | round(0, 'ceil') | int if power > 0 else 0 %}
+          {% set cap = states('input_number.zoe_max_energy_price') | float(100) %}
+          {% set cap_on = is_state('input_boolean.zoe_max_price_enabled', 'on') %}
+          {% set slots = (state_attr(price_entity, 'raw_today') or []) +
+                         (state_attr(price_entity, 'raw_tomorrow') or []) %}
+          {% set ns = namespace(eligible=[], remaining=needed, cost=0) %}
+          {% for grouped in slots | groupby('start') %}
+            {% set slot = grouped.list[0] %}
+            {% if as_datetime(slot.end) > now() and as_datetime(slot.end) <= deadline and
+                  (not cap_on or slot.value | float(0) <= cap) %}
+              {% set ns.eligible = ns.eligible + [slot] %}
+            {% endif %}
+          {% endfor %}
+          {% for slot in (ns.eligible | sort(attribute='value'))[:slot_count] %}
+            {% set energy = [power * 0.25, ns.remaining] | min %}
+            {% set ns.cost = ns.cost + energy * ((slot.value | float(0) / 100) + 0.0479402) %}
+            {% set ns.remaining = [ns.remaining - energy, 0] | max %}
+          {% endfor %}
+          {{ ns.cost | round(2) }}
+
+automation:
+  - id: zoe_smart_charger_package
+    alias: Zoe Nord Pool smart charging
+    description: Charge in the cheapest eligible 15-minute intervals before the deadline.
+    triggers:
+      - trigger: time_pattern
+        minutes: /5
+      - trigger: state
+        entity_id:
+          - sensor.nordpool_kwh_lv_eur_3_10_021
+          - sensor.battery
+          - binary_sensor.plug
+          - sensor.plug_state
+          - binary_sensor.charging
+          - sensor.charge_state
+          - input_boolean.zoe_smart_charging
+          - input_boolean.zoe_max_price_enabled
+          - input_number.zoe_charge_target
+          - input_number.zoe_max_energy_price
+          - input_datetime.zoe_ready_by
+          - binary_sensor.renault_zoe_new_smart_charging_location_allowed
+    actions:
+      - variables:
+          price_entity: sensor.nordpool_kwh_lv_eur_3_10_021
+          soc: "{{ states('sensor.battery') | float(0) }}"
+          target: "{{ states('input_number.zoe_charge_target') | float(100) }}"
+          power: "{{ states('sensor.zoe_adaptive_charging_power') | float(11) }}"
+          smart_on: "{{ is_state('input_boolean.zoe_smart_charging', 'on') }}"
+          location_ok: "{{ is_state('binary_sensor.renault_zoe_new_smart_charging_location_allowed', 'on') }}"
+          plugged: >-
+            {{ is_state('binary_sensor.plug', 'on') or
+               states('sensor.plug_state') in ['plugged', 'plugged_waiting_for_charge'] }}
+          charging: >-
+            {{ is_state('binary_sensor.charging', 'on') or
+               is_state('sensor.charge_state', 'charge_in_progress') }}
+          cap_on: "{{ is_state('input_boolean.zoe_max_price_enabled', 'on') }}"
+          cap: "{{ states('input_number.zoe_max_energy_price') | float(100) }}"
+          current_price: "{{ states(price_entity) | float(0) }}"
+          ready: "{{ states('input_datetime.zoe_ready_by') }}"
+      - variables:
+          deadline: >-
+            {{ as_timestamp(now() + timedelta(hours=12)) if ready in ['unknown', 'unavailable', '']
+               else as_timestamp(ready) }}
+          needed: "{{ ([target | float - soc | float, 0] | max) * 52 / 100 / 0.9 }}"
+          slots_needed: >-
+            {{ (needed | float / (power | float * 0.25)) | round(0, 'ceil') | int
+               if power | float > 0 else 999 }}
+          cooldown_ok: >-
+            {{ as_timestamp(now()) - as_timestamp(states('input_datetime.zoe_last_charge_command'), 0) >= 600 }}
+      - variables:
+          selected_now: >-
+            {% set slots = (state_attr(price_entity, 'raw_today') or []) +
+                           (state_attr(price_entity, 'raw_tomorrow') or []) %}
+            {% set ns = namespace(eligible=[], active=false) %}
+            {% for slot in slots %}
+              {% if as_timestamp(slot.end) > as_timestamp(now()) and
+                    as_timestamp(slot.end) <= deadline | float and
+                    (not cap_on or slot.value | float(0) <= cap | float) %}
+                {% set ns.eligible = ns.eligible + [slot] %}
+              {% endif %}
+            {% endfor %}
+            {% for slot in (ns.eligible | sort(attribute='value'))[:slots_needed | int] %}
+              {% if as_timestamp(slot.start) <= as_timestamp(now()) < as_timestamp(slot.end) %}
+                {% set ns.active = true %}
+              {% endif %}
+            {% endfor %}
+            {{ ns.active }}
+          must_charge: >-
+            {{ needed | float > 0 and
+               deadline | float - as_timestamp(now()) <= needed | float / power | float * 3600 + 900 }}
+          should_charge: >-
+            {{ smart_on and location_ok and plugged and needed | float > 0 and
+               (not cap_on or current_price | float <= cap | float) and
+               (selected_now or must_charge) }}
+      - action: input_text.set_value
+        target:
+          entity_id: input_text.zoe_smart_charge_status
+        data:
+          value: >-
+            {% if not smart_on %}Disabled
+            {% elif not location_ok %}Waiting for an allowed location
+            {% elif not plugged %}Waiting for plug
+            {% elif soc | float >= target | float %}Target reached
+            {% elif should_charge %}Charging in selected price window
+            {% else %}Waiting for a cheaper selected interval
+            {% endif %}
+      - choose:
+          - conditions: "{{ should_charge and not charging and cooldown_ok }}"
+            sequence:
+              - action: button.press
+                target:
+                  entity_id: button.start_charge
+              - action: input_datetime.set_datetime
+                target:
+                  entity_id: input_datetime.zoe_last_charge_command
+                data:
+                  datetime: "{{ now().strftime('%Y-%m-%d %H:%M:%S') }}"
+          - conditions: >-
+              {{ smart_on and plugged and charging and cooldown_ok and
+                 (soc | float >= target | float or not should_charge) }}
+            sequence:
+              - action: button.press
+                target:
+                  entity_id: button.stop_charge
+              - action: input_datetime.set_datetime
+                target:
+                  entity_id: input_datetime.zoe_last_charge_command
+                data:
+                  datetime: "{{ now().strftime('%Y-%m-%d %H:%M:%S') }}"
+    mode: single
+    max_exceeded: silent
+
+  - id: zoe_ready_by_roll_forward_package
+    alias: Zoe ready by roll forward
+    description: Move a completed or expired deadline twelve hours ahead.
+    triggers:
+      - trigger: numeric_state
+        entity_id: sensor.battery
+        above: 99.9
+      - trigger: time_pattern
+        minutes: /1
+    conditions:
+      - condition: template
+        value_template: >-
+          {% set value = states('input_datetime.zoe_ready_by') %}
+          {{ states('sensor.battery') | float(0) >= 100 or
+             (value not in ['unknown', 'unavailable', ''] and as_timestamp(value) <= as_timestamp(now())) }}
+    actions:
+      - action: input_datetime.set_datetime
+        target:
+          entity_id: input_datetime.zoe_ready_by
+        data:
+          datetime: "{{ (now() + timedelta(hours=12)).strftime('%Y-%m-%d %H:%M:%S') }}"
+    mode: restart

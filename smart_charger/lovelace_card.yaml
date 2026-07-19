@@ -1,0 +1,31 @@
+type: vertical-stack
+cards:
+  - type: entities
+    title: Zoe Smart Charger
+    show_header_toggle: false
+    entities:
+      - entity: input_boolean.zoe_smart_charging
+        name: Smart charging
+      - entity: input_number.zoe_charge_target
+        name: Target charge
+      - entity: input_datetime.zoe_ready_by
+        name: Ready by
+      - entity: input_boolean.zoe_max_price_enabled
+        name: Maximum price enabled
+      - entity: input_number.zoe_max_energy_price
+        name: Maximum spot price
+      - entity: select.renault_zoe_new_charging_mode
+        name: Charging mode
+      - entity: sensor.zoe_charging_mode_display
+        name: Reported mode
+      - entity: binary_sensor.renault_zoe_new_smart_charging_location_allowed
+        name: Location allowed
+      - entity: input_text.zoe_smart_charge_status
+        name: Planner status
+  - type: markdown
+    content: |
+      **Planned charging**<br>
+      {{ states('sensor.zoe_planned_charging_times') }}
+
+      Expected level: **{{ states('sensor.zoe_planned_charge_level') }}%**<br>
+      Estimated cost with delivery: **{{ states('sensor.zoe_estimated_charge_cost') }} EUR**

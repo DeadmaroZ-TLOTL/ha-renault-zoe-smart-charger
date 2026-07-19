@@ -1,0 +1,32 @@
+{
+  "title": "Zoe New Extended",
+  "config": {
+    "abort": {
+      "already_configured": "Renault Zoe New jau ir konfigurēta."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Viedās uzlādes vietas",
+        "description": "Izvēlieties zonas, kurās viedā uzlāde drīkst vadīt auto. Atstājiet tukšu, lai atļautu to visur.",
+        "data": {
+          "location_control_enabled": "Viedā uzlāde atļauta pēc atrašanās vietas",
+          "allow_any_location": "Atļaut jebkurā vietā",
+          "allowed_zones": "Atļautās zonas"
+        }
+      }
+    }
+  },
+  "entity": {
+    "select": {
+      "charging_mode": {
+        "name": "Uzlādes režīms",
+        "state": {
+          "always": "Vienmēr",
+          "delayed": "Atlikta"
+        }
+      }
+    }
+  }
+}
