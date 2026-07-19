@@ -27,7 +27,6 @@ PLATFORMS = (
     Platform.BINARY_SENSOR,
     Platform.SELECT,
     Platform.SENSOR,
-    Platform.SWITCH,
 )
 
 
@@ -51,6 +50,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     retry_cancel: Callable[[], None] | None = None
     reconciling = False
     entry.async_on_unload(entry.add_update_listener(_async_options_updated))
+
+    for registry_entry in tuple(entity_registry.entities.values()):
+        if (
+            registry_entry.config_entry_id == entry.entry_id
+            and registry_entry.entity_id.startswith("switch.")
+        ):
+            entity_registry.async_remove(registry_entry.entity_id)
 
     @callback
     def schedule_retry() -> None:

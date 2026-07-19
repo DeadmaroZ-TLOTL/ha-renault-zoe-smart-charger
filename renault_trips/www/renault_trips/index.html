@@ -1,0 +1,1385 @@
+<!doctype html>
+<html lang="lv">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Renault Trips</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <style>
+    :root {
+      color-scheme: light dark;
+      --bg: #f6f7f9;
+      --panel: #ffffff;
+      --text: #101418;
+      --muted: #607080;
+      --line: #d9e0e8;
+      --accent: #0b74de;
+      --accent-soft: #e8f2ff;
+      --warn: #b95d00;
+      --shadow: 0 1px 4px rgba(16, 20, 24, 0.10);
+    }
+
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #101418;
+        --panel: #171d23;
+        --text: #edf2f7;
+        --muted: #9aa9b7;
+        --line: #2c3742;
+        --accent: #56a8ff;
+        --accent-soft: #102a44;
+        --warn: #ffb15c;
+        --shadow: none;
+      }
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    .shell {
+      display: grid;
+      grid-template-columns: minmax(360px, 1fr) minmax(460px, 1fr);
+      gap: 12px;
+      min-height: 100vh;
+      padding: 12px;
+    }
+
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      box-shadow: var(--shadow);
+      overflow: hidden;
+    }
+
+    .vehicle-panel {
+      grid-column: 1 / -1;
+    }
+
+    .vehicle-updated {
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .vehicle-grid {
+      display: grid;
+      grid-template-columns: repeat(8, minmax(100px, 1fr));
+      border-bottom: 1px solid var(--line);
+    }
+
+    .vehicle-stat {
+      min-width: 0;
+      padding: 10px 12px;
+      border-right: 1px solid var(--line);
+    }
+
+    .vehicle-stat:last-child {
+      border-right: 0;
+    }
+
+    .vehicle-stat span {
+      display: block;
+      color: var(--muted);
+      font-size: 12px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .vehicle-stat strong {
+      display: block;
+      margin-top: 3px;
+      font-size: 16px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    button.vehicle-stat {
+      width: 100%;
+      min-height: 0;
+      padding: 10px 12px;
+      border-top: 0;
+      border-bottom: 0;
+      border-left: 0;
+      border-radius: 0;
+      background: transparent;
+      color: inherit;
+      text-align: left;
+    }
+
+    button.vehicle-stat:hover,
+    button.vehicle-stat:focus-visible {
+      background: rgba(11, 116, 222, 0.1);
+      outline: 2px solid var(--accent);
+      outline-offset: -2px;
+    }
+
+    button.vehicle-stat:disabled {
+      cursor: default;
+      opacity: 0.65;
+    }
+
+    .vehicle-actions {
+      display: flex;
+      gap: 8px;
+      padding: 9px 12px;
+      flex-wrap: wrap;
+    }
+
+    .header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 12px 14px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    h1 {
+      margin: 0;
+      font-size: 20px;
+      font-weight: 650;
+      letter-spacing: 0;
+    }
+
+    .toolbar {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    button, select, input[type="date"] {
+      border: 1px solid var(--line);
+      background: var(--panel);
+      color: var(--text);
+      border-radius: 6px;
+      min-height: 34px;
+      padding: 0 10px;
+      font: inherit;
+    }
+
+    button {
+      cursor: pointer;
+    }
+
+    button.primary {
+      background: var(--accent);
+      color: #fff;
+      border-color: var(--accent);
+      font-weight: 600;
+    }
+
+    input[type="date"].active {
+      border-color: var(--accent);
+      background: var(--accent-soft);
+    }
+
+    .clear-date {
+      width: 34px;
+      padding: 0;
+      font-size: 19px;
+      line-height: 1;
+    }
+
+    .status {
+      min-height: 22px;
+      padding: 8px 14px;
+      border-bottom: 1px solid var(--line);
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .status.warn {
+      color: var(--warn);
+    }
+
+    .summary {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 8px;
+      padding: 10px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .metric {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 9px 10px;
+      min-width: 0;
+    }
+
+    .metric span {
+      display: block;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.2;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .metric strong {
+      display: block;
+      margin-top: 3px;
+      font-size: 18px;
+      line-height: 1.2;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .trip-list {
+      overflow: auto;
+      max-height: calc(100vh - 176px);
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 14px;
+    }
+
+    th, td {
+      padding: 9px 10px;
+      border-bottom: 1px solid var(--line);
+      text-align: left;
+      vertical-align: middle;
+      white-space: nowrap;
+    }
+
+    th {
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 650;
+      position: sticky;
+      top: 0;
+      background: var(--panel);
+      z-index: 1;
+    }
+
+    tr.trip {
+      cursor: pointer;
+    }
+
+    tr.trip:hover, tr.trip.active {
+      background: var(--accent-soft);
+    }
+
+    .empty {
+      padding: 24px 16px;
+      color: var(--muted);
+      line-height: 1.45;
+    }
+
+    .map-wrap {
+      display: grid;
+      grid-template-rows: auto 1fr;
+      min-height: calc(100vh - 190px);
+    }
+
+    .map-title {
+      padding: 12px 14px;
+      border-bottom: 1px solid var(--line);
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      align-items: center;
+    }
+
+    .map-title strong {
+      font-size: 16px;
+    }
+
+    .map-title span {
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    #map {
+      min-height: 560px;
+      height: calc(100vh - 240px);
+      background: #d7dde3;
+    }
+
+    .car-marker {
+      width: 30px;
+      height: 30px;
+      display: grid;
+      place-items: center;
+      border-radius: 999px;
+      background: #0b74de;
+      color: white;
+      border: 2px solid white;
+      box-shadow: 0 2px 8px rgba(0,0,0,.25);
+      font-size: 17px;
+      line-height: 1;
+    }
+
+    @media (max-width: 900px) {
+      html,
+      body {
+        width: 100%;
+        max-width: 100%;
+        overflow-x: hidden;
+      }
+
+      .shell {
+        width: 100%;
+        grid-template-columns: minmax(0, 1fr);
+        gap: 8px;
+        padding: 0;
+      }
+
+      .panel {
+        width: 100%;
+        min-width: 0;
+        border-right: 0;
+        border-left: 0;
+        border-radius: 0;
+      }
+
+      .summary {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .vehicle-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .vehicle-stat {
+        border-bottom: 1px solid var(--line);
+      }
+
+      button.vehicle-stat {
+        border-bottom: 1px solid var(--line);
+      }
+
+      .trip-list {
+        max-height: none;
+      }
+
+      .map-wrap {
+        min-height: 100vh;
+      }
+
+      #map {
+        height: calc(100vh - 49px);
+        min-height: 560px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="shell">
+    <section class="panel vehicle-panel">
+      <div class="header">
+        <h1>Renault Zoe</h1>
+        <span class="vehicle-updated" id="vehicleUpdated">Atjaunoju...</span>
+      </div>
+      <div class="vehicle-grid">
+        <button class="vehicle-stat" type="button" data-history-entity="sensor.battery" title="Rādīt vēsturi"><span>Baterija</span><strong id="vBattery">-</strong></button>
+        <button class="vehicle-stat" type="button" data-history-entity="sensor.battery_autonomy" title="Rādīt vēsturi"><span>Atlikums</span><strong id="vRange">-</strong></button>
+        <button class="vehicle-stat" type="button" data-history-entity="sensor.mileage" title="Rādīt vēsturi"><span>Nobraukums</span><strong id="vMileage">-</strong></button>
+        <button class="vehicle-stat" id="vehicleLocation" type="button" title="Rādīt atrašanās vietu kartē" disabled><span>Atrašanās vieta</span><strong id="vLocation">-</strong></button>
+        <button class="vehicle-stat" type="button" data-history-entity="sensor.charge_state" title="Rādīt vēsturi"><span>Uzlādes stāvoklis</span><strong id="vChargeState">-</strong></button>
+        <button class="vehicle-stat" type="button" data-history-entity="sensor.plug_state" title="Rādīt vēsturi"><span>Spraudnis</span><strong id="vPlug">-</strong></button>
+        <button class="vehicle-stat" type="button" data-history-entity="binary_sensor.charging" title="Rādīt vēsturi"><span>Uzlāde</span><strong id="vCharging">-</strong></button>
+        <button class="vehicle-stat" type="button" data-history-entity="binary_sensor.hvac" title="Rādīt vēsturi"><span>Klimats</span><strong id="vClimate">-</strong></button>
+      </div>
+      <div class="vehicle-actions">
+        <button id="startClimate" type="button">Ieslēgt klimatu</button>
+        <button id="startCharge" type="button">Sākt uzlādi</button>
+        <button id="stopCharge" type="button">Apturēt uzlādi</button>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="header">
+        <h1>Renault braucieni</h1>
+        <div class="toolbar">
+          <select id="days" title="Periods līdz šodienai">
+            <option value="1">1 diena</option>
+            <option value="3">3 dienas</option>
+            <option value="7" selected>7 dienas</option>
+            <option value="14">14 dienas</option>
+            <option value="30">30 dienas</option>
+          </select>
+          <input id="dayDate" type="date" title="Konkrēts datums" aria-label="Konkrēts datums">
+          <button class="clear-date" id="clearDate" type="button" title="Atgriezties pie perioda" aria-label="Atgriezties pie perioda" hidden>×</button>
+          <button id="showAll" type="button" hidden>Visi kartē</button>
+          <button class="primary" id="reload" type="button">Atjaunot</button>
+        </div>
+      </div>
+      <div id="status" class="status">Ielādēju HA vēsturi...</div>
+      <div class="summary">
+        <div class="metric"><span>Braucieni</span><strong id="mTrips">-</strong></div>
+        <div class="metric"><span>Kopā km</span><strong id="mKm">-</strong></div>
+        <div class="metric"><span>Enerģija</span><strong id="mEnergy">-</strong></div>
+        <div class="metric"><span>Vidēji</span><strong id="mAvg">-</strong></div>
+      </div>
+      <div class="trip-list">
+        <table>
+          <thead>
+            <tr>
+              <th>Sākums (apt.)</th>
+              <th>Beigas (apt.)</th>
+              <th>Ilgums (apt.)</th>
+              <th>Km</th>
+              <th>Enerģija</th>
+              <th>kWh/100</th>
+            </tr>
+          </thead>
+          <tbody id="trips"></tbody>
+        </table>
+        <div id="empty" class="empty" hidden>Šajā periodā nav atrasts neviens brauciens. Ja auto nav kustējies vai Renault integrācija nav atjaunojusi GPS/odometru, saraksts paliks tukšs.</div>
+      </div>
+    </section>
+
+    <section class="panel map-wrap">
+      <div class="map-title">
+        <strong id="mapTripTitle">Maršruts</strong>
+        <span id="mapTripInfo">Izvēlies braucienu no saraksta</span>
+      </div>
+      <div id="map"></div>
+    </section>
+  </main>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script>
+    const ENTITY = {
+      location: "device_tracker.location",
+      mileage: "sensor.mileage",
+      battery: "sensor.battery",
+      range: "sensor.battery_autonomy",
+      chargeState: "sensor.charge_state",
+      plugState: "sensor.plug_state",
+      charging: "binary_sensor.charging",
+      climate: "binary_sensor.hvac",
+    };
+    const BATTERY_KWH = 52;
+    const MOVE_THRESHOLD_KM = 0.25;
+    const MIN_TRIP_KM = 0.25;
+    const STOP_AFTER_MIN = 20;
+    const MAX_SAMPLE_GAP_MIN = 90;
+    const ENERGY_LOOKBACK_MIN = 35;
+    const MAX_ENERGY_LOOKBACK_MIN = 360;
+    const MIN_ASSUMED_TRIP_SPEED_KMH = 30;
+    const BATTERY_SETTLE_MIN = 12;
+    const MILEAGE_SETTLE_MIN = 15;
+    const MILEAGE_COVER_MARGIN_MIN = 20;
+    const AUTO_REFRESH_MS = 5 * 60 * 1000;
+    const ROAD_ROUTER_URL = "https://router.project-osrm.org/route/v1/driving";
+    const MAX_ROUTE_WAYPOINTS = 80;
+    const ROUTE_COLORS = ["#0b74de", "#16803a", "#d14343", "#c56a00", "#7b4ab5", "#008b95", "#9b5b20", "#d03b89"];
+
+    const statusEl = document.getElementById("status");
+    const tripsEl = document.getElementById("trips");
+    const emptyEl = document.getElementById("empty");
+    const daysEl = document.getElementById("days");
+    const dayDateEl = document.getElementById("dayDate");
+    const clearDateEl = document.getElementById("clearDate");
+    const reloadEl = document.getElementById("reload");
+    const showAllEl = document.getElementById("showAll");
+    const mapTripTitle = document.getElementById("mapTripTitle");
+    const mapTripInfo = document.getElementById("mapTripInfo");
+
+    let map;
+    let routeLayer;
+    let markerLayer;
+    let trips = [];
+    let routeRequestId = 0;
+    let currentVehicleLocation = null;
+    let cachedParentHass = null;
+
+    function localDateValue(date) {
+      const local = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
+      return local.toISOString().slice(0, 10);
+    }
+
+    dayDateEl.max = localDateValue(new Date());
+
+    function updateCalendarMode() {
+      const active = Boolean(dayDateEl.value);
+      dayDateEl.classList.toggle("active", active);
+      clearDateEl.hidden = !active;
+      return active;
+    }
+
+    function setStatus(text, warn = false) {
+      statusEl.textContent = text;
+      statusEl.classList.toggle("warn", warn);
+    }
+
+    function parseMaybeJson(value) {
+      try {
+        return JSON.parse(value);
+      } catch {
+        return null;
+      }
+    }
+
+    async function getParentHass() {
+      if (cachedParentHass?.callApi) return cachedParentHass;
+      if (window.parent === window) return null;
+
+      for (let attempt = 0; attempt < 20; attempt += 1) {
+        try {
+          const hass = window.parent.document.querySelector("home-assistant")?.hass;
+          if (hass?.callApi) {
+            cachedParentHass = hass;
+            return hass;
+          }
+        } catch {
+          return null;
+        }
+        await new Promise((resolve) => window.setTimeout(resolve, 100));
+      }
+      return null;
+    }
+
+    async function refreshToken(tokens) {
+      if (!tokens || !tokens.refresh_token) return null;
+      const body = new URLSearchParams();
+      body.set("grant_type", "refresh_token");
+      body.set("refresh_token", tokens.refresh_token);
+      body.set("client_id", location.origin + "/");
+      const res = await fetch("/auth/token", {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body,
+      });
+      if (!res.ok) return null;
+      const fresh = await res.json();
+      const merged = { ...tokens, ...fresh, expires: Date.now() + fresh.expires_in * 1000 };
+      localStorage.setItem("hassTokens", JSON.stringify(merged));
+      return merged.access_token;
+    }
+
+    async function getAccessToken() {
+      const direct = parseMaybeJson(localStorage.getItem("hassTokens"));
+      if (direct?.access_token) {
+        if (!direct.expires || direct.expires > Date.now() + 60000) return direct.access_token;
+        const refreshed = await refreshToken(direct);
+        if (refreshed) return refreshed;
+      }
+      for (let i = 0; i < localStorage.length; i += 1) {
+        const value = parseMaybeJson(localStorage.getItem(localStorage.key(i)));
+        if (value?.access_token) return value.access_token;
+      }
+      return null;
+    }
+
+    async function haFetch(path, options = {}) {
+      const parentHass = await getParentHass();
+      if (parentHass?.callApi) {
+        const method = String(options.method || "GET").toUpperCase();
+        const apiPath = path.replace(/^\/api\//, "");
+        try {
+          const result = await parentHass.callApi(method, apiPath, options.body);
+          document.documentElement.dataset.authSource = "parent";
+          return result;
+        } catch (err) {
+          console.debug("Parent Home Assistant API request failed", err);
+        }
+      }
+
+      const token = await getAccessToken();
+      document.documentElement.dataset.authSource = token ? "token" : "none";
+      const makeRequest = (accessToken) => {
+        const headers = { ...(options.headers || {}) };
+        if (accessToken) headers.Authorization = `Bearer ${accessToken}`;
+        const request = { ...options, headers, credentials: "same-origin" };
+        if (request.body && typeof request.body !== "string") {
+          request.body = JSON.stringify(request.body);
+          headers["Content-Type"] = "application/json";
+        }
+        return fetch(path, request);
+      };
+      let res = await makeRequest(token);
+      if (res.status === 401) {
+        const refreshed = await refreshToken(parseMaybeJson(localStorage.getItem("hassTokens")));
+        if (refreshed) res = await makeRequest(refreshed);
+      }
+      if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+      return res.json();
+    }
+
+    function readableState(value) {
+      const states = {
+        on: "Ieslēgts",
+        off: "Izslēgts",
+        not_in_charge: "Netiek lādēts",
+        charge_in_progress: "Notiek uzlāde",
+        charge_ended: "Uzlāde pabeigta",
+        plugged: "Pievienots",
+        unplugged: "Atvienots",
+        unavailable: "Nav pieejams",
+        unknown: "Nav zināms",
+      };
+      return states[value] || String(value).replaceAll("_", " ");
+    }
+
+    function stateText(state) {
+      if (!state) return "-";
+      const unit = state.attributes?.unit_of_measurement;
+      return unit ? `${state.state} ${unit}` : readableState(state.state);
+    }
+
+    async function loadVehicleStatus() {
+      const fields = [
+        [ENTITY.battery, "vBattery"],
+        [ENTITY.range, "vRange"],
+        [ENTITY.mileage, "vMileage"],
+        [ENTITY.location, "vLocation"],
+        [ENTITY.chargeState, "vChargeState"],
+        [ENTITY.plugState, "vPlug"],
+        [ENTITY.charging, "vCharging"],
+        [ENTITY.climate, "vClimate"],
+      ];
+      const results = await Promise.allSettled(
+        fields.map(([entityId]) => haFetch(`/api/states/${encodeURIComponent(entityId)}`)),
+      );
+      results.forEach((result, index) => {
+        const target = document.getElementById(fields[index][1]);
+        target.textContent = result.status === "fulfilled" ? stateText(result.value) : "Nav pieejams";
+      });
+      const locationResult = results[fields.findIndex(([entityId]) => entityId === ENTITY.location)];
+      const locationButton = document.getElementById("vehicleLocation");
+      if (locationResult?.status === "fulfilled") {
+        const latitude = toNumber(locationResult.value.attributes?.latitude);
+        const longitude = toNumber(locationResult.value.attributes?.longitude);
+        if (Number.isFinite(latitude) && Number.isFinite(longitude)) {
+          currentVehicleLocation = {
+            lat: latitude,
+            lon: longitude,
+            label: stateText(locationResult.value),
+            updated: toTime(locationResult.value),
+          };
+          locationButton.disabled = false;
+        }
+      }
+      if (!currentVehicleLocation) locationButton.disabled = true;
+      document.getElementById("vehicleUpdated").textContent = `Atjaunots ${new Intl.DateTimeFormat("lv-LV", { hour: "2-digit", minute: "2-digit" }).format(new Date())}`;
+    }
+
+    async function pressVehicleButton(entityId, button) {
+      button.disabled = true;
+      try {
+        await haFetch("/api/services/button/press", {
+          method: "POST",
+          body: { entity_id: entityId },
+        });
+        window.setTimeout(loadVehicleStatus, 2500);
+      } catch (err) {
+        setStatus(`Komandu neizdevās izpildīt: ${err.message}`, true);
+      } finally {
+        button.disabled = false;
+      }
+    }
+
+    function showEntityHistory(entityId) {
+      try {
+        const homeAssistant = window.parent.document.querySelector("home-assistant");
+        if (homeAssistant) {
+          homeAssistant.dispatchEvent(new window.parent.CustomEvent("hass-more-info", {
+            detail: { entityId },
+            bubbles: true,
+            composed: true,
+          }));
+          return;
+        }
+      } catch (err) {
+        console.debug("Could not open the Home Assistant history dialog", err);
+      }
+
+      window.parent.location.assign(`/history?entity_id=${encodeURIComponent(entityId)}`);
+    }
+
+    function toTime(state) {
+      return new Date(state.last_updated || state.last_changed || state.last_reported).getTime();
+    }
+
+    function toNumber(value) {
+      const num = Number.parseFloat(value);
+      return Number.isFinite(num) ? num : null;
+    }
+
+    function kmBetween(a, b) {
+      const r = 6371;
+      const dLat = (b.lat - a.lat) * Math.PI / 180;
+      const dLon = (b.lon - a.lon) * Math.PI / 180;
+      const lat1 = a.lat * Math.PI / 180;
+      const lat2 = b.lat * Math.PI / 180;
+      const h = Math.sin(dLat / 2) ** 2 + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLon / 2) ** 2;
+      return 2 * r * Math.asin(Math.sqrt(h));
+    }
+
+    function routeKm(points) {
+      let total = 0;
+      for (let i = 1; i < points.length; i += 1) total += kmBetween(points[i - 1], points[i]);
+      return total;
+    }
+
+    function routeWaypoints(points) {
+      const unique = points.filter((point, index) => (
+        index === 0 || kmBetween(points[index - 1], point) >= 0.02
+      ));
+      if (unique.length <= MAX_ROUTE_WAYPOINTS) return unique;
+
+      const sampled = [];
+      for (let i = 0; i < MAX_ROUTE_WAYPOINTS; i += 1) {
+        sampled.push(unique[Math.round(i * (unique.length - 1) / (MAX_ROUTE_WAYPOINTS - 1))]);
+      }
+      return sampled;
+    }
+
+    function routeCacheKey(points) {
+      const coordinates = points.map((point) => `${point.lat.toFixed(5)},${point.lon.toFixed(5)}`).join(";");
+      let hash = 2166136261;
+      for (let i = 0; i < coordinates.length; i += 1) {
+        hash ^= coordinates.charCodeAt(i);
+        hash = Math.imul(hash, 16777619);
+      }
+      return `renault-road-route-v3-${(hash >>> 0).toString(16)}`;
+    }
+
+    function buildFiveSecondSamples(coordinates, speeds, durations) {
+      const samples = [];
+      let segmentStart = 0;
+      let nextSample = 0;
+      for (let i = 0; i < coordinates.length - 1; i += 1) {
+        const segmentDuration = Math.max(0.01, Number(durations[i]) || 0.01);
+        const segmentEnd = segmentStart + segmentDuration;
+        while (nextSample <= segmentEnd) {
+          const ratio = Math.min(1, Math.max(0, (nextSample - segmentStart) / segmentDuration));
+          const [lonA, latA] = coordinates[i];
+          const [lonB, latB] = coordinates[i + 1];
+          samples.push({
+            lat: latA + (latB - latA) * ratio,
+            lon: lonA + (lonB - lonA) * ratio,
+            speed: (Number(speeds[i]) || 0) * 3.6,
+            elapsed: nextSample,
+          });
+          nextSample += 5;
+        }
+        segmentStart = segmentEnd;
+      }
+      const [lastLon, lastLat] = coordinates[coordinates.length - 1];
+      samples.push({
+        lat: lastLat,
+        lon: lastLon,
+        speed: (Number(speeds[speeds.length - 1]) || 0) * 3.6,
+        elapsed: segmentStart,
+      });
+      return samples;
+    }
+
+    async function getRoadRoute(points) {
+      const waypoints = routeWaypoints(points);
+      if (waypoints.length < 2) return { latlngs: [], samples: [], distance: 0, duration: 0 };
+
+      const key = routeCacheKey(waypoints);
+      const cached = parseMaybeJson(localStorage.getItem(key));
+      if (Array.isArray(cached?.latlngs) && cached.latlngs.length >= 2) return cached;
+
+      const coordinates = waypoints.map((point) => `${point.lon},${point.lat}`).join(";");
+      const controller = new AbortController();
+      const timeout = window.setTimeout(() => controller.abort(), 15000);
+      try {
+        const response = await fetch(
+          `${ROAD_ROUTER_URL}/${coordinates}?alternatives=false&steps=false&overview=full&geometries=geojson&annotations=speed,duration,distance`,
+          { signal: controller.signal },
+        );
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const data = await response.json();
+        const route = data.routes?.[0];
+        if (!route?.geometry?.coordinates?.length) throw new Error("Maršruts nav atrasts");
+        const latlngs = route.geometry.coordinates.map(([lon, lat]) => [lat, lon]);
+        const speeds = route.legs.flatMap((leg) => leg.annotation?.speed || []);
+        const durations = route.legs.flatMap((leg) => leg.annotation?.duration || []);
+        const routeData = {
+          latlngs,
+          samples: buildFiveSecondSamples(route.geometry.coordinates, speeds, durations),
+          distance: route.distance,
+          duration: route.duration,
+        };
+        try {
+          localStorage.setItem(key, JSON.stringify(routeData));
+        } catch (err) {
+          console.debug("Route cache is full", err);
+        }
+        return routeData;
+      } finally {
+        window.clearTimeout(timeout);
+      }
+    }
+
+    function validBatteryStart(trip) {
+      if (!Number.isFinite(trip.batteryStartAt) || trip.batteryStartAt >= trip.end) return null;
+
+      const elapsed = trip.end - trip.batteryStartAt;
+      if (elapsed < 3 * 60000 || elapsed > 90 * 60000) return null;
+      if (!Number.isFinite(trip.roadDurationMs) || trip.roadDurationMs <= 0) return trip.batteryStartAt;
+
+      const minimum = Math.max(2 * 60000, trip.roadDurationMs * 0.45);
+      const maximum = Math.max(20 * 60000, trip.roadDurationMs * 2.5);
+      return elapsed >= minimum && elapsed <= maximum ? trip.batteryStartAt : null;
+    }
+
+    function tripDisplayStart(trip) {
+      const batteryStart = validBatteryStart(trip);
+      if (batteryStart != null) return batteryStart;
+      if (Number.isFinite(trip.roadDurationMs) && trip.roadDurationMs > 0) {
+        return trip.end - trip.roadDurationMs;
+      }
+      return null;
+    }
+
+    function tripDisplayEnd(trip) {
+      return Number.isFinite(trip.end) ? trip.end : null;
+    }
+
+    function tripTimeText(time) {
+      return Number.isFinite(time) ? `~${fmtDate(time)}` : "...";
+    }
+
+    function tripDurationText(trip) {
+      const start = tripDisplayStart(trip);
+      const end = tripDisplayEnd(trip);
+      return start != null && end != null ? `~${fmtDuration(end - start)}` : "...";
+    }
+
+    function tripTimeRangeText(trip) {
+      return `${tripTimeText(tripDisplayStart(trip))} - ${tripTimeText(tripDisplayEnd(trip))}`;
+    }
+
+    function updateTripTimingCells(trip) {
+      const index = trips.indexOf(trip);
+      if (index < 0) return;
+      const row = document.querySelector(`tr.trip[data-index="${index}"]`);
+      if (!row) return;
+      const startCell = row.querySelector("[data-trip-start]");
+      const endCell = row.querySelector("[data-trip-end]");
+      const durationCell = row.querySelector("[data-trip-duration]");
+      if (startCell) startCell.textContent = tripTimeText(tripDisplayStart(trip));
+      if (endCell) endCell.textContent = tripTimeText(tripDisplayEnd(trip));
+      if (durationCell) durationCell.textContent = tripDurationText(trip);
+    }
+
+    async function getTripRoadRoute(trip) {
+      if (trip.roadRoute) return trip.roadRoute;
+      if (!trip.roadRoutePromise) {
+        trip.roadRoutePromise = getRoadRoute(trip.points)
+          .then((routeData) => {
+            trip.roadRoute = routeData;
+            if (routeData.duration > 0) trip.roadDurationMs = routeData.duration * 1000;
+            updateTripTimingCells(trip);
+            return routeData;
+          })
+          .finally(() => {
+            trip.roadRoutePromise = null;
+          });
+      }
+      return trip.roadRoutePromise;
+    }
+
+    async function preloadTripRoutes(currentTrips) {
+      let cursor = 0;
+      const worker = async () => {
+        while (cursor < currentTrips.length && trips === currentTrips) {
+          const index = cursor;
+          cursor += 1;
+          try {
+            await getTripRoadRoute(currentTrips[index]);
+          } catch (err) {
+            console.warn("Road route unavailable", err);
+          }
+        }
+      };
+      await Promise.all(Array.from({ length: Math.min(2, currentTrips.length) }, worker));
+    }
+
+    function valueAt(samples, time) {
+      let best = null;
+      for (const sample of samples) {
+        if (sample.t <= time) best = sample;
+        else break;
+      }
+      if (best) return best.value;
+      return samples[0]?.value ?? null;
+    }
+
+    function batteryUseBetween(samples, start, end) {
+      const window = [];
+      let before = null;
+      for (const sample of samples) {
+        if (sample.t <= start) before = sample;
+        else if (sample.t <= end) window.push(sample);
+        else break;
+      }
+      if (before) window.unshift(before);
+      if (window.length < 2) return { drop: 0, firstDropAt: null };
+
+      let drop = 0;
+      let firstDropAt = null;
+      let lastDropAt = null;
+      for (let i = 1; i < window.length; i += 1) {
+        const change = Math.max(0, window[i - 1].value - window[i].value);
+        if (change > 0 && firstDropAt == null) firstDropAt = window[i].t;
+        if (change > 0) lastDropAt = window[i].t;
+        drop += change;
+      }
+      return { drop, firstDropAt, lastDropAt };
+    }
+
+    function fmtDate(time) {
+      return new Intl.DateTimeFormat("lv-LV", {
+        month: "2-digit",
+        day: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
+      }).format(new Date(time));
+    }
+
+    function fmtDuration(ms) {
+      const minutes = Math.max(0, Math.round(ms / 60000));
+      const h = Math.floor(minutes / 60);
+      const m = minutes % 60;
+      return h ? `${h} h ${m} min` : `${m} min`;
+    }
+
+    function fmt(value, digits = 1, suffix = "") {
+      return Number.isFinite(value) ? `${value.toFixed(digits)}${suffix}` : "-";
+    }
+
+    function normalizeHistory(history) {
+      const byEntity = {};
+      for (const group of history) {
+        for (const state of group) {
+          if (!byEntity[state.entity_id]) byEntity[state.entity_id] = [];
+          byEntity[state.entity_id].push(state);
+        }
+      }
+      for (const list of Object.values(byEntity)) list.sort((a, b) => toTime(a) - toTime(b));
+      return byEntity;
+    }
+
+    function splitLocationTrips(locs) {
+      const found = [];
+      let current = null;
+      let lastMovementAt = null;
+
+      const closeCurrent = () => {
+        if (current && current.end > current.start) found.push(current);
+        current = null;
+        lastMovementAt = null;
+      };
+
+      for (let i = 1; i < locs.length; i += 1) {
+        const prev = locs[i - 1];
+        const point = locs[i];
+        const gapMin = (point.t - prev.t) / 60000;
+        const dist = kmBetween(prev, point);
+
+        if (gapMin > MAX_SAMPLE_GAP_MIN) {
+          closeCurrent();
+          continue;
+        }
+
+        if (dist >= MOVE_THRESHOLD_KM) {
+          if (current && (point.t - lastMovementAt) / 60000 >= STOP_AFTER_MIN) {
+            closeCurrent();
+          }
+          if (!current) current = { points: [prev], start: prev.t };
+          current.points.push(point);
+          current.end = point.t;
+          lastMovementAt = point.t;
+        } else if (current && (point.t - lastMovementAt) / 60000 >= STOP_AFTER_MIN) {
+          closeCurrent();
+        }
+      }
+      closeCurrent();
+      return found;
+    }
+
+    function addUncoveredMileageTrips(found, mileage, locs) {
+      const margin = MILEAGE_COVER_MARGIN_MIN * 60000;
+      for (let i = 1; i < mileage.length; i += 1) {
+        const startSample = mileage[i - 1];
+        const endSample = mileage[i];
+        const delta = endSample.value - startSample.value;
+        if (delta < MIN_TRIP_KM) continue;
+
+        const covered = found.some((trip) => (
+          endSample.t >= trip.start - margin && endSample.t <= trip.end + margin
+        ));
+        if (covered) continue;
+
+        const points = locs.filter((point) => point.t >= startSample.t && point.t <= endSample.t);
+        found.push({
+          points,
+          start: startSample.t,
+          end: endSample.t,
+          mileageStart: startSample.value,
+          mileageEnd: endSample.value,
+        });
+      }
+    }
+
+    function buildTrips(history) {
+      const byEntity = normalizeHistory(history);
+      const locs = (byEntity[ENTITY.location] || [])
+        .map((s) => ({
+          t: toTime(s),
+          lat: toNumber(s.attributes?.latitude),
+          lon: toNumber(s.attributes?.longitude),
+          state: s.state,
+        }))
+        .filter((p) => Number.isFinite(p.t) && Number.isFinite(p.lat) && Number.isFinite(p.lon));
+
+      const mileage = (byEntity[ENTITY.mileage] || [])
+        .map((s) => ({ t: toTime(s), value: toNumber(s.state) }))
+        .filter((p) => Number.isFinite(p.t) && Number.isFinite(p.value));
+
+      const battery = (byEntity[ENTITY.battery] || [])
+        .map((s) => ({ t: toTime(s), value: toNumber(s.state) }))
+        .filter((p) => Number.isFinite(p.t) && Number.isFinite(p.value));
+
+      const found = splitLocationTrips(locs);
+      addUncoveredMileageTrips(found, mileage, locs);
+      found.sort((a, b) => a.start - b.start);
+
+      const prepared = found.map((trip) => ({
+        ...trip,
+        ...tripDistance(trip, mileage),
+      }));
+      let previousEnergyEnd = null;
+      const enriched = prepared.map((trip, index) => {
+        const distanceLookbackMin = trip.km / MIN_ASSUMED_TRIP_SPEED_KMH * 60 + ENERGY_LOOKBACK_MIN;
+        const lookbackMin = Math.min(MAX_ENERGY_LOOKBACK_MIN, Math.max(ENERGY_LOOKBACK_MIN, distanceLookbackMin));
+        const lookback = trip.start - lookbackMin * 60000;
+        const energyStart = previousEnergyEnd == null ? lookback : Math.max(lookback, previousEnergyEnd);
+        const settleEnd = trip.end + BATTERY_SETTLE_MIN * 60000;
+        const nextStart = prepared[index + 1]?.start;
+        const energyEnd = nextStart == null ? settleEnd : Math.min(settleEnd, nextStart);
+        const result = enrichTrip(trip, battery, energyStart, energyEnd);
+        previousEnergyEnd = energyEnd;
+        return result;
+      });
+
+      return enriched
+        .filter((trip) => trip.km >= MIN_TRIP_KM)
+        .sort((a, b) => b.start - a.start);
+    }
+
+    function tripDistance(trip, mileage) {
+      const startMileage = trip.mileageStart ?? valueAt(mileage, trip.start);
+      const endMileage = trip.mileageEnd ?? valueAt(mileage, trip.end + MILEAGE_SETTLE_MIN * 60000);
+      const mileageKm = startMileage != null && endMileage != null ? Math.max(0, endMileage - startMileage) : 0;
+      const gpsKm = routeKm(trip.points);
+      const km = mileageKm >= MIN_TRIP_KM ? mileageKm : gpsKm;
+
+      return { km, mileageKm, gpsKm };
+    }
+
+    function enrichTrip(trip, battery, energyStart, energyEnd) {
+      const batteryUse = batteryUseBetween(battery, energyStart, energyEnd);
+      const batteryUsed = batteryUse.drop;
+      const energy = batteryUsed * BATTERY_KWH / 100;
+      const consumption = trip.km > 0 ? energy / trip.km * 100 : 0;
+
+      return {
+        ...trip,
+        batteryUsed,
+        batteryStartAt: batteryUse.firstDropAt,
+        batteryEndAt: batteryUse.lastDropAt,
+        energy,
+        consumption,
+      };
+    }
+
+    function ensureMap() {
+      if (map) return;
+      map = L.map("map", { zoomControl: true });
+      L.tileLayer("https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png", {
+        subdomains: "abcd",
+        maxZoom: 20,
+        attribution: "&copy; OpenStreetMap contributors &copy; CARTO",
+      }).addTo(map);
+      routeLayer = L.layerGroup().addTo(map);
+      markerLayer = L.layerGroup().addTo(map);
+      map.setView([56.95, 24.1], 8);
+    }
+
+    function carIcon(label) {
+      return L.divIcon({
+        className: "",
+        html: `<div class="car-marker">${label}</div>`,
+        iconSize: [30, 30],
+        iconAnchor: [15, 15],
+      });
+    }
+
+    function escapeHtml(value) {
+      return String(value)
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#039;");
+    }
+
+    function showVehicleLocation() {
+      if (!currentVehicleLocation) return;
+      ensureMap();
+      routeRequestId += 1;
+      document.querySelectorAll("tr.trip").forEach((row) => row.classList.remove("active"));
+      routeLayer.clearLayers();
+      markerLayer.clearLayers();
+
+      const point = [currentVehicleLocation.lat, currentVehicleLocation.lon];
+      L.marker(point, { icon: carIcon("Z") })
+        .bindPopup(`<strong>Renault Zoe</strong><br>${escapeHtml(currentVehicleLocation.label)}`)
+        .addTo(markerLayer)
+        .openPopup();
+      map.setView(point, 15);
+      mapTripTitle.textContent = "Renault Zoe atrašanās vieta";
+      mapTripInfo.textContent = `${currentVehicleLocation.label} · atjaunots ${fmtDate(currentVehicleLocation.updated)}`;
+      document.querySelector(".map-wrap").scrollIntoView({ behavior: "auto", block: "start" });
+      window.setTimeout(() => map.invalidateSize(), 300);
+    }
+
+    function nearestRouteSample(samples, latlng) {
+      let nearest = null;
+      let bestDistance = Infinity;
+      for (const sample of samples) {
+        const distance = kmBetween(sample, { lat: latlng.lat, lon: latlng.lng });
+        if (distance < bestDistance) {
+          bestDistance = distance;
+          nearest = sample;
+        }
+      }
+      return nearest;
+    }
+
+    function addRouteLine(routeData, trip, color) {
+      const line = L.polyline(routeData.latlngs, { color, weight: 5, opacity: 0.9 }).addTo(routeLayer);
+      line.on("click", (event) => {
+        const sample = nearestRouteSample(routeData.samples, event.latlng);
+        if (!sample) return;
+        const speed = Math.max(0, Math.round(sample.speed));
+        L.popup()
+          .setLatLng([sample.lat, sample.lon])
+          .setContent(`<strong>Aptuvenais ātrums</strong><br>${speed} km/h`)
+          .openOn(map);
+      });
+      line.bindTooltip(tripTimeRangeText(trip), { sticky: true });
+      return line;
+    }
+
+    async function showAllTrips() {
+      ensureMap();
+      const requestId = ++routeRequestId;
+      document.querySelectorAll("tr.trip").forEach((row) => row.classList.remove("active"));
+      routeLayer.clearLayers();
+      markerLayer.clearLayers();
+
+      if (!trips.length) return;
+      const selectedDate = new Date(`${dayDateEl.value}T12:00:00`);
+      mapTripTitle.textContent = new Intl.DateTimeFormat("lv-LV", { dateStyle: "long" }).format(selectedDate);
+      mapTripInfo.textContent = `${trips.length} braucieni · klikšķini uz maršruta, lai redzētu ātrumu`;
+      showAllEl.disabled = true;
+
+      const routes = new Array(trips.length);
+      let cursor = 0;
+      const worker = async () => {
+        while (cursor < trips.length) {
+          const index = cursor;
+          cursor += 1;
+          try {
+            routes[index] = await getTripRoadRoute(trips[index]);
+          } catch (err) {
+            console.warn("Road route unavailable", err);
+          }
+        }
+      };
+
+      try {
+        await Promise.all(Array.from({ length: Math.min(2, trips.length) }, worker));
+        if (requestId !== routeRequestId) return;
+
+        const allLatLngs = [];
+        routes.forEach((routeData, index) => {
+          if (!routeData?.latlngs?.length) return;
+          addRouteLine(routeData, trips[index], ROUTE_COLORS[index % ROUTE_COLORS.length]);
+          allLatLngs.push(...routeData.latlngs);
+          L.marker(routeData.latlngs[0], { icon: carIcon(String(index + 1)) })
+            .bindPopup(tripTimeRangeText(trips[index]))
+            .addTo(markerLayer);
+        });
+        if (allLatLngs.length) {
+          map.fitBounds(L.latLngBounds(allLatLngs), { padding: [28, 28], maxZoom: 15 });
+        }
+      } finally {
+        if (requestId === routeRequestId) showAllEl.disabled = false;
+      }
+    }
+
+    async function showTrip(index) {
+      ensureMap();
+      const requestId = ++routeRequestId;
+      const trip = trips[index];
+      document.querySelectorAll("tr.trip").forEach((row) => row.classList.toggle("active", Number(row.dataset.index) === index));
+      routeLayer.clearLayers();
+      markerLayer.clearLayers();
+
+      if (!trip) return;
+      mapTripTitle.textContent = tripTimeRangeText(trip);
+      const tripInfo = `${fmt(trip.km, 1, " km")} · ${fmt(trip.energy, 1, " kWh")} · ${fmt(trip.consumption, 1, " kWh/100")}`;
+      mapTripInfo.textContent = tripInfo;
+
+      const latlngs = trip.points.map((p) => [p.lat, p.lon]);
+      if (latlngs.length) {
+        L.marker(latlngs[0], { icon: carIcon("S") }).bindPopup("Sākums").addTo(markerLayer);
+        L.marker(latlngs[latlngs.length - 1], { icon: carIcon("B") }).bindPopup("Beigas").addTo(markerLayer);
+        map.fitBounds(L.latLngBounds(latlngs), { padding: [28, 28], maxZoom: 16 });
+      } else {
+        map.setView([56.95, 24.1], 8);
+      }
+
+      if (latlngs.length < 2) return;
+      try {
+        const routeData = await getTripRoadRoute(trip);
+        if (requestId !== routeRequestId) return;
+        mapTripTitle.textContent = tripTimeRangeText(trip);
+        if (routeData.latlngs.length >= 2) {
+          addRouteLine(routeData, trip, ROUTE_COLORS[0]);
+          map.fitBounds(L.latLngBounds(routeData.latlngs), { padding: [28, 28], maxZoom: 16 });
+        }
+      } catch (err) {
+        if (requestId !== routeRequestId) return;
+        console.warn("Road route unavailable", err);
+        mapTripInfo.textContent = `${tripInfo} · ceļa maršruts nav pieejams`;
+      }
+    }
+
+    function render() {
+      tripsEl.innerHTML = "";
+      emptyEl.hidden = trips.length !== 0;
+      const allDayMode = Boolean(dayDateEl.value);
+      showAllEl.hidden = !allDayMode || trips.length === 0;
+
+      const totalKm = trips.reduce((sum, trip) => sum + trip.km, 0);
+      const totalEnergy = trips.reduce((sum, trip) => sum + trip.energy, 0);
+      document.getElementById("mTrips").textContent = String(trips.length);
+      document.getElementById("mKm").textContent = fmt(totalKm, 1, " km");
+      document.getElementById("mEnergy").textContent = fmt(totalEnergy, 1, " kWh");
+      document.getElementById("mAvg").textContent = totalKm > 0 ? fmt(totalEnergy / totalKm * 100, 1, " kWh/100") : "-";
+
+      trips.forEach((trip, index) => {
+        const row = document.createElement("tr");
+        row.className = "trip";
+        row.dataset.index = String(index);
+        row.innerHTML = `
+          <td data-trip-start>${tripTimeText(tripDisplayStart(trip))}</td>
+          <td data-trip-end>${tripTimeText(tripDisplayEnd(trip))}</td>
+          <td data-trip-duration>${tripDurationText(trip)}</td>
+          <td>${fmt(trip.km, 1)}</td>
+          <td>${fmt(trip.energy, 1, " kWh")}</td>
+          <td>${fmt(trip.consumption, 1)}</td>
+        `;
+        row.addEventListener("click", () => showTrip(index));
+        tripsEl.appendChild(row);
+      });
+
+      if (trips.length) {
+        if (allDayMode) showAllTrips();
+        else {
+          showTrip(0);
+          preloadTripRoutes(trips);
+        }
+      }
+      else {
+        ensureMap();
+        routeLayer.clearLayers();
+        markerLayer.clearLayers();
+        mapTripTitle.textContent = "Maršruts";
+        mapTripInfo.textContent = "Braucienu nav";
+      }
+    }
+
+    async function loadTrips() {
+      const days = Number(daysEl.value);
+      setStatus("Ielādēju HA vēsturi...");
+      reloadEl.disabled = true;
+      loadVehicleStatus().catch((err) => console.warn("Vehicle status unavailable", err));
+      try {
+        const now = new Date();
+        let end = now;
+        let start;
+        if (dayDateEl.value) {
+          start = new Date(`${dayDateEl.value}T00:00:00`);
+          end = new Date(start);
+          end.setDate(end.getDate() + 1);
+          if (end > now) end = now;
+        } else {
+          start = new Date(end.getTime() - days * 86400000);
+        }
+        const ids = [ENTITY.location, ENTITY.mileage, ENTITY.battery].join(",");
+        const url = `/api/history/period/${encodeURIComponent(start.toISOString())}?end_time=${encodeURIComponent(end.toISOString())}&filter_entity_id=${encodeURIComponent(ids)}`;
+        const history = await haFetch(url);
+        trips = buildTrips(history);
+        setStatus(`Atjaunots ${new Intl.DateTimeFormat("lv-LV", { hour: "2-digit", minute: "2-digit" }).format(new Date())}. Klikšķini uz brauciena, lai redzētu maršrutu.`);
+        render();
+      } catch (err) {
+        console.error(err);
+        setStatus(`Nevaru ielādēt HA vēsturi: ${err.message}`, true);
+      } finally {
+        reloadEl.disabled = false;
+      }
+    }
+
+    reloadEl.addEventListener("click", loadTrips);
+    showAllEl.addEventListener("click", showAllTrips);
+    daysEl.addEventListener("change", () => {
+      dayDateEl.value = "";
+      updateCalendarMode();
+      showAllEl.hidden = true;
+      loadTrips();
+    });
+    dayDateEl.addEventListener("change", () => {
+      updateCalendarMode();
+      loadTrips();
+    });
+    clearDateEl.addEventListener("click", () => {
+      dayDateEl.value = "";
+      updateCalendarMode();
+      showAllEl.hidden = true;
+      loadTrips();
+    });
+    document.getElementById("startClimate").addEventListener("click", (event) => pressVehicleButton("button.start_air_conditioner", event.currentTarget));
+    document.getElementById("startCharge").addEventListener("click", (event) => pressVehicleButton("button.start_charge", event.currentTarget));
+    document.getElementById("stopCharge").addEventListener("click", (event) => pressVehicleButton("button.stop_charge", event.currentTarget));
+    document.getElementById("vehicleLocation").addEventListener("click", showVehicleLocation);
+    document.querySelectorAll("[data-history-entity]").forEach((button) => {
+      button.addEventListener("click", () => showEntityHistory(button.dataset.historyEntity));
+    });
+    window.addEventListener("resize", () => map?.invalidateSize());
+    window.setInterval(() => {
+      if (!document.hidden) loadTrips();
+    }, AUTO_REFRESH_MS);
+    ensureMap();
+    loadTrips();
+  </script>
+</body>
+</html>

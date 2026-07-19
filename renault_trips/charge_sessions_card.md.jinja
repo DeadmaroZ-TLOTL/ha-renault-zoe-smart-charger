@@ -1,0 +1,68 @@
+### Planned charging
+{{ states('sensor.zoe_planned_charging_times') }}<br>
+Expected charge level: **{{ states('sensor.zoe_planned_charge_level') }}%**<br>
+Estimated cost incl. delivery: **{{ states('sensor.zoe_estimated_charge_cost') }} EUR**
+
+### Adaptive charging model
+Charging power: **{{ states('sensor.zoe_adaptive_charging_power') }} kW**<br>
+Learned rate: **{{ states('sensor.zoe_charge_history_rate') }} %/h**<br>
+Confidence: **{{ states('sensor.zoe_charge_model_confidence') }}%** from **{{ state_attr('sensor.zoe_charge_history_power', 'eligible_session_count') | int(0) }}** usable sessions ({{ states('sensor.zoe_charge_sessions_history') | int(0) }} found in 180 days).
+
+### Renault API charge sessions
+{% set mode = states('input_select.zoe_charge_sessions_period') %}
+{% set selected_date = states('input_datetime.zoe_charge_sessions_date') %}
+{% set all_sessions = state_attr('sensor.zoe_charge_sessions_31d', 'sessions') or [] %}
+{% set filtered = namespace(items=[]) %}
+{% set month_start = as_timestamp(now().replace(day=1, hour=0, minute=0, second=0, microsecond=0)) %}
+{% if mode == 'Selected date' and selected_date not in ['unknown', 'unavailable', ''] %}
+  {% set selected_start = as_timestamp(strptime(selected_date, '%Y-%m-%d')) %}
+  {% set range_start = selected_start %}
+  {% set range_end = range_start + 86400 %}
+{% elif mode == 'Current month' %}
+  {% set range_start = month_start %}
+  {% set range_end = as_timestamp(now()) %}
+{% else %}
+  {% set days = mode.split(' ')[0] | int(7) %}
+  {% set range_end = as_timestamp(now()) %}
+  {% set range_start = [range_end - days * 86400, month_start] | max %}
+{% endif %}
+{% for session in all_sessions %}
+  {% set session_time = as_timestamp(session.end or session.start, 0) %}
+  {% if month_start <= session_time and range_start <= session_time < range_end %}
+    {% set filtered.items = filtered.items + [session] %}
+  {% endif %}
+{% endfor %}
+{% if states('sensor.zoe_charge_sessions_status') != 'ok' %}
+Renault charge session data is temporarily unavailable.
+{% elif filtered.items | count == 0 %}
+No completed Renault charge sessions found for this period.
+{% else %}
+{% set totals = namespace(battery=0, energy=0, cost=0, priced=0) %}
+{% set out = namespace(text='| Start / End | Duration | SOC | Battery energy (est.) | Grid energy | Price incl. delivery | Cost | Status |\n|:--|--:|--:|--:|--:|--:|--:|:--|\n') %}
+{% for session in filtered.items %}
+  {% set session_start = as_local(as_datetime(session.start)) %}
+  {% set session_end = as_local(as_datetime(session.end)) %}
+  {% set end_text = session_end.strftime('%H:%M') if session_start.date() == session_end.date() else session_end.strftime('%d.%m %H:%M') %}
+  {% set soc = ('%.0f' | format(session.start_soc | float(0))) ~ ' -> ' ~ ('%.0f' | format(session.end_soc | float(0))) ~ '%' %}
+  {% set has_cost = session.total_cost_eur is not none %}
+  {% set battery_energy = session.estimated_battery_energy_kwh | float(0) %}
+  {% set grid_energy = session.grid_energy_kwh | float(0) %}
+  {% set total_cost = session.total_cost_eur | float(0) %}
+  {% set coverage_mark = '~' if session.price_coverage_percent | float(0) < 99 else '' %}
+  {% set energy_text = ('%.2f' | format(grid_energy)) ~ ' kWh' if has_cost else '-' %}
+  {% set rate_text = coverage_mark ~ ('%.2f' | format(session.total_rate_c_per_kwh | float(0))) ~ ' c/kWh' if has_cost else '-' %}
+  {% set cost_text = coverage_mark ~ ('%.2f' | format(total_cost)) ~ ' EUR' if has_cost else '-' %}
+  {% set out.text = out.text ~ '| ' ~ session_start.strftime('%d.%m %H:%M') ~ '<br>' ~ end_text ~ ' | ' ~ (session.duration_min | int(0)) ~ ' min | ' ~ soc ~ ' | ~' ~ ('%.2f' | format(battery_energy)) ~ ' kWh | ' ~ energy_text ~ ' | ' ~ rate_text ~ ' | **' ~ cost_text ~ '** | ' ~ (session.status or '-') ~ ' |\n' %}
+  {% set totals.battery = totals.battery + battery_energy %}
+  {% if has_cost %}
+    {% set totals.energy = totals.energy + grid_energy %}
+    {% set totals.cost = totals.cost + total_cost %}
+    {% set totals.priced = totals.priced + 1 %}
+  {% endif %}
+{% endfor %}
+{% set total_rate = totals.cost / totals.energy * 100 if totals.energy > 0 else 0 %}
+{% set out.text = out.text ~ '| **Total** |  |  |  | **~' ~ ('%.2f' | format(totals.battery)) ~ ' kWh** | **' ~ ('%.2f' | format(totals.energy)) ~ ' kWh** | **' ~ ('%.2f' | format(total_rate)) ~ ' c/kWh** | **' ~ ('%.2f' | format(totals.cost)) ~ ' EUR** |  |\n' %}
+{{ out.text }}
+
+Battery energy is estimated from Renault's reported SOC gain and 52 kWh usable capacity. Cost uses that value converted to estimated grid input with the learned 90% charging efficiency, interval-weighted Nord Pool history, and **0.0479402 EUR/kWh** delivery with VAT. A tilde before a price or cost marks incomplete price-history coverage.
+{% endif %}

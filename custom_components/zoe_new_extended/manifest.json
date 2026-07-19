@@ -8,5 +8,5 @@
   "integration_type": "hub",
   "iot_class": "calculated",
   "issue_tracker": "https://github.com/DeadmaroZ-TLOTL/ha-renault-zoe-smart-charger/issues",
-  "version": "1.6.0"
+  "version": "1.7.0"
 }

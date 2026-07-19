@@ -15,6 +15,8 @@ used by the included Nord Pool smart charger package.
 - Local Renault icon and logo on Home Assistant 2026.3 or newer.
 - Optional Nord Pool planner, switchable SOC/range target, maximum spot price, deadline,
   estimated cost, and adaptive charging model.
+- Optional automatic Renault Trips dashboard with day selection, route maps,
+  speed samples, distance, and estimated energy consumption.
 
 The command workaround follows the behavior proposed in
 [renault-api pull request #2202](https://github.com/hacf-fr/renault-api/pull/2202).
@@ -32,6 +34,8 @@ in this integration can be removed.
 
 The official Renault integration must already contain a loaded Zoe phase 2.
 Choose the planner's Nord Pool country under **Zoe New Extended > Configure**.
+The same options dialog is the only place where smart-charging locations are
+edited; the integration does not duplicate every zone as a device switch.
 
 ### Manual
 
@@ -51,6 +55,15 @@ The optional files are in [`smart_charger`](smart_charger):
 Read [`smart_charger/README.md`](smart_charger/README.md) before enabling the
 automation. Check every entity ID first, especially the Renault buttons and
 Nord Pool price sensor.
+
+## Renault Trips
+
+The optional automatic trip page and the complete dashboard export are in
+[`renault_trips`](renault_trips). The page calculates trips from Recorder
+history and does not need manual start or stop buttons.
+
+Read [`renault_trips/README.md`](renault_trips/README.md) for the expected
+Renault entities and installation path.
 
 ## Notes
 

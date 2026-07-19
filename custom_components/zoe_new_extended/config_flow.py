@@ -67,6 +67,17 @@ class ZoeNewExtendedOptionsFlow(config_entries.OptionsFlow):
             data_schema=vol.Schema(
                 {
                     vol.Required(
+                        CONF_NORDPOOL_AREA, default=nordpool_area
+                    ): SelectSelector(
+                        SelectSelectorConfig(
+                            options=[
+                                {"value": area, "label": f"{name} ({area})"}
+                                for area, (name, _vat) in NORDPOOL_AREAS.items()
+                            ],
+                            mode=SelectSelectorMode.DROPDOWN,
+                        )
+                    ),
+                    vol.Required(
                         CONF_LOCATION_CONTROL_ENABLED,
                         default=location_control_enabled,
                     ): BooleanSelector(),
@@ -78,17 +89,6 @@ class ZoeNewExtendedOptionsFlow(config_entries.OptionsFlow):
                         CONF_ALLOWED_ZONES, default=allowed_zones
                     ): EntitySelector(
                         EntitySelectorConfig(domain="zone", multiple=True)
-                    ),
-                    vol.Required(
-                        CONF_NORDPOOL_AREA, default=nordpool_area
-                    ): SelectSelector(
-                        SelectSelectorConfig(
-                            options=[
-                                {"value": area, "label": f"{name} ({area})"}
-                                for area, (name, _vat) in NORDPOOL_AREAS.items()
-                            ],
-                            mode=SelectSelectorMode.DROPDOWN,
-                        )
                     ),
                 }
             ),
