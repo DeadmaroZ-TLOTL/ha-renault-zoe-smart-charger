@@ -8,13 +8,19 @@ from homeassistant.helpers.selector import (
     BooleanSelector,
     EntitySelector,
     EntitySelectorConfig,
+    SelectSelector,
+    SelectSelectorConfig,
+    SelectSelectorMode,
 )
 
 from .const import (
     CONF_ALLOW_ANY_LOCATION,
     CONF_ALLOWED_ZONES,
     CONF_LOCATION_CONTROL_ENABLED,
+    CONF_NORDPOOL_AREA,
+    DEFAULT_NORDPOOL_AREA,
     DOMAIN,
+    NORDPOOL_AREAS,
 )
 
 
@@ -53,6 +59,9 @@ class ZoeNewExtendedOptionsFlow(config_entries.OptionsFlow):
         allow_any_location = self.config_entry.options.get(
             CONF_ALLOW_ANY_LOCATION, True
         )
+        nordpool_area = self.config_entry.options.get(
+            CONF_NORDPOOL_AREA, DEFAULT_NORDPOOL_AREA
+        )
         return self.async_show_form(
             step_id="init",
             data_schema=vol.Schema(
@@ -69,6 +78,17 @@ class ZoeNewExtendedOptionsFlow(config_entries.OptionsFlow):
                         CONF_ALLOWED_ZONES, default=allowed_zones
                     ): EntitySelector(
                         EntitySelectorConfig(domain="zone", multiple=True)
+                    ),
+                    vol.Required(
+                        CONF_NORDPOOL_AREA, default=nordpool_area
+                    ): SelectSelector(
+                        SelectSelectorConfig(
+                            options=[
+                                {"value": area, "label": f"{name} ({area})"}
+                                for area, (name, _vat) in NORDPOOL_AREAS.items()
+                            ],
+                            mode=SelectSelectorMode.DROPDOWN,
+                        )
                     ),
                 }
             ),

@@ -18,7 +18,8 @@ VISIBLE_HISTORY_DAYS = 31
 LEARNING_HISTORY_DAYS = 180
 MAX_EXPOSED_HISTORY_SESSIONS = 50
 UPDATE_INTERVAL_MINUTES = 15
-PRICE_ENTITY = "sensor.nordpool_kwh_lv_eur_3_10_021"
+DYNAMIC_PRICE_ENTITY = "sensor.renault_zoe_new_nord_pool_price"
+LEGACY_PRICE_ENTITY = "sensor.nordpool_kwh_lv_eur_3_10_021"
 DELIVERY_WITH_VAT_EUR_PER_KWH = 0.03962 * 1.21
 
 _refresh_in_progress = False
@@ -94,21 +95,35 @@ def _history_state_time(item):
     return _parse_datetime(value)
 
 
-async def _get_price_history(start, end):
+def _resolve_price_entity():
+    """Prefer the selected area's original sensor to retain old price history."""
+    hass = Function.hass
+    dynamic = hass.states.get(DYNAMIC_PRICE_ENTITY)
+    if dynamic is not None:
+        source_entity = dynamic.attributes.get("source_entity")
+        if source_entity and hass.states.get(source_entity) is not None:
+            return source_entity
+        return DYNAMIC_PRICE_ENTITY
+    if hass.states.get(LEGACY_PRICE_ENTITY) is not None:
+        return LEGACY_PRICE_ENTITY
+    return DYNAMIC_PRICE_ENTITY
+
+
+async def _get_price_history(start, end, price_entity):
     hass = Function.hass
     query = partial(
         get_significant_states,
         hass,
         start,
         end,
-        [PRICE_ENTITY],
+        [price_entity],
         include_start_time_state=True,
         significant_changes_only=False,
         no_attributes=True,
     )
     result = await get_instance(hass).async_add_executor_job(query)
     prices = []
-    for item in result.get(PRICE_ENTITY, []):
+    for item in result.get(price_entity, []):
         item_time = _history_state_time(item)
         item_value = _number(_history_state_value(item), float("nan"))
         if item_time is not None and math.isfinite(item_value):
@@ -405,10 +420,11 @@ async def zoe_charge_sessions_update():
         ]
         month_start = datetime(now.year, now.month, 1, tzinfo=timezone.utc)
         visible_cutoff = max(now - timedelta(days=VISIBLE_HISTORY_DAYS), month_start)
+        price_entity = _resolve_price_entity()
         price_history = []
         try:
             price_history = await _get_price_history(
-                visible_cutoff - timedelta(hours=1), now
+                visible_cutoff - timedelta(hours=1), now, price_entity
             )
         except Exception as exc:
             log.warning("Zoe Nord Pool price history update failed: " + str(exc)[:240])
@@ -434,7 +450,7 @@ async def zoe_charge_sessions_update():
                 BATTERY_CAPACITY_KWH / 100.0 / CHARGING_EFFICIENCY, 4
             ),
             "energy_note": "Renault recovered energy is battery energy, not metered grid input energy",
-            "price_entity": PRICE_ENTITY,
+            "price_entity": price_entity,
             "delivery_with_vat_eur_per_kwh": round(DELIVERY_WITH_VAT_EUR_PER_KWH, 7),
             "cost_note": "Grid energy divides Renault battery-side energy by charging efficiency before applying Nord Pool and delivery prices",
         }

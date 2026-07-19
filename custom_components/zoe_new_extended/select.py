@@ -12,25 +12,25 @@ from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 MODEL_CODE = "X102VE"
-OPTIONS = ("always", "delayed")
+OPTIONS = ("always", "delayed", "scheduled")
 MODE_TO_OPTION = {
     "always": "always",
     "always_charging": "always",
     "delayed": "delayed",
-    "delegated": "delayed",
-    "scheduled": "delayed",
-    "schedule_mode": "delayed",
+    "scheduled": "scheduled",
+    "schedule_mode": "scheduled",
 }
 OPTION_TO_COMMAND = {
     "always": "always_charging",
     "delayed": "schedule_mode",
+    "scheduled": "scheduled",
 }
 
 
-def _normalize_mode(mode: object) -> str:
-    """Map every scheduled-like or missing API mode to Delayed."""
+def _normalize_mode(mode: object) -> str | None:
+    """Map known API spellings while keeping delayed and scheduled distinct."""
     normalized = str(mode).strip().lower() if mode is not None else ""
-    return MODE_TO_OPTION.get(normalized, "delayed")
+    return MODE_TO_OPTION.get(normalized)
 
 
 def _find_zoe_new(hass: HomeAssistant) -> Any | None:

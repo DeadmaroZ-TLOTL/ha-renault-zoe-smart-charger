@@ -8,12 +8,13 @@
   "options": {
     "step": {
       "init": {
-        "title": "Viedās uzlādes vietas",
-        "description": "Izvēlieties zonas, kurās viedā uzlāde drīkst vadīt auto. Atstājiet tukšu, lai atļautu to visur.",
+        "title": "Viedās uzlādes iestatījumi",
+        "description": "Izvēlieties viedās uzlādes zonas un Nord Pool cenu apgabalu, kuru izmantos plānotājs.",
         "data": {
           "location_control_enabled": "Viedā uzlāde atļauta pēc atrašanās vietas",
           "allow_any_location": "Atļaut jebkurā vietā",
-          "allowed_zones": "Atļautās zonas"
+          "allowed_zones": "Atļautās zonas",
+          "nordpool_area": "Nord Pool valsts / cenu apgabals"
         }
       }
     }
@@ -24,7 +25,8 @@
         "name": "Uzlādes režīms",
         "state": {
           "always": "Vienmēr",
-          "delayed": "Atlikta"
+          "delayed": "Atlikta",
+          "scheduled": "Ieplānota"
         }
       }
     }

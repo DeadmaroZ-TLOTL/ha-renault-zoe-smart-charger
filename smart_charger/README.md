@@ -8,8 +8,8 @@ Assistant. It also respects the locations selected in Zoe New Extended.
 
 - Home Assistant `packages` enabled.
 - Official Renault integration and Zoe New Extended loaded.
-- Nord Pool sensor exposing `raw_today` and `raw_tomorrow` slot attributes.
-- The price sensor state and slot `value` expressed in `c/kWh`.
+- Nord Pool custom integration with its `hourly` action available.
+- Nord Pool country selected under **Zoe New Extended > Configure**.
 
 ## Install
 
@@ -24,7 +24,7 @@ The default package expects these entities:
 
 | Purpose | Entity |
 | --- | --- |
-| Nord Pool price | `sensor.nordpool_kwh_lv_eur_3_10_021` |
+| Nord Pool price | `sensor.renault_zoe_new_nord_pool_price` |
 | Zoe SOC | `sensor.battery` |
 | Plug status | `binary_sensor.plug` / `sensor.plug_state` |
 | Charge status | `binary_sensor.charging` / `sensor.charge_state` |
@@ -34,6 +34,12 @@ The default package expects these entities:
 The planner uses a 52 kWh usable battery, 90% charging efficiency, and an
 11 kW fallback charge rate. Delivery is `0.03962 EUR/kWh + 21% VAT`. Adjust
 these constants in the package for another vehicle or tariff.
+
+The card can switch between an SOC target and a remaining-range target. Range
+mode converts the requested kilometres to SOC using Renault's current
+`sensor.battery_autonomy` estimate, so the conversion follows the car's latest
+range estimate rather than a fixed kilometres-per-percent value. The SOC and
+range input helpers stay synchronized when either target is changed.
 
 ## Optional adaptive model
 

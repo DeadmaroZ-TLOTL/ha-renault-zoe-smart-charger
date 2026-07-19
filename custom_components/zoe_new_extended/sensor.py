@@ -16,6 +16,7 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .charge_control import ZoeNewChargeControl
 from .const import DOMAIN
+from .nordpool import NordPoolPriceCoordinator
 
 
 async def async_setup_entry(
@@ -25,15 +26,68 @@ async def async_setup_entry(
 ) -> None:
     """Set up the command status sensor."""
     control = hass.data[DOMAIN][config_entry.entry_id].get("charge_control")
+    nordpool_coordinator = hass.data[DOMAIN][config_entry.entry_id].get(
+        "nordpool_coordinator"
+    )
+    entities: list[SensorEntity] = []
     if control is not None:
-        async_add_entities(
-            [
+        entities.extend(
+            (
                 ZoeNewChargeCommandSensor(control),
                 ZoeNewApiLastUpdatedSensor(control),
                 ZoeNewRawChargeStatusSensor(control),
                 ZoeNewRawPlugStatusSensor(control),
-            ]
+            )
         )
+        if nordpool_coordinator is not None:
+            entities.append(ZoeNordPoolPriceSensor(nordpool_coordinator, control))
+    async_add_entities(entities)
+
+
+class ZoeNordPoolPriceSensor(CoordinatorEntity, SensorEntity):
+    """Expose the Nord Pool price selected in integration options."""
+
+    _attr_device_class = SensorDeviceClass.MONETARY
+    _attr_has_entity_name = True
+    _attr_icon = "mdi:transmission-tower"
+    _attr_name = "Nord Pool price"
+    _attr_native_unit_of_measurement = "c/kWh"
+    _attr_suggested_object_id = "renault_zoe_new_nord_pool_price"
+    _unrecorded_attributes = frozenset(
+        {"today", "tomorrow", "raw_today", "raw_tomorrow"}
+    )
+
+    def __init__(
+        self,
+        coordinator: NordPoolPriceCoordinator,
+        control: ZoeNewChargeControl,
+    ) -> None:
+        """Initialize the selected-area price sensor."""
+        super().__init__(coordinator)
+        self._attr_device_info = control.vehicle.device_info
+        self._attr_unique_id = (
+            f"{control.vehicle.details.vin}_zoe_new_nord_pool_price".lower()
+        )
+
+    @property
+    @override
+    def available(self) -> bool:
+        """Return whether a current interval price is available."""
+        return super().available and self.coordinator.data.get("value") is not None
+
+    @property
+    @override
+    def native_value(self) -> float | None:
+        """Return the current selected-area price in cents per kWh."""
+        return self.coordinator.data.get("value")
+
+    @property
+    @override
+    def extra_state_attributes(self) -> dict[str, object]:
+        """Expose planner-compatible raw intervals and source details."""
+        return {
+            key: value for key, value in self.coordinator.data.items() if key != "value"
+        }
 
 
 class ZoeNewChargeCommandSensor(SensorEntity):

@@ -8,12 +8,13 @@
   "options": {
     "step": {
       "init": {
-        "title": "Smart charging locations",
-        "description": "Select the zones where smart charging may control the car. Leave empty to allow it everywhere.",
+        "title": "Smart charging settings",
+        "description": "Select the zones where smart charging may control the car and the Nord Pool price area used by the planner.",
         "data": {
           "location_control_enabled": "Smart charging location allowed",
           "allow_any_location": "Allow at any location",
-          "allowed_zones": "Allowed zones"
+          "allowed_zones": "Allowed zones",
+          "nordpool_area": "Nord Pool country / price area"
         }
       }
     }
@@ -24,7 +25,8 @@
         "name": "Charging mode",
         "state": {
           "always": "Always",
-          "delayed": "Delayed"
+          "delayed": "Delayed",
+          "scheduled": "Scheduled"
         }
       }
     }

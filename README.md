@@ -7,12 +7,13 @@ used by the included Nord Pool smart charger package.
 ## Features
 
 - Working start and stop charge commands for `X102VE`.
-- Charging mode selector with `Always` and `Delayed` states.
-- Missing, unknown, scheduled, and delegated modes are shown as `Delayed`.
+- Charging mode selector with distinct `Always`, `Delayed`, and `Scheduled` states.
+- Unrecognized or missing API modes remain visible as `Unknown`.
 - Renault API update and raw charge/plug diagnostics.
 - Smart charging permission by one or more Home Assistant zones.
+- Nord Pool country/price area selector in the integration options.
 - Local Renault icon and logo on Home Assistant 2026.3 or newer.
-- Optional Nord Pool planner, target SOC, maximum spot price, deadline,
+- Optional Nord Pool planner, switchable SOC/range target, maximum spot price, deadline,
   estimated cost, and adaptive charging model.
 
 The command workaround follows the behavior proposed in
@@ -30,6 +31,7 @@ in this integration can be removed.
 4. Add **Zoe New Extended** from **Settings > Devices & services**.
 
 The official Renault integration must already contain a loaded Zoe phase 2.
+Choose the planner's Nord Pool country under **Zoe New Extended > Configure**.
 
 ### Manual
 

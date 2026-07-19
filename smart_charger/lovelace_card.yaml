@@ -6,8 +6,22 @@ cards:
     entities:
       - entity: input_boolean.zoe_smart_charging
         name: Smart charging
-      - entity: input_number.zoe_charge_target
-        name: Target charge
+      - entity: input_select.zoe_charge_target_mode
+        name: Target mode
+      - type: conditional
+        conditions:
+          - entity: input_select.zoe_charge_target_mode
+            state: SOC (%)
+        row:
+          entity: input_number.zoe_charge_target
+          name: SOC target
+      - type: conditional
+        conditions:
+          - entity: input_select.zoe_charge_target_mode
+            state: Range (km)
+        row:
+          entity: input_number.zoe_charge_range_target
+          name: Range target
       - entity: input_datetime.zoe_ready_by
         name: Ready by
       - entity: input_boolean.zoe_max_price_enabled

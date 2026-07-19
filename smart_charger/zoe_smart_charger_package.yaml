@@ -1,5 +1,5 @@
 # EDIT IF NEEDED throughout this file:
-#   Nord Pool: sensor.nordpool_kwh_lv_eur_3_10_021
+#   Nord Pool: sensor.renault_zoe_new_nord_pool_price
 #   Zoe SOC: sensor.battery
 #   Start/stop: button.start_charge / button.stop_charge
 #   Location guard: binary_sensor.renault_zoe_new_smart_charging_location_allowed
@@ -12,6 +12,14 @@ input_boolean:
     name: Zoe maximum energy price enabled
     icon: mdi:cash-lock
 
+input_select:
+  zoe_charge_target_mode:
+    name: Zoe charge target mode
+    options:
+      - SOC (%)
+      - Range (km)
+    icon: mdi:tune-variant
+
 input_number:
   zoe_charge_target:
     name: Zoe charge target
@@ -21,6 +29,14 @@ input_number:
     mode: slider
     unit_of_measurement: "%"
     icon: mdi:battery-charging-100
+  zoe_charge_range_target:
+    name: Zoe range target
+    min: 10
+    max: 400
+    step: 1
+    mode: box
+    unit_of_measurement: "km"
+    icon: mdi:map-marker-distance
   zoe_max_energy_price:
     name: Zoe maximum spot price including VAT
     min: -20
@@ -55,9 +71,10 @@ template:
         icon: mdi:ev-station
         state: >-
           {% set mode = states('select.renault_zoe_new_charging_mode') | lower %}
-          {{ 'Delayed' if mode in ['unknown', 'unavailable', 'none', '', 'scheduled', 'schedule_mode', 'delegated']
-             else 'Always' if mode in ['always', 'always_charging']
-             else 'Delayed' }}
+          {{ 'Always' if mode in ['always', 'always_charging']
+             else 'Delayed' if mode == 'delayed'
+             else 'Scheduled' if mode in ['scheduled', 'schedule_mode']
+             else 'Unknown' }}
 
       - name: Zoe adaptive charging power
         unique_id: zoe_adaptive_charging_power_package
@@ -73,13 +90,49 @@ template:
           charging_efficiency: 0.9
           grid_kwh_per_soc_percent: 0.5778
 
+      - name: Zoe effective charge target
+        unique_id: zoe_effective_charge_target_package
+        icon: mdi:target
+        unit_of_measurement: "%"
+        device_class: battery
+        state_class: measurement
+        state: >-
+          {% set mode = states('input_select.zoe_charge_target_mode') %}
+          {% set soc = states('sensor.battery') | float(0) %}
+          {% set autonomy = states('sensor.battery_autonomy') | float(0) %}
+          {% set soc_target = states('input_number.zoe_charge_target') | float(100) %}
+          {% set range_target = states('input_number.zoe_charge_range_target') | float(200) %}
+          {% set full_range = autonomy * 100 / soc if soc > 0 and autonomy > 0 else 0 %}
+          {% if mode == 'Range (km)' and full_range > 0 %}
+            {% set calculated = range_target / full_range * 100 %}
+            {{ [[calculated, 0] | max, 100] | min | round(1) }}
+          {% else %}
+            {{ soc_target | round(1) }}
+          {% endif %}
+        attributes:
+          target_mode: "{{ states('input_select.zoe_charge_target_mode') }}"
+          requested_soc: "{{ states('input_number.zoe_charge_target') | float(100) }}"
+          requested_range_km: "{{ states('input_number.zoe_charge_range_target') | float(200) }}"
+          estimated_full_range_km: >-
+            {% set soc = states('sensor.battery') | float(0) %}
+            {% set autonomy = states('sensor.battery_autonomy') | float(0) %}
+            {{ (autonomy * 100 / soc) | round(1) if soc > 0 and autonomy > 0 else none }}
+          target_range_km: >-
+            {% set mode = states('input_select.zoe_charge_target_mode') %}
+            {% set soc = states('sensor.battery') | float(0) %}
+            {% set autonomy = states('sensor.battery_autonomy') | float(0) %}
+            {% set full_range = autonomy * 100 / soc if soc > 0 and autonomy > 0 else 0 %}
+            {{ states('input_number.zoe_charge_range_target') | float(200) | round(0)
+               if mode == 'Range (km)' else
+               (full_range * (states('input_number.zoe_charge_target') | float(100)) / 100) | round(0) }}
+
       - name: Zoe planned charging times
         unique_id: zoe_planned_charging_times_package
         icon: mdi:calendar-clock
         state: >-
-          {% set price_entity = 'sensor.nordpool_kwh_lv_eur_3_10_021' %}
+          {% set price_entity = 'sensor.renault_zoe_new_nord_pool_price' %}
           {% set soc = states('sensor.battery') | float(0) %}
-          {% set target = states('input_number.zoe_charge_target') | float(100) %}
+          {% set target = states('sensor.zoe_effective_charge_target') | float(100) %}
           {% set power = states('sensor.zoe_adaptive_charging_power') | float(11) %}
           {% set ready = states('input_datetime.zoe_ready_by') %}
           {% set deadline = now() + timedelta(hours=12) if ready in ['unknown', 'unavailable', '']
@@ -136,9 +189,9 @@ template:
         device_class: battery
         state_class: measurement
         state: >-
-          {% set price_entity = 'sensor.nordpool_kwh_lv_eur_3_10_021' %}
+          {% set price_entity = 'sensor.renault_zoe_new_nord_pool_price' %}
           {% set soc = states('sensor.battery') | float(0) %}
-          {% set target = states('input_number.zoe_charge_target') | float(100) %}
+          {% set target = states('sensor.zoe_effective_charge_target') | float(100) %}
           {% set power = states('sensor.zoe_adaptive_charging_power') | float(11) %}
           {% set ready = states('input_datetime.zoe_ready_by') %}
           {% set deadline = now() + timedelta(hours=12) if ready in ['unknown', 'unavailable', '']
@@ -168,9 +221,9 @@ template:
         device_class: monetary
         state_class: measurement
         state: >-
-          {% set price_entity = 'sensor.nordpool_kwh_lv_eur_3_10_021' %}
+          {% set price_entity = 'sensor.renault_zoe_new_nord_pool_price' %}
           {% set soc = states('sensor.battery') | float(0) %}
-          {% set target = states('input_number.zoe_charge_target') | float(100) %}
+          {% set target = states('sensor.zoe_effective_charge_target') | float(100) %}
           {% set power = states('sensor.zoe_adaptive_charging_power') | float(11) %}
           {% set ready = states('input_datetime.zoe_ready_by') %}
           {% set deadline = now() + timedelta(hours=12) if ready in ['unknown', 'unavailable', '']
@@ -205,8 +258,9 @@ automation:
         minutes: /5
       - trigger: state
         entity_id:
-          - sensor.nordpool_kwh_lv_eur_3_10_021
+          - sensor.renault_zoe_new_nord_pool_price
           - sensor.battery
+          - sensor.battery_autonomy
           - binary_sensor.plug
           - sensor.plug_state
           - binary_sensor.charging
@@ -214,14 +268,16 @@ automation:
           - input_boolean.zoe_smart_charging
           - input_boolean.zoe_max_price_enabled
           - input_number.zoe_charge_target
+          - input_number.zoe_charge_range_target
+          - input_select.zoe_charge_target_mode
           - input_number.zoe_max_energy_price
           - input_datetime.zoe_ready_by
           - binary_sensor.renault_zoe_new_smart_charging_location_allowed
     actions:
       - variables:
-          price_entity: sensor.nordpool_kwh_lv_eur_3_10_021
+          price_entity: sensor.renault_zoe_new_nord_pool_price
           soc: "{{ states('sensor.battery') | float(0) }}"
-          target: "{{ states('input_number.zoe_charge_target') | float(100) }}"
+          target: "{{ states('sensor.zoe_effective_charge_target') | float(100) }}"
           power: "{{ states('sensor.zoe_adaptive_charging_power') | float(11) }}"
           smart_on: "{{ is_state('input_boolean.zoe_smart_charging', 'on') }}"
           location_ok: "{{ is_state('binary_sensor.renault_zoe_new_smart_charging_location_allowed', 'on') }}"
@@ -329,4 +385,60 @@ automation:
           entity_id: input_datetime.zoe_ready_by
         data:
           datetime: "{{ (now() + timedelta(hours=12)).strftime('%Y-%m-%d %H:%M:%S') }}"
+    mode: restart
+
+  - id: zoe_sync_charge_targets_package
+    alias: Zoe sync SOC and range targets
+    description: Keep the SOC and range targets equivalent when either control changes.
+    triggers:
+      - trigger: state
+        entity_id: input_select.zoe_charge_target_mode
+        id: mode_changed
+      - trigger: state
+        entity_id: input_number.zoe_charge_target
+        id: soc_changed
+      - trigger: state
+        entity_id: input_number.zoe_charge_range_target
+        id: range_changed
+    variables:
+      mode: "{{ states('input_select.zoe_charge_target_mode') }}"
+      soc: "{{ states('sensor.battery') | float(0) }}"
+      autonomy: "{{ states('sensor.battery_autonomy') | float(0) }}"
+      full_range: >-
+        {{ autonomy * 100 / soc if soc > 0 and autonomy > 0 else
+           state_attr('sensor.zoe_effective_charge_target', 'estimated_full_range_km') | float(0) }}
+      soc_target: "{{ states('input_number.zoe_charge_target') | float(100) }}"
+      range_target: "{{ states('input_number.zoe_charge_range_target') | float(200) }}"
+      equivalent_range: >-
+        {{ [[(full_range | float) * (soc_target | float) / 100, 10] | max, 400] | min | round(0) }}
+      equivalent_soc: >-
+        {{ [[(range_target | float) / (full_range | float) * 100, 50] | max, 100] | min | round(0)
+           if full_range | float > 0 else soc_target }}
+    conditions:
+      - condition: template
+        value_template: "{{ full_range | float > 0 }}"
+    actions:
+      - choose:
+          - conditions: >-
+              {{ (trigger.id == 'mode_changed' and mode == 'Range (km)') or
+                 (trigger.id == 'soc_changed' and mode == 'SOC (%)') }}
+            sequence:
+              - if: "{{ (range_target | float - equivalent_range | float) | abs >= 0.5 }}"
+                then:
+                  - action: input_number.set_value
+                    target:
+                      entity_id: input_number.zoe_charge_range_target
+                    data:
+                      value: "{{ equivalent_range }}"
+          - conditions: >-
+              {{ (trigger.id == 'mode_changed' and mode == 'SOC (%)') or
+                 (trigger.id == 'range_changed' and mode == 'Range (km)') }}
+            sequence:
+              - if: "{{ (soc_target | float - equivalent_soc | float) | abs >= 0.5 }}"
+                then:
+                  - action: input_number.set_value
+                    target:
+                      entity_id: input_number.zoe_charge_target
+                    data:
+                      value: "{{ equivalent_soc }}"
     mode: restart
