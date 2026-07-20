@@ -15,6 +15,10 @@ used by the included Nord Pool smart charger package.
 - Automatic `Always` mode when smart charging is disabled or outside an allowed location.
 - Unrecognized or missing API modes remain visible as `Unknown`.
 - Renault API update and raw charge/plug diagnostics.
+- Current MyRenault cloud-alert count, active contracts, remote-services state,
+  and battery/corrosion warranty expiry dates.
+- Vehicle-specific API probing avoids creating tyre-pressure entities when the
+  Renault cloud does not expose TPMS data for the VIN.
 - Smart charging permission by one or more Home Assistant zones.
 - Nord Pool country/price area selector in the integration options.
 - Local Renault icon and logo on Home Assistant 2026.3 or newer.

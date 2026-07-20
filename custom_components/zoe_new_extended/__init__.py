@@ -20,6 +20,7 @@ from .const import (
     TARGET_ENTITY_ID,
     ZOE_ENTITY_PREFIX,
 )
+from .extras import ZoeNewCloudExtrasCoordinator
 from .nordpool import NordPoolPriceCoordinator
 
 RETRY_SECONDS = 15
@@ -143,11 +144,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     charge_control = ZoeNewChargeControl(hass, vehicle)
     nordpool_coordinator = NordPoolPriceCoordinator(hass, entry)
     await nordpool_coordinator.async_config_entry_first_refresh()
+    extras_coordinator = ZoeNewCloudExtrasCoordinator(hass, entry, charge_control)
+    await extras_coordinator.async_config_entry_first_refresh()
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = {
         "unsubscribe_registry": unsubscribe_registry,
         "cancel_retry": lambda: retry_cancel() if retry_cancel else None,
         "charge_control": charge_control,
         "nordpool_coordinator": nordpool_coordinator,
+        "extras_coordinator": extras_coordinator,
     }
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     return True
