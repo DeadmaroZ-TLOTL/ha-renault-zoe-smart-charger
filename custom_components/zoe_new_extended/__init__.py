@@ -27,6 +27,12 @@ PLATFORMS = (
     Platform.BINARY_SENSOR,
     Platform.SELECT,
     Platform.SENSOR,
+    Platform.SWITCH,
+)
+
+LOCATION_SWITCH_UNIQUE_ID_SUFFIXES = (
+    "_smart_charging_any_location",
+    "_smart_charging_location_control",
 )
 
 
@@ -55,6 +61,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         if (
             registry_entry.config_entry_id == entry.entry_id
             and registry_entry.entity_id.startswith("switch.")
+            and not registry_entry.unique_id.endswith(
+                LOCATION_SWITCH_UNIQUE_ID_SUFFIXES
+            )
         ):
             entity_registry.async_remove(registry_entry.entity_id)
 

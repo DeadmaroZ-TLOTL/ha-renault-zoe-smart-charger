@@ -32,8 +32,15 @@ cards:
         name: Charging mode
       - entity: sensor.zoe_charging_mode_display
         name: Reported mode
+      - entity: switch.renault_zoe_new_smart_charging_location_allowed
+        name: Smart charging location allowed
+      - entity: switch.renault_zoe_new_any_location
+        name: Allow at any location
+      - entity: device_tracker.location
+        name: Current location
+        secondary_info: last-updated
       - entity: binary_sensor.renault_zoe_new_smart_charging_location_allowed
-        name: Location allowed
+        name: Current location matches
       - entity: input_text.zoe_smart_charge_status
         name: Planner status
   - type: markdown

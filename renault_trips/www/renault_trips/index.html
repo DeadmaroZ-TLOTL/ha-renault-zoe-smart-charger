@@ -434,6 +434,7 @@
               <th>Sākums (apt.)</th>
               <th>Beigas (apt.)</th>
               <th>Ilgums (apt.)</th>
+              <th>SOC (apt.)</th>
               <th>Km</th>
               <th>Enerģija</th>
               <th>kWh/100</th>
@@ -468,9 +469,10 @@
     };
     const BATTERY_KWH = 52;
     const MOVE_THRESHOLD_KM = 0.25;
-    const MIN_TRIP_KM = 0.25;
+    const MIN_TRIP_KM = 0.75;
     const STOP_AFTER_MIN = 20;
     const MAX_SAMPLE_GAP_MIN = 90;
+    const ENERGY_GROUP_GAP_MIN = 45;
     const ENERGY_LOOKBACK_MIN = 35;
     const MAX_ENERGY_LOOKBACK_MIN = 360;
     const MIN_ASSUMED_TRIP_SPEED_KMH = 30;
@@ -824,25 +826,11 @@
       }
     }
 
-    function validBatteryStart(trip) {
-      if (!Number.isFinite(trip.batteryStartAt) || trip.batteryStartAt >= trip.end) return null;
-
-      const elapsed = trip.end - trip.batteryStartAt;
-      if (elapsed < 3 * 60000 || elapsed > 90 * 60000) return null;
-      if (!Number.isFinite(trip.roadDurationMs) || trip.roadDurationMs <= 0) return trip.batteryStartAt;
-
-      const minimum = Math.max(2 * 60000, trip.roadDurationMs * 0.45);
-      const maximum = Math.max(20 * 60000, trip.roadDurationMs * 2.5);
-      return elapsed >= minimum && elapsed <= maximum ? trip.batteryStartAt : null;
-    }
-
     function tripDisplayStart(trip) {
-      const batteryStart = validBatteryStart(trip);
-      if (batteryStart != null) return batteryStart;
       if (Number.isFinite(trip.roadDurationMs) && trip.roadDurationMs > 0) {
         return trip.end - trip.roadDurationMs;
       }
-      return null;
+      return Number.isFinite(trip.start) ? trip.start : null;
     }
 
     function tripDisplayEnd(trip) {
@@ -928,18 +916,34 @@
         else break;
       }
       if (before) window.unshift(before);
-      if (window.length < 2) return { drop: 0, firstDropAt: null };
+      if (window.length < 2) {
+        return { drop: 0, startValue: null, endValue: null };
+      }
 
       let drop = 0;
-      let firstDropAt = null;
-      let lastDropAt = null;
       for (let i = 1; i < window.length; i += 1) {
         const change = Math.max(0, window[i - 1].value - window[i].value);
-        if (change > 0 && firstDropAt == null) firstDropAt = window[i].t;
-        if (change > 0) lastDropAt = window[i].t;
         drop += change;
       }
-      return { drop, firstDropAt, lastDropAt };
+      return {
+        drop,
+        startValue: window[0].value,
+        endValue: window[0].value - drop,
+      };
+    }
+
+    function batteryIncreasedBetween(samples, start, end) {
+      let previous = null;
+      for (const sample of samples) {
+        if (sample.t < start) {
+          previous = sample;
+          continue;
+        }
+        if (sample.t > end) break;
+        if (previous && sample.value > previous.value) return true;
+        previous = sample;
+      }
+      return false;
     }
 
     function fmtDate(time) {
@@ -960,6 +964,12 @@
 
     function fmt(value, digits = 1, suffix = "") {
       return Number.isFinite(value) ? `${value.toFixed(digits)}${suffix}` : "-";
+    }
+
+    function tripSocText(trip) {
+      if (!Number.isFinite(trip.socStart) || !Number.isFinite(trip.socEnd)) return "-";
+      const formatSoc = (value) => Number.isInteger(value) ? value.toFixed(0) : value.toFixed(1);
+      return `~${formatSoc(trip.socStart)} → ${formatSoc(trip.socEnd)}%`;
     }
 
     function normalizeHistory(history) {
@@ -1036,6 +1046,62 @@
       }
     }
 
+    function buildEnergyGroups(prepared, battery) {
+      const groups = [];
+      let group = [];
+      for (const trip of prepared) {
+        const previous = group.at(-1);
+        const gapMin = previous ? (trip.start - previous.end) / 60000 : Infinity;
+        if (previous && (
+          gapMin > ENERGY_GROUP_GAP_MIN ||
+          batteryIncreasedBetween(battery, previous.end, trip.start)
+        )) {
+          groups.push(group);
+          group = [];
+        }
+        group.push(trip);
+      }
+      if (group.length) groups.push(group);
+      return groups;
+    }
+
+    function enrichTripGroups(prepared, battery) {
+      const groups = buildEnergyGroups(prepared, battery);
+      let previousEnergyEnd = null;
+
+      groups.forEach((group, index) => {
+        const totalKm = group.reduce((sum, trip) => sum + trip.km, 0);
+        const distanceLookbackMin = totalKm / MIN_ASSUMED_TRIP_SPEED_KMH * 60 + ENERGY_LOOKBACK_MIN;
+        const lookbackMin = Math.min(
+          MAX_ENERGY_LOOKBACK_MIN,
+          Math.max(ENERGY_LOOKBACK_MIN, distanceLookbackMin),
+        );
+        const lookback = group[0].start - lookbackMin * 60000;
+        const energyStart = previousEnergyEnd == null
+          ? lookback
+          : Math.max(lookback, previousEnergyEnd);
+        const settleEnd = group.at(-1).end + BATTERY_SETTLE_MIN * 60000;
+        const nextStart = groups[index + 1]?.[0].start;
+        const energyEnd = nextStart == null ? settleEnd : Math.min(settleEnd, nextStart);
+        const batteryUse = batteryUseBetween(battery, energyStart, energyEnd);
+        let runningSoc = batteryUse.startValue;
+
+        group.forEach((trip) => {
+          const distanceShare = totalKm > 0 ? trip.km / totalKm : 0;
+          const batteryUsed = batteryUse.drop * distanceShare;
+          trip.batteryUsed = batteryUsed;
+          trip.energy = batteryUsed * BATTERY_KWH / 100;
+          trip.consumption = trip.km > 0 ? trip.energy / trip.km * 100 : 0;
+          trip.socStart = runningSoc;
+          trip.socEnd = runningSoc == null ? null : runningSoc - batteryUsed;
+          runningSoc = trip.socEnd;
+        });
+        previousEnergyEnd = energyEnd;
+      });
+
+      return prepared;
+    }
+
     function buildTrips(history) {
       const byEntity = normalizeHistory(history);
       const locs = (byEntity[ENTITY.location] || [])
@@ -1059,26 +1125,14 @@
       addUncoveredMileageTrips(found, mileage, locs);
       found.sort((a, b) => a.start - b.start);
 
-      const prepared = found.map((trip) => ({
-        ...trip,
-        ...tripDistance(trip, mileage),
-      }));
-      let previousEnergyEnd = null;
-      const enriched = prepared.map((trip, index) => {
-        const distanceLookbackMin = trip.km / MIN_ASSUMED_TRIP_SPEED_KMH * 60 + ENERGY_LOOKBACK_MIN;
-        const lookbackMin = Math.min(MAX_ENERGY_LOOKBACK_MIN, Math.max(ENERGY_LOOKBACK_MIN, distanceLookbackMin));
-        const lookback = trip.start - lookbackMin * 60000;
-        const energyStart = previousEnergyEnd == null ? lookback : Math.max(lookback, previousEnergyEnd);
-        const settleEnd = trip.end + BATTERY_SETTLE_MIN * 60000;
-        const nextStart = prepared[index + 1]?.start;
-        const energyEnd = nextStart == null ? settleEnd : Math.min(settleEnd, nextStart);
-        const result = enrichTrip(trip, battery, energyStart, energyEnd);
-        previousEnergyEnd = energyEnd;
-        return result;
-      });
+      const prepared = found
+        .map((trip) => ({
+          ...trip,
+          ...tripDistance(trip, mileage),
+        }))
+        .filter((trip) => trip.km >= MIN_TRIP_KM);
 
-      return enriched
-        .filter((trip) => trip.km >= MIN_TRIP_KM)
+      return enrichTripGroups(prepared, battery)
         .sort((a, b) => b.start - a.start);
     }
 
@@ -1090,22 +1144,6 @@
       const km = mileageKm >= MIN_TRIP_KM ? mileageKm : gpsKm;
 
       return { km, mileageKm, gpsKm };
-    }
-
-    function enrichTrip(trip, battery, energyStart, energyEnd) {
-      const batteryUse = batteryUseBetween(battery, energyStart, energyEnd);
-      const batteryUsed = batteryUse.drop;
-      const energy = batteryUsed * BATTERY_KWH / 100;
-      const consumption = trip.km > 0 ? energy / trip.km * 100 : 0;
-
-      return {
-        ...trip,
-        batteryUsed,
-        batteryStartAt: batteryUse.firstDropAt,
-        batteryEndAt: batteryUse.lastDropAt,
-        energy,
-        consumption,
-      };
     }
 
     function ensureMap() {
@@ -1245,7 +1283,7 @@
 
       if (!trip) return;
       mapTripTitle.textContent = tripTimeRangeText(trip);
-      const tripInfo = `${fmt(trip.km, 1, " km")} · ${fmt(trip.energy, 1, " kWh")} · ${fmt(trip.consumption, 1, " kWh/100")}`;
+      const tripInfo = `${fmt(trip.km, 1, " km")} · ${tripSocText(trip)} · ${fmt(trip.energy, 1, " kWh")} · ${fmt(trip.consumption, 1, " kWh/100")}`;
       mapTripInfo.textContent = tripInfo;
 
       const latlngs = trip.points.map((p) => [p.lat, p.lon]);
@@ -1294,6 +1332,7 @@
           <td data-trip-start>${tripTimeText(tripDisplayStart(trip))}</td>
           <td data-trip-end>${tripTimeText(tripDisplayEnd(trip))}</td>
           <td data-trip-duration>${tripDurationText(trip)}</td>
+          <td>${tripSocText(trip)}</td>
           <td>${fmt(trip.km, 1)}</td>
           <td>${fmt(trip.energy, 1, " kWh")}</td>
           <td>${fmt(trip.consumption, 1)}</td>

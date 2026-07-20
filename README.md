@@ -34,8 +34,9 @@ in this integration can be removed.
 
 The official Renault integration must already contain a loaded Zoe phase 2.
 Choose the planner's Nord Pool country under **Zoe New Extended > Configure**.
-The same options dialog is the only place where smart-charging locations are
-edited; the integration does not duplicate every zone as a device switch.
+The same options dialog is the only place where allowed zones are selected.
+Two global switches expose the location guard and unrestricted-location option
+without duplicating every zone as a device switch.
 
 ### Manual
 

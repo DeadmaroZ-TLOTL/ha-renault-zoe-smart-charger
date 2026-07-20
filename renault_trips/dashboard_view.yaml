@@ -3,5 +3,5 @@ path: default
 type: panel
 cards:
   - type: iframe
-    url: /local/renault_trips/index.html?v=1.7.0
+    url: /local/renault_trips/index.html?v=1.7.1
     aspect_ratio: 100%

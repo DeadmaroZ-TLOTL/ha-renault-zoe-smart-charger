@@ -204,6 +204,15 @@
                   "name": "Smart charging location allowed"
                 },
                 {
+                  "entity": "switch.renault_zoe_new_any_location",
+                  "name": "Allow at any location"
+                },
+                {
+                  "entity": "device_tracker.location",
+                  "name": "Current location",
+                  "secondary_info": "last-updated"
+                },
+                {
                   "entity": "binary_sensor.renault_zoe_new_smart_charging_location_allowed",
                   "name": "Current location matches"
                 }
@@ -220,7 +229,7 @@
       "cards": [
         {
           "type": "iframe",
-          "url": "/local/renault_trips/index.html?v=20260717-mobile-fullwidth-v5",
+          "url": "/local/renault_trips/index.html?v=1.7.1",
           "aspect_ratio": "62%"
         }
       ]

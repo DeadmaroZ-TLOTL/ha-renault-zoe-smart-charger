@@ -38,7 +38,11 @@ existing charge-session card used by that dashboard.
 ## How trips are calculated
 
 The page reads the selected day or period from Home Assistant history, groups
-position changes into trips, reconciles GPS distance with odometer changes,
-and estimates energy from the SOC reduction of the 52 kWh usable battery.
-Leaflet renders the map and the public OSRM service reconstructs road routes
-and five-second speed samples. Route results are cached only in the browser.
+position changes into trips, and reconciles GPS distance with odometer changes.
+GPS-only movements below 0.75 km are ignored as location jitter. Nearby trips
+are grouped when Renault's delayed SOC samples cannot reliably distinguish
+their individual energy use; the group's 52 kWh battery reduction is allocated
+by distance. Each row shows the resulting approximate SOC change, energy, and
+consumption. Leaflet renders the map and the public OSRM service reconstructs
+road routes and five-second speed samples. Route results are cached only in the
+browser.
