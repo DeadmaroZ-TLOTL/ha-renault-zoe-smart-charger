@@ -1,9 +1,9 @@
 {
   "domain": "zoe_new_extended",
   "name": "Zoe New Extended",
+  "after_dependencies": ["nordpool", "renault"],
   "codeowners": ["@DeadmaroZ-TLOTL"],
   "config_flow": true,
-  "after_dependencies": ["nordpool", "renault"],
   "documentation": "https://github.com/DeadmaroZ-TLOTL/ha-renault-zoe-smart-charger",
   "integration_type": "hub",
   "iot_class": "calculated",

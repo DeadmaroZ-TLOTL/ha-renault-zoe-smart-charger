@@ -3,6 +3,12 @@
   "config": {
     "abort": {
       "already_configured": "Renault Zoe New jau ir konfigurēta."
+    },
+    "step": {
+      "user": {
+        "title": "Zoe New Extended",
+        "description": "Pievienot Renault Zoe New paplašināto vadību, diagnostiku un viedās uzlādes atbalstu."
+      }
     }
   },
   "options": {

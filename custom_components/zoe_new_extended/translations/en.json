@@ -3,6 +3,12 @@
   "config": {
     "abort": {
       "already_configured": "Renault Zoe New is already configured."
+    },
+    "step": {
+      "user": {
+        "title": "Zoe New Extended",
+        "description": "Add extended controls, diagnostics, and smart charging support for Renault Zoe New."
+      }
     }
   },
   "options": {
