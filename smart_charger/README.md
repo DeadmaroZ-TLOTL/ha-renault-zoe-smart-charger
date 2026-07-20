@@ -3,6 +3,8 @@
 This package selects the cheapest 15-minute Nord Pool slots before a chosen
 deadline and controls the Renault start/stop charge buttons supplied by Home
 Assistant. It also respects the locations selected in Zoe New Extended.
+When smart charging is disabled or the car is outside the selected locations,
+the automation changes Renault's charging mode to `Always`.
 
 ## Requirements
 

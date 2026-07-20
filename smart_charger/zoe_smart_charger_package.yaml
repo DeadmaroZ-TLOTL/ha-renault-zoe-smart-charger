@@ -252,7 +252,10 @@ template:
 automation:
   - id: zoe_smart_charger_package
     alias: Zoe Nord Pool smart charging
-    description: Charge in the cheapest eligible 15-minute intervals before the deadline.
+    description: >-
+      Charge in the cheapest eligible 15-minute intervals before the deadline.
+      Use Renault Always mode when smart charging is disabled or the current
+      location is not allowed.
     triggers:
       - trigger: time_pattern
         minutes: /5
@@ -273,6 +276,7 @@ automation:
           - input_number.zoe_max_energy_price
           - input_datetime.zoe_ready_by
           - binary_sensor.renault_zoe_new_smart_charging_location_allowed
+          - select.renault_zoe_new_charging_mode
     actions:
       - variables:
           price_entity: sensor.renault_zoe_new_nord_pool_price
@@ -326,6 +330,18 @@ automation:
             {{ smart_on and location_ok and plugged and needed | float > 0 and
                (not cap_on or current_price | float <= cap | float) and
                (selected_now or must_charge) }}
+      - if:
+          - condition: template
+            value_template: >-
+              {{ (not smart_on or not location_ok) and
+                 states('select.renault_zoe_new_charging_mode') not in
+                   ['always', 'unknown', 'unavailable'] }}
+        then:
+          - action: select.select_option
+            target:
+              entity_id: select.renault_zoe_new_charging_mode
+            data:
+              option: always
       - action: input_text.set_value
         target:
           entity_id: input_text.zoe_smart_charge_status

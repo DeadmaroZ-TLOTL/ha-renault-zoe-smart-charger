@@ -8,6 +8,7 @@ used by the included Nord Pool smart charger package.
 
 - Working start and stop charge commands for `X102VE`.
 - Charging mode selector with distinct `Always`, `Delayed`, and `Scheduled` states.
+- Automatic `Always` mode when smart charging is disabled or outside an allowed location.
 - Unrecognized or missing API modes remain visible as `Unknown`.
 - Renault API update and raw charge/plug diagnostics.
 - Smart charging permission by one or more Home Assistant zones.
