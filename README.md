@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="https://raw.githubusercontent.com/DeadmaroZ-TLOTL/ha-renault-zoe-smart-charger/main/custom_components/zoe_new_extended/brand/icon.png" width="128" height="128" alt="Renault Zoe New Extended icon">
+</p>
+
 # Renault Zoe New Extended + Smart Charger
 
 Home Assistant companion integration for the Renault Zoe phase 2 (`X102VE`).
