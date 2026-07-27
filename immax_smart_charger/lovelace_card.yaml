@@ -120,7 +120,7 @@ entities:
       - entity: input_select.immax_smart_charging_mode
         state: "Solar surplus"
     row:
-      entity: sensor.renault_zoe_new_immax_solar_phase_mode
+      entity: sensor.renault_zoe_new_immax_detected_phase_mode
       name: Detected phase mode
       tap_action:
         action: more-info
@@ -209,10 +209,24 @@ entities:
       tap_action:
         action: more-info
   - type: divider
+  - type: section
+    label: Phase measurements
+  - entity: sensor.renault_zoe_new_immax_voltage_a
+    name: Phase A voltage
+  - entity: sensor.renault_zoe_new_immax_current_a
+    name: Phase A current
   - entity: sensor.renault_zoe_new_immax_power_a
     name: Phase A power
+  - entity: sensor.renault_zoe_new_immax_voltage_b
+    name: Phase B voltage
+  - entity: sensor.renault_zoe_new_immax_current_b
+    name: Phase B current
   - entity: sensor.renault_zoe_new_immax_power_b
     name: Phase B power
+  - entity: sensor.renault_zoe_new_immax_voltage_c
+    name: Phase C voltage
+  - entity: sensor.renault_zoe_new_immax_current_c
+    name: Phase C current
   - entity: sensor.renault_zoe_new_immax_power_c
     name: Phase C power
   - entity: sensor.renault_zoe_new_immax_energy

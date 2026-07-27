@@ -62,7 +62,7 @@ two-minute guard.
 
 1. Enable Home Assistant packages in `configuration.yaml`.
 2. Copy `immax_smart_charger_package.yaml` into the packages directory.
-3. Install or update Zoe New Extended to version 1.9.4 or newer.
+3. Install or update Zoe New Extended to version 1.9.5 or newer.
 4. Restart Home Assistant.
 5. Open **Settings > Devices & services > Zoe New Extended > Configure >
    IMMAX entity sources** and select the entities used by the controller.
@@ -75,7 +75,7 @@ sign conventions:
 
 - Grid export is positive while power is sent to the grid.
 - Battery charging and discharging are separate positive values.
-- Phase power and voltage entities report each charger phase.
+- Phase power, current, and voltage entities report each charger phase.
 
 The card keeps target, deadline, smart mode, phase override, reserve, and limit
 settings editable. Detected phase mode, calculated status, planned energy,
