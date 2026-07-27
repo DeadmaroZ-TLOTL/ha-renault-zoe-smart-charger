@@ -12,11 +12,18 @@ for an IMMAX three-phase Tuya EV charger:
   This avoids the feedback loop that would otherwise reduce charging power as
   soon as the charger starts.
 
-Solar control can use either a one-phase or three-phase power model. The
-nominal limits are 1.4-7.4 kW for one phase and 4.2-22 kW for three phases.
-Changing this option changes the control calculation; it does not physically
-switch charger phases unless the installation has separate phase-switching
-hardware.
+Solar control automatically detects whether one or three phases are available
+from the charger phase-voltage sensors. A phase is considered present when its
+voltage remains between 180 and 260 V. The controller confirms three-phase
+operation after 8 stable seconds and one-phase operation after 20 stable
+seconds, avoiding false changes during startup. If no complete one- or
+three-phase pattern is available, it retains the last valid mode. Detection
+changes the power calculation; it does not physically switch charger phases.
+
+The nominal electrical limits are 1.4-7.4 kW for one phase and 4.2-22 kW for
+three phases. User-configured minimum and maximum power limits are preserved
+when the detected phase count changes; the controller always enforces the
+electrical minimum for the detected mode.
 
 The modes share one selector, so they cannot issue conflicting commands. `Off`
 leaves the charger under manual control. Moving from a smart mode to `Off`
@@ -52,7 +59,7 @@ two-minute guard.
 
 1. Enable Home Assistant packages in `configuration.yaml`.
 2. Copy `immax_smart_charger_package.yaml` into the packages directory.
-3. Install or update Zoe New Extended to version 1.9.0 or newer.
+3. Install or update Zoe New Extended to version 1.9.3 or newer.
 4. Restart Home Assistant.
 5. Open **Settings > Devices & services > Zoe New Extended > Configure >
    IMMAX entity sources** and select the entities used by the controller.
@@ -67,8 +74,8 @@ sign conventions:
 - Battery charging and discharging are separate positive values.
 - Phase power and voltage entities report each charger phase.
 
-The card keeps target, deadline, mode, reserve, and limit settings editable.
-Calculated status, planned energy, estimated cost, available solar power,
-target power, actual charger power, grid export, and battery flow are exposed
-as read-only sensors. Selecting a sensor row opens Home Assistant's standard
-more-info dialog with its recorded history.
+The card keeps target, deadline, smart mode, reserve, and limit settings
+editable. Detected phase mode, calculated status, planned energy, estimated
+cost, available solar power, target power, actual charger power, grid export,
+and battery flow are exposed as read-only sensors. Selecting a sensor row opens
+Home Assistant's standard more-info dialog with its recorded history.

@@ -15,7 +15,7 @@ input_select:
     icon: mdi:ev-station
 
   immax_solar_phase_mode:
-    name: IMMAX solar phase mode
+    name: IMMAX detected solar phase mode
     options:
       - "1 phase"
       - "3 phases"
@@ -255,36 +255,76 @@ automation:
     mode: restart
 
   - id: immax_solar_phase_defaults_package
-    alias: IMMAX solar phase defaults
-    description: Apply nominal solar-power limits for the selected phase mode.
+    alias: IMMAX automatic phase detection
+    description: >-
+      Detect one- or three-phase operation from stable per-phase voltage
+      measurements and retain the last valid mode if voltage data is incomplete.
     triggers:
-      - trigger: state
-        entity_id: input_select.immax_solar_phase_mode
+      - trigger: homeassistant
+        event: start
+        id: startup
+      - trigger: template
+        id: one_phase
+        value_template: >-
+          {% set ns = namespace(active=0) %}
+          {% for entity in [
+            'sensor.renault_zoe_new_immax_voltage_a',
+            'sensor.renault_zoe_new_immax_voltage_b',
+            'sensor.renault_zoe_new_immax_voltage_c'
+          ] %}
+            {% set volts = states(entity) | float(0) %}
+            {% if 180 <= volts <= 260 %}
+              {% set ns.active = ns.active + 1 %}
+            {% endif %}
+          {% endfor %}
+          {{ ns.active == 1 }}
+        for: "00:00:20"
+      - trigger: template
+        id: three_phase
+        value_template: >-
+          {% set ns = namespace(active=0) %}
+          {% for entity in [
+            'sensor.renault_zoe_new_immax_voltage_a',
+            'sensor.renault_zoe_new_immax_voltage_b',
+            'sensor.renault_zoe_new_immax_voltage_c'
+          ] %}
+            {% set volts = states(entity) | float(0) %}
+            {% if 180 <= volts <= 260 %}
+              {% set ns.active = ns.active + 1 %}
+            {% endif %}
+          {% endfor %}
+          {{ ns.active == 3 }}
+        for: "00:00:08"
     actions:
+      - variables:
+          active_phase_count: >-
+            {% set ns = namespace(active=0) %}
+            {% for entity in [
+              'sensor.renault_zoe_new_immax_voltage_a',
+              'sensor.renault_zoe_new_immax_voltage_b',
+              'sensor.renault_zoe_new_immax_voltage_c'
+            ] %}
+              {% set volts = states(entity) | float(0) %}
+              {% if 180 <= volts <= 260 %}
+                {% set ns.active = ns.active + 1 %}
+              {% endif %}
+            {% endfor %}
+            {{ ns.active }}
       - choose:
-          - conditions: "{{ trigger.to_state.state == '1 phase' }}"
+          - conditions: "{{ active_phase_count | int(0) == 1 }}"
             sequence:
-              - action: input_number.set_value
+              - action: input_select.select_option
                 target:
-                  entity_id: input_number.immax_solar_min_power
+                  entity_id: input_select.immax_solar_phase_mode
                 data:
-                  value: 1.4
-              - action: input_number.set_value
+                  option: "1 phase"
+          - conditions: "{{ active_phase_count | int(0) == 3 }}"
+            sequence:
+              - action: input_select.select_option
                 target:
-                  entity_id: input_number.immax_solar_max_power
+                  entity_id: input_select.immax_solar_phase_mode
                 data:
-                  value: 7.4
-        default:
-          - action: input_number.set_value
-            target:
-              entity_id: input_number.immax_solar_min_power
-            data:
-              value: 4.2
-          - action: input_number.set_value
-            target:
-              entity_id: input_number.immax_solar_max_power
-            data:
-              value: 22
+                  option: "3 phases"
     mode: restart
 
   - id: immax_smart_charger_package
@@ -779,13 +819,13 @@ automation:
               Nord Pool: waiting for selected price window
             {% elif mode == 'Solar surplus' and
                     solar_recommended_current | int(0) >= 6 %}
-              Solar {{ '1-phase' if solar_phase_mode == '1 phase'
-                        else '3-phase' }}:
+              Solar auto {{ '1-phase' if solar_phase_mode == '1 phase'
+                             else '3-phase' }}:
               {{ available_solar_power_kw | float(0) | round(1) }} kW
               available, {{ solar_target_power_kw | float(0) | round(1) }} kW target
             {% else %}
-              Solar {{ '1-phase' if solar_phase_mode == '1 phase'
-                        else '3-phase' }}: waiting for
+              Solar auto {{ '1-phase' if solar_phase_mode == '1 phase'
+                             else '3-phase' }}: waiting for
               {{ (solar_min_power_kw | float(4.2) +
                   solar_start_margin_kw | float(0.5)) | round(1) }} kW surplus
             {% endif %}

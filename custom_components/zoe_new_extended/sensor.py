@@ -195,6 +195,13 @@ IMMAX_PROXY_SENSOR_DESCRIPTIONS = (
         default_entity_id="input_text.immax_smart_charge_status",
     ),
     ImmaxProxySensorEntityDescription(
+        key="immax_solar_phase_mode",
+        name="IMMAX detected phase mode",
+        icon="mdi:sine-wave",
+        option_key=None,
+        default_entity_id="input_select.immax_solar_phase_mode",
+    ),
+    ImmaxProxySensorEntityDescription(
         key="immax_planned_charging_times",
         name="IMMAX planned charging times",
         icon="mdi:calendar-clock",
