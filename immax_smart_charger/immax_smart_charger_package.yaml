@@ -15,6 +15,15 @@ input_select:
     icon: mdi:ev-station
 
   immax_solar_phase_mode:
+    name: IMMAX solar phase control
+    options:
+      - "Auto"
+      - "1 phase"
+      - "3 phases"
+    initial: "Auto"
+    icon: mdi:sine-wave
+
+  immax_detected_solar_phase_mode:
     name: IMMAX detected solar phase mode
     options:
       - "1 phase"
@@ -315,14 +324,14 @@ automation:
             sequence:
               - action: input_select.select_option
                 target:
-                  entity_id: input_select.immax_solar_phase_mode
+                  entity_id: input_select.immax_detected_solar_phase_mode
                 data:
                   option: "1 phase"
           - conditions: "{{ active_phase_count | int(0) == 3 }}"
             sequence:
               - action: input_select.select_option
                 target:
-                  entity_id: input_select.immax_solar_phase_mode
+                  entity_id: input_select.immax_detected_solar_phase_mode
                 data:
                   option: "3 phases"
     mode: restart
@@ -351,6 +360,7 @@ automation:
           - input_number.immax_solar_min_power
           - input_number.immax_solar_max_power
           - input_select.immax_solar_phase_mode
+          - input_select.immax_detected_solar_phase_mode
           - input_datetime.immax_ready_by
           - sensor.renault_zoe_new_immax_nord_pool_price
           - sensor.renault_zoe_new_immax_vehicle_soc
@@ -510,8 +520,12 @@ automation:
                else value }}
           reserve_power_kw: >-
             {{ states('input_number.immax_solar_reserve_power') | float(0.5) }}
-          solar_phase_mode: >-
+          phase_control: >-
             {{ states('input_select.immax_solar_phase_mode') }}
+          solar_phase_mode: >-
+            {{ states('input_select.immax_detected_solar_phase_mode')
+               if phase_control == 'Auto'
+               else phase_control }}
           voltage_sum: >-
             {% set value =
               (states('sensor.renault_zoe_new_immax_voltage_a') | float(0)) +
@@ -819,13 +833,15 @@ automation:
               Nord Pool: waiting for selected price window
             {% elif mode == 'Solar surplus' and
                     solar_recommended_current | int(0) >= 6 %}
-              Solar auto {{ '1-phase' if solar_phase_mode == '1 phase'
-                             else '3-phase' }}:
+              Solar {{ ('auto ' if phase_control == 'Auto' else 'manual ') ~
+                         ('1-phase' if solar_phase_mode == '1 phase'
+                          else '3-phase') }}:
               {{ available_solar_power_kw | float(0) | round(1) }} kW
               available, {{ solar_target_power_kw | float(0) | round(1) }} kW target
             {% else %}
-              Solar auto {{ '1-phase' if solar_phase_mode == '1 phase'
-                             else '3-phase' }}: waiting for
+              Solar {{ ('auto ' if phase_control == 'Auto' else 'manual ') ~
+                         ('1-phase' if solar_phase_mode == '1 phase'
+                          else '3-phase') }}: waiting for
               {{ (solar_min_power_kw | float(4.2) +
                   solar_start_margin_kw | float(0.5)) | round(1) }} kW surplus
             {% endif %}

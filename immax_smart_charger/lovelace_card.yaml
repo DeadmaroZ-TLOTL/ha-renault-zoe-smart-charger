@@ -113,6 +113,13 @@ entities:
       - entity: input_select.immax_smart_charging_mode
         state: "Solar surplus"
     row:
+      entity: input_select.immax_solar_phase_mode
+      name: Phase mode
+  - type: conditional
+    conditions:
+      - entity: input_select.immax_smart_charging_mode
+        state: "Solar surplus"
+    row:
       entity: sensor.renault_zoe_new_immax_solar_phase_mode
       name: Detected phase mode
       tap_action:

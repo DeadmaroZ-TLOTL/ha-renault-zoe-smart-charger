@@ -19,6 +19,9 @@ operation after 8 stable seconds and one-phase operation after 20 stable
 seconds, avoiding false changes during startup. If no complete one- or
 three-phase pattern is available, it retains the last valid mode. Detection
 changes the power calculation; it does not physically switch charger phases.
+The card's phase selector defaults to **Auto**. Select **1 phase** or
+**3 phases** to override the detected result manually; detection continues in
+the background so returning to **Auto** immediately uses the current result.
 
 The nominal electrical limits are 1.4-7.4 kW for one phase and 4.2-22 kW for
 three phases. User-configured minimum and maximum power limits are preserved
@@ -59,7 +62,7 @@ two-minute guard.
 
 1. Enable Home Assistant packages in `configuration.yaml`.
 2. Copy `immax_smart_charger_package.yaml` into the packages directory.
-3. Install or update Zoe New Extended to version 1.9.3 or newer.
+3. Install or update Zoe New Extended to version 1.9.4 or newer.
 4. Restart Home Assistant.
 5. Open **Settings > Devices & services > Zoe New Extended > Configure >
    IMMAX entity sources** and select the entities used by the controller.
@@ -74,8 +77,8 @@ sign conventions:
 - Battery charging and discharging are separate positive values.
 - Phase power and voltage entities report each charger phase.
 
-The card keeps target, deadline, smart mode, reserve, and limit settings
-editable. Detected phase mode, calculated status, planned energy, estimated
-cost, available solar power, target power, actual charger power, grid export,
-and battery flow are exposed as read-only sensors. Selecting a sensor row opens
-Home Assistant's standard more-info dialog with its recorded history.
+The card keeps target, deadline, smart mode, phase override, reserve, and limit
+settings editable. Detected phase mode, calculated status, planned energy,
+estimated cost, available solar power, target power, actual charger power, grid
+export, and battery flow are exposed as read-only sensors. Selecting a sensor
+row opens Home Assistant's standard more-info dialog with its recorded history.
