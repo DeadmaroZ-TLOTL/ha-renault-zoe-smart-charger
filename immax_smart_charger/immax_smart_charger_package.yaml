@@ -324,8 +324,8 @@ automation:
           - sensor.renault_zoe_new_immax_voltage_b
           - sensor.renault_zoe_new_immax_voltage_c
           - sensor.renault_zoe_new_immax_grid_export
-          - sensor.renault_zoe_new_immax_battery_charge
-          - sensor.renault_zoe_new_immax_battery_discharge
+          - sensor.renault_zoe_new_immax_battery_charging
+          - sensor.renault_zoe_new_immax_battery_discharging
     actions:
       - variables:
           mode: "{{ states('input_select.immax_smart_charging_mode') }}"
@@ -405,10 +405,10 @@ automation:
           grid_surplus: >-
             {{ states('sensor.renault_zoe_new_immax_grid_export') | float(0) }}
           battery_in: >-
-            {{ states('sensor.renault_zoe_new_immax_battery_charge') |
+            {{ states('sensor.renault_zoe_new_immax_battery_charging') |
                float(0) }}
           battery_out: >-
-            {{ states('sensor.renault_zoe_new_immax_battery_discharge') |
+            {{ states('sensor.renault_zoe_new_immax_battery_discharging') |
                float(0) }}
           reserve_power_kw: >-
             {{ states('input_number.immax_solar_reserve_power') | float(0.5) }}

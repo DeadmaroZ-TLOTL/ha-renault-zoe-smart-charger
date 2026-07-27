@@ -6,7 +6,7 @@ entities:
     name: Charging
   - entity: input_select.immax_smart_charging_mode
     name: Smart mode
-  - entity: sensor.immax_smart_charge_status
+  - entity: sensor.renault_zoe_new_immax_smart_charge_status
     name: Smart status
   - type: conditional
     conditions:
@@ -81,14 +81,14 @@ entities:
       - entity: input_select.immax_smart_charging_mode
         state: "Nord Pool"
     row:
-      entity: sensor.immax_planned_charging_times
+      entity: sensor.renault_zoe_new_immax_planned_charging_times
       name: Planned charging
   - type: conditional
     conditions:
       - entity: input_select.immax_smart_charging_mode
         state: "Nord Pool"
     row:
-      entity: sensor.immax_planned_energy
+      entity: sensor.renault_zoe_new_immax_planned_energy
       name: Planned energy
       tap_action:
         action: none
@@ -97,7 +97,7 @@ entities:
       - entity: input_select.immax_smart_charging_mode
         state: "Nord Pool"
     row:
-      entity: sensor.immax_estimated_charge_cost
+      entity: sensor.renault_zoe_new_immax_estimated_charge_cost
       name: Estimated cost
       tap_action:
         action: none
@@ -141,7 +141,7 @@ entities:
       - entity: input_select.immax_smart_charging_mode
         state: "Solar surplus"
     row:
-      entity: sensor.immax_solar_available_power
+      entity: sensor.renault_zoe_new_immax_solar_available_power
       name: Available solar surplus
       tap_action:
         action: none
@@ -150,7 +150,7 @@ entities:
       - entity: input_select.immax_smart_charging_mode
         state: "Solar surplus"
     row:
-      entity: sensor.immax_solar_target_power
+      entity: sensor.renault_zoe_new_immax_solar_target_power
       name: Target charging power
       tap_action:
         action: none
@@ -159,7 +159,7 @@ entities:
       - entity: input_select.immax_smart_charging_mode
         state: "Solar surplus"
     row:
-      entity: sensor.immax_solar_charger_power
+      entity: sensor.renault_zoe_new_immax_solar_charger_power
       name: Actual charging power
       tap_action:
         action: none
@@ -168,7 +168,7 @@ entities:
       - entity: input_select.immax_smart_charging_mode
         state: "Solar surplus"
     row:
-      entity: sensor.immax_solar_grid_export
+      entity: sensor.renault_zoe_new_immax_solar_grid_export
       name: Grid export
       tap_action:
         action: none
@@ -177,7 +177,7 @@ entities:
       - entity: input_select.immax_smart_charging_mode
         state: "Solar surplus"
     row:
-      entity: sensor.immax_solar_battery_charge
+      entity: sensor.renault_zoe_new_immax_solar_battery_charge
       name: Battery charging
       tap_action:
         action: none
@@ -186,7 +186,7 @@ entities:
       - entity: input_select.immax_smart_charging_mode
         state: "Solar surplus"
     row:
-      entity: sensor.immax_solar_battery_discharge
+      entity: sensor.renault_zoe_new_immax_solar_battery_discharge
       name: Battery discharging
       tap_action:
         action: none
