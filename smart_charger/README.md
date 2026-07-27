@@ -8,6 +8,9 @@ the automation changes Renault's charging mode to `Always`.
 Before a selected charging interval starts, it also leaves `Delayed` mode,
 refreshes the battery state, and sends a separate start command only if the
 vehicle still has not begun charging.
+The custom charging-mode select restores its last confirmed value during a
+temporary Renault coordinator outage, so the dashboard control stays visible
+after Home Assistant restarts.
 If the remaining eligible slots cannot reach the target before the deadline,
 the planner continues with the earliest later slots below the configured price
 cap until the target is reached or the published price data runs out.

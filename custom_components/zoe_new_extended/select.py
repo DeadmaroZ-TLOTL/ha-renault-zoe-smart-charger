@@ -7,8 +7,9 @@ from typing import Any, override
 
 from homeassistant.components.select import SelectEntity
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
+from homeassistant.helpers.restore_state import RestoreEntity
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 MODEL_CODE = "X102VE"
@@ -60,7 +61,7 @@ async def async_setup_entry(
     async_add_entities([ZoeNewChargingModeSelect(vehicle)])
 
 
-class ZoeNewChargingModeSelect(CoordinatorEntity, SelectEntity):
+class ZoeNewChargingModeSelect(CoordinatorEntity, RestoreEntity, SelectEntity):
     """Expose the writable charging mode missing from the core integration."""
 
     _attr_has_entity_name = True
@@ -77,6 +78,27 @@ class ZoeNewChargingModeSelect(CoordinatorEntity, SelectEntity):
             f"{vehicle.details.vin}_zoe_new_extended_charging_mode".lower()
         )
         self._pending_option: str | None = None
+        self._last_option: str | None = None
+
+    @override
+    async def async_added_to_hass(self) -> None:
+        """Restore the last mode while Renault cloud data is unavailable."""
+        await super().async_added_to_hass()
+        if option := _normalize_mode(getattr(self.coordinator.data, "mode", None)):
+            self._last_option = option
+        elif (last_state := await self.async_get_last_state()) is not None:
+            if last_state.state in OPTIONS:
+                self._last_option = last_state.state
+
+    @property
+    @override
+    def available(self) -> bool:
+        """Keep the control visible during a transient coordinator outage."""
+        return (
+            self.coordinator.last_update_success
+            or self._pending_option is not None
+            or self._last_option is not None
+        )
 
     @property
     @override
@@ -84,7 +106,10 @@ class ZoeNewChargingModeSelect(CoordinatorEntity, SelectEntity):
         """Return the normalized charging mode."""
         if self._pending_option is not None:
             return self._pending_option
-        return _normalize_mode(getattr(self.coordinator.data, "mode", None))
+        return (
+            _normalize_mode(getattr(self.coordinator.data, "mode", None))
+            or self._last_option
+        )
 
     @override
     async def async_select_option(self, option: str) -> None:
@@ -92,6 +117,7 @@ class ZoeNewChargingModeSelect(CoordinatorEntity, SelectEntity):
         command = OPTION_TO_COMMAND[option]
         await self.vehicle.set_charge_mode(command)
         self._pending_option = option
+        self._last_option = option
         self.async_write_ha_state()
         await asyncio.sleep(5)
         try:
@@ -99,3 +125,11 @@ class ZoeNewChargingModeSelect(CoordinatorEntity, SelectEntity):
         finally:
             self._pending_option = None
             self.async_write_ha_state()
+
+    @callback
+    @override
+    def _handle_coordinator_update(self) -> None:
+        """Remember each confirmed mode before writing the entity state."""
+        if option := _normalize_mode(getattr(self.coordinator.data, "mode", None)):
+            self._last_option = option
+        super()._handle_coordinator_update()
