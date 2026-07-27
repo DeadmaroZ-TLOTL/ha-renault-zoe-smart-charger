@@ -19,21 +19,23 @@ The default page expects:
 | Charging | `binary_sensor.charging` |
 | Climate | `binary_sensor.hvac` |
 
-Change the `ENTITY` object near the top of the script in
-`www/renault_trips/index.html` if your Renault entity IDs differ.
+Change the `ENTITY` object near the top of the scripts in
+`www/renault_trips/index.html` and `www/renault_trips/mileage.html` if your
+Renault entity IDs differ.
 
 ## Install
 
-1. Copy `www/renault_trips/index.html` to
-   `/config/www/renault_trips/index.html`.
+1. Copy `www/renault_trips/index.html` and
+   `www/renault_trips/mileage.html` to `/config/www/renault_trips/`.
 2. Install ApexCharts Card 2.2.3 or newer through HACS. The complete dashboard
    plots every known Nord Pool interval from today and tomorrow together with
    the price-cap line.
-3. Add the panel view from `dashboard_view.yaml` to a Lovelace dashboard.
+3. Add the panel views from `dashboard_view.yaml` and `mileage_view.yaml` to a
+   Lovelace dashboard.
 4. Keep Recorder history enabled for the position, odometer, and battery
    entities.
 
-`dashboard.json` is the complete two-view dashboard export used by this
+`dashboard.json` is the complete dashboard export used by this
 project. It also expects the Zoe New Extended integration and the smart charger
 package from the repository root. `charge_sessions_card.md.jinja` is the full
 existing charge-session card used by that dashboard.
@@ -49,3 +51,15 @@ by distance. Each row shows the resulting approximate SOC change, energy, and
 consumption. Leaflet renders the map and the public OSRM service reconstructs
 road routes and five-second speed samples. Route results are cached only in the
 browser.
+
+## Mileage and road surface
+
+The `Nobraukums` view groups the same automatically detected trips by day and
+shows total distance split into paved, gravel/unpaved, and unknown road
+surface. The page map-matches cached OSRM routes with the public Valhalla
+service and uses OpenStreetMap surface tags. Surface distances are scaled to
+the odometer-based trip distance. Missing or ambiguous map data stays unknown
+instead of being guessed, and results are cached in the browser. The summary
+and trip table also show approximate average and maximum speeds derived from
+OSRM route annotations; these are route estimates rather than vehicle
+telemetry.

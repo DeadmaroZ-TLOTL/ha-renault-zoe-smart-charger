@@ -33,6 +33,9 @@ used by the included Nord Pool smart charger package.
   integration options. Measurement and status sources can be left empty.
 - Optional automatic Renault Trips dashboard with day selection, route maps,
   speed samples, distance, and estimated energy consumption.
+- Separate mileage dashboard view with daily totals, odometer-based paved and
+  gravel/unpaved distance, unknown-surface coverage, and approximate average
+  and maximum route speeds.
 
 The command workaround follows the behavior proposed in
 [renault-api pull request #2202](https://github.com/hacf-fr/renault-api/pull/2202).

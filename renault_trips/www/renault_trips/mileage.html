@@ -1,0 +1,1253 @@
+<!doctype html>
+<html lang="lv">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Renault Zoe nobraukums</title>
+  <style>
+    :root {
+      color-scheme: light dark;
+      --bg: #f6f7f9;
+      --panel: #ffffff;
+      --text: #101418;
+      --muted: #607080;
+      --line: #d9e0e8;
+      --accent: #0b74de;
+      --accent-soft: #e8f2ff;
+      --hard: #1976d2;
+      --loose: #b86b18;
+      --unknown: #87929d;
+      --warn: #b95d00;
+      --shadow: 0 1px 4px rgba(16, 20, 24, 0.10);
+    }
+
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #101418;
+        --panel: #171d23;
+        --text: #edf2f7;
+        --muted: #9aa9b7;
+        --line: #2c3742;
+        --accent: #56a8ff;
+        --accent-soft: #102a44;
+        --hard: #56a8ff;
+        --loose: #e7a34f;
+        --unknown: #73808c;
+        --warn: #ffb15c;
+        --shadow: none;
+      }
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    .shell {
+      display: grid;
+      gap: 12px;
+      min-height: 100vh;
+      padding: 12px;
+    }
+
+    .panel {
+      min-width: 0;
+      overflow: hidden;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      box-shadow: var(--shadow);
+    }
+
+    .header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 12px 14px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    h1,
+    h2 {
+      margin: 0;
+      font-weight: 650;
+      letter-spacing: 0;
+    }
+
+    h1 {
+      font-size: 20px;
+    }
+
+    h2 {
+      font-size: 16px;
+    }
+
+    .toolbar {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    button,
+    select,
+    input[type="date"] {
+      min-height: 34px;
+      padding: 0 10px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: var(--panel);
+      color: var(--text);
+      font: inherit;
+    }
+
+    button {
+      cursor: pointer;
+    }
+
+    button.primary {
+      border-color: var(--accent);
+      background: var(--accent);
+      color: #fff;
+      font-weight: 600;
+    }
+
+    button:disabled {
+      cursor: default;
+      opacity: 0.65;
+    }
+
+    input[type="date"].active {
+      border-color: var(--accent);
+      background: var(--accent-soft);
+    }
+
+    .clear-date {
+      width: 34px;
+      padding: 0;
+      font-size: 19px;
+      line-height: 1;
+    }
+
+    .status {
+      min-height: 38px;
+      padding: 9px 14px;
+      border-bottom: 1px solid var(--line);
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.45;
+    }
+
+    .status.warn {
+      color: var(--warn);
+    }
+
+    .summary {
+      display: grid;
+      grid-template-columns: repeat(8, minmax(0, 1fr));
+      gap: 8px;
+      padding: 10px;
+    }
+
+    .metric {
+      min-width: 0;
+      padding: 9px 10px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+    }
+
+    .metric span {
+      display: block;
+      overflow: hidden;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.2;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .metric strong {
+      display: block;
+      overflow: hidden;
+      margin-top: 3px;
+      font-size: 18px;
+      line-height: 1.2;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .surface-overview {
+      padding: 0 14px 14px;
+    }
+
+    .surface-bar,
+    .daily-bar {
+      display: flex;
+      width: 100%;
+      overflow: hidden;
+    }
+
+    .surface-bar {
+      height: 18px;
+      border-radius: 4px;
+      background: var(--line);
+    }
+
+    .surface-bar span,
+    .daily-bar span {
+      display: block;
+      min-width: 0;
+      transition: width 180ms ease-out;
+    }
+
+    .hard {
+      background: var(--hard);
+    }
+
+    .loose {
+      background: var(--loose);
+    }
+
+    .unknown {
+      background: var(--unknown);
+    }
+
+    .legend {
+      display: flex;
+      gap: 16px;
+      margin-top: 9px;
+      color: var(--muted);
+      font-size: 12px;
+      flex-wrap: wrap;
+    }
+
+    .legend span {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .legend i {
+      width: 10px;
+      height: 10px;
+      border-radius: 2px;
+    }
+
+    .content-grid {
+      display: grid;
+      grid-template-columns: minmax(320px, 0.8fr) minmax(560px, 1.2fr);
+      gap: 12px;
+    }
+
+    .daily-list {
+      display: grid;
+      gap: 12px;
+      padding: 14px;
+    }
+
+    .daily-row {
+      display: grid;
+      grid-template-columns: 84px minmax(0, 1fr) 72px;
+      gap: 10px;
+      align-items: center;
+      font-size: 13px;
+    }
+
+    .daily-date {
+      color: var(--muted);
+      white-space: nowrap;
+    }
+
+    .daily-value {
+      font-variant-numeric: tabular-nums;
+      font-weight: 650;
+      text-align: right;
+      white-space: nowrap;
+    }
+
+    .daily-bar {
+      height: 14px;
+      border-radius: 3px;
+      background: transparent;
+    }
+
+    .table-wrap {
+      width: 100%;
+      overflow: auto;
+    }
+
+    table {
+      width: 100%;
+      min-width: 720px;
+      border-collapse: collapse;
+      font-size: 14px;
+    }
+
+    th,
+    td {
+      padding: 9px 10px;
+      border-bottom: 1px solid var(--line);
+      text-align: left;
+      vertical-align: middle;
+      white-space: nowrap;
+    }
+
+    th {
+      position: sticky;
+      top: 0;
+      z-index: 1;
+      background: var(--panel);
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 650;
+    }
+
+    td.number,
+    th.number {
+      text-align: right;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .empty {
+      padding: 24px 16px;
+      color: var(--muted);
+      line-height: 1.45;
+    }
+
+    .note {
+      padding: 11px 14px;
+      border-top: 1px solid var(--line);
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.45;
+    }
+
+    @media (max-width: 1100px) {
+      .summary {
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+      }
+
+      .content-grid {
+        grid-template-columns: minmax(0, 1fr);
+      }
+    }
+
+    @media (max-width: 640px) {
+      html,
+      body {
+        width: 100%;
+        max-width: 100%;
+        overflow-x: hidden;
+      }
+
+      .shell {
+        width: 100%;
+        gap: 8px;
+        padding: 0;
+      }
+
+      .panel {
+        width: 100%;
+        min-width: 0;
+        border-right: 0;
+        border-left: 0;
+        border-radius: 0;
+      }
+
+      .header {
+        align-items: flex-start;
+        flex-direction: column;
+      }
+
+      .toolbar {
+        width: 100%;
+      }
+
+      .toolbar select,
+      .toolbar input[type="date"] {
+        min-width: 0;
+        flex: 1 1 140px;
+      }
+
+      .toolbar .primary {
+        flex: 1 0 100%;
+      }
+
+      .summary {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .daily-row {
+        grid-template-columns: 74px minmax(0, 1fr) 64px;
+        gap: 7px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="shell">
+    <section class="panel">
+      <div class="header">
+        <h1>Nobraukuma statistika</h1>
+        <div class="toolbar">
+          <select id="days" title="Periods līdz šodienai">
+            <option value="1">1 diena</option>
+            <option value="3">3 dienas</option>
+            <option value="7" selected>7 dienas</option>
+            <option value="14">14 dienas</option>
+            <option value="30">30 dienas</option>
+          </select>
+          <input id="dayDate" type="date" title="Konkrēts datums" aria-label="Konkrēts datums">
+          <button class="clear-date" id="clearDate" type="button" title="Atgriezties pie perioda" aria-label="Atgriezties pie perioda" hidden>×</button>
+          <button class="primary" id="reload" type="button">Atjaunot</button>
+        </div>
+      </div>
+      <div id="status" class="status">Ielādēju HA vēsturi...</div>
+      <div class="summary">
+        <div class="metric"><span>Odometra rādījums</span><strong id="mOdometer">-</strong></div>
+        <div class="metric"><span>Braucieni</span><strong id="mTrips">-</strong></div>
+        <div class="metric"><span>Kopā</span><strong id="mTotal">-</strong></div>
+        <div class="metric"><span>Vid. ātrums (apt.)</span><strong id="mAvgSpeed">-</strong></div>
+        <div class="metric"><span>Maks. ātrums (apt.)</span><strong id="mMaxSpeed">-</strong></div>
+        <div class="metric"><span>Asfalts / cietais</span><strong id="mHard">-</strong></div>
+        <div class="metric"><span>Grants / neklātais</span><strong id="mLoose">-</strong></div>
+        <div class="metric"><span>Nezināms segums</span><strong id="mUnknown">-</strong></div>
+      </div>
+      <div class="surface-overview">
+        <div class="surface-bar" aria-label="Nobraukuma sadalījums pēc ceļa seguma">
+          <span id="hardBar" class="hard"></span>
+          <span id="looseBar" class="loose"></span>
+          <span id="unknownBar" class="unknown"></span>
+        </div>
+        <div class="legend">
+          <span><i class="hard"></i>Asfalts / cietais</span>
+          <span><i class="loose"></i>Grants / neklātais</span>
+          <span><i class="unknown"></i>Nezināms</span>
+        </div>
+      </div>
+    </section>
+
+    <div class="content-grid">
+      <section class="panel">
+        <div class="header">
+          <h2>Nobraukums pa dienām</h2>
+        </div>
+        <div id="daily" class="daily-list"></div>
+        <div id="dailyEmpty" class="empty" hidden>Šajā periodā nobraukums nav atrasts.</div>
+      </section>
+
+      <section class="panel">
+        <div class="header">
+          <h2>Braucieni un ceļa segums</h2>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Sākums (apt.)</th>
+                <th>Beigas (apt.)</th>
+                <th class="number">Kopā</th>
+                <th class="number">Vid. ātrums (apt.)</th>
+                <th class="number">Maks. ātrums (apt.)</th>
+                <th class="number">Asfalts / cietais</th>
+                <th class="number">Grants / neklātais</th>
+                <th class="number">Nezināms</th>
+                <th class="number">Seguma dati</th>
+              </tr>
+            </thead>
+            <tbody id="trips"></tbody>
+          </table>
+        </div>
+        <div id="empty" class="empty" hidden>Šajā periodā nav atrasts neviens brauciens.</div>
+        <div class="note">Ceļa segums tiek noteikts no OpenStreetMap ceļu datiem. Posmi bez drošas seguma informācijas paliek kategorijā “Nezināms” un netiek minēti kā asfalts vai grants. Ātrumi ir aptuvena OSRM maršruta aplēse, nevis automašīnas tieši mērīta telemetrija.</div>
+      </section>
+    </div>
+  </main>
+
+  <script>
+    const ENTITY = {
+      location: "device_tracker.location",
+      mileage: "sensor.mileage",
+    };
+    const MOVE_THRESHOLD_KM = 0.25;
+    const MIN_TRIP_KM = 0.75;
+    const STOP_AFTER_MIN = 20;
+    const MAX_SAMPLE_GAP_MIN = 90;
+    const MILEAGE_SETTLE_MIN = 15;
+    const MILEAGE_COVER_MARGIN_MIN = 20;
+    const AUTO_REFRESH_MS = 15 * 60 * 1000;
+    const ROAD_ROUTER_URL = "https://router.project-osrm.org/route/v1/driving";
+    const SURFACE_ROUTER_URL = "https://valhalla1.openstreetmap.de/trace_attributes";
+    const MAX_ROUTE_WAYPOINTS = 80;
+    const MAX_SURFACE_POINTS = 120;
+    const HARD_SURFACES = new Set(["paved_smooth", "paved", "paved_rough"]);
+    const LOOSE_SURFACES = new Set(["compacted", "dirt", "gravel", "path", "impassable"]);
+
+    const statusEl = document.getElementById("status");
+    const tripsEl = document.getElementById("trips");
+    const emptyEl = document.getElementById("empty");
+    const dailyEl = document.getElementById("daily");
+    const dailyEmptyEl = document.getElementById("dailyEmpty");
+    const daysEl = document.getElementById("days");
+    const dayDateEl = document.getElementById("dayDate");
+    const clearDateEl = document.getElementById("clearDate");
+    const reloadEl = document.getElementById("reload");
+
+    let trips = [];
+    let currentMileage = null;
+    let cachedParentHass = null;
+    let loadRequestId = 0;
+
+    function parseMaybeJson(value) {
+      try {
+        return JSON.parse(value);
+      } catch {
+        return null;
+      }
+    }
+
+    async function getParentHass() {
+      if (cachedParentHass?.callApi) return cachedParentHass;
+      if (window.parent === window) return null;
+      for (let attempt = 0; attempt < 20; attempt += 1) {
+        try {
+          const hass = window.parent.document.querySelector("home-assistant")?.hass;
+          if (hass?.callApi) {
+            cachedParentHass = hass;
+            return hass;
+          }
+        } catch {
+          return null;
+        }
+        await new Promise((resolve) => window.setTimeout(resolve, 100));
+      }
+      return null;
+    }
+
+    async function refreshToken(tokens) {
+      if (!tokens?.refresh_token) return null;
+      const body = new URLSearchParams();
+      body.set("grant_type", "refresh_token");
+      body.set("refresh_token", tokens.refresh_token);
+      body.set("client_id", location.origin + "/");
+      const response = await fetch("/auth/token", {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body,
+      });
+      if (!response.ok) return null;
+      const fresh = await response.json();
+      const merged = { ...tokens, ...fresh, expires: Date.now() + fresh.expires_in * 1000 };
+      localStorage.setItem("hassTokens", JSON.stringify(merged));
+      return merged.access_token;
+    }
+
+    async function getAccessToken() {
+      const direct = parseMaybeJson(localStorage.getItem("hassTokens"));
+      if (direct?.access_token) {
+        if (!direct.expires || direct.expires > Date.now() + 60000) return direct.access_token;
+        const refreshed = await refreshToken(direct);
+        if (refreshed) return refreshed;
+      }
+      for (let i = 0; i < localStorage.length; i += 1) {
+        const value = parseMaybeJson(localStorage.getItem(localStorage.key(i)));
+        if (value?.access_token) return value.access_token;
+      }
+      return null;
+    }
+
+    async function haFetch(path, options = {}) {
+      const parentHass = await getParentHass();
+      if (parentHass?.callApi) {
+        const method = String(options.method || "GET").toUpperCase();
+        try {
+          const result = await parentHass.callApi(method, path.replace(/^\/api\//, ""), options.body);
+          document.documentElement.dataset.authSource = "parent";
+          return result;
+        } catch (err) {
+          console.debug("Parent Home Assistant API request failed", err);
+        }
+      }
+
+      const token = await getAccessToken();
+      document.documentElement.dataset.authSource = token ? "token" : "none";
+      const makeRequest = (accessToken) => {
+        const headers = { ...(options.headers || {}) };
+        if (accessToken) headers.Authorization = `Bearer ${accessToken}`;
+        const request = { ...options, headers, credentials: "same-origin" };
+        if (request.body && typeof request.body !== "string") {
+          request.body = JSON.stringify(request.body);
+          headers["Content-Type"] = "application/json";
+        }
+        return fetch(path, request);
+      };
+      let response = await makeRequest(token);
+      if (response.status === 401) {
+        const refreshed = await refreshToken(parseMaybeJson(localStorage.getItem("hassTokens")));
+        if (refreshed) response = await makeRequest(refreshed);
+      }
+      if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
+      return response.json();
+    }
+
+    function toTime(state) {
+      return new Date(state.last_updated || state.last_changed || state.last_reported).getTime();
+    }
+
+    function toNumber(value) {
+      const number = Number.parseFloat(value);
+      return Number.isFinite(number) ? number : null;
+    }
+
+    function localDateValue(date) {
+      const local = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
+      return local.toISOString().slice(0, 10);
+    }
+
+    function updateCalendarMode() {
+      const active = Boolean(dayDateEl.value);
+      dayDateEl.classList.toggle("active", active);
+      clearDateEl.hidden = !active;
+      return active;
+    }
+
+    function setStatus(text, warn = false) {
+      statusEl.textContent = text;
+      statusEl.classList.toggle("warn", warn);
+    }
+
+    function fmt(value, digits = 1, suffix = "") {
+      return Number.isFinite(value) ? `${value.toFixed(digits)}${suffix}` : "-";
+    }
+
+    function fmtDate(time) {
+      return new Intl.DateTimeFormat("lv-LV", {
+        month: "2-digit",
+        day: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
+      }).format(new Date(time));
+    }
+
+    function tripDisplayStart(trip) {
+      if (Number.isFinite(trip.roadDurationMs) && trip.roadDurationMs > 0) {
+        return trip.end - trip.roadDurationMs;
+      }
+      return trip.start;
+    }
+
+    function kmBetween(a, b) {
+      const radius = 6371;
+      const dLat = (b.lat - a.lat) * Math.PI / 180;
+      const dLon = (b.lon - a.lon) * Math.PI / 180;
+      const lat1 = a.lat * Math.PI / 180;
+      const lat2 = b.lat * Math.PI / 180;
+      const haversine = Math.sin(dLat / 2) ** 2
+        + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLon / 2) ** 2;
+      return 2 * radius * Math.asin(Math.sqrt(haversine));
+    }
+
+    function routeKm(points) {
+      let total = 0;
+      for (let index = 1; index < points.length; index += 1) {
+        total += kmBetween(points[index - 1], points[index]);
+      }
+      return total;
+    }
+
+    function valueAt(samples, time) {
+      let best = null;
+      for (const sample of samples) {
+        if (sample.t <= time) best = sample;
+        else break;
+      }
+      return best?.value ?? samples[0]?.value ?? null;
+    }
+
+    function normalizeHistory(history) {
+      const byEntity = {};
+      for (const group of history) {
+        for (const state of group) {
+          if (!byEntity[state.entity_id]) byEntity[state.entity_id] = [];
+          byEntity[state.entity_id].push(state);
+        }
+      }
+      for (const list of Object.values(byEntity)) {
+        list.sort((left, right) => toTime(left) - toTime(right));
+      }
+      return byEntity;
+    }
+
+    function splitLocationTrips(locations) {
+      const found = [];
+      let current = null;
+      let lastMovementAt = null;
+
+      const closeCurrent = () => {
+        if (current && current.end > current.start) found.push(current);
+        current = null;
+        lastMovementAt = null;
+      };
+
+      for (let index = 1; index < locations.length; index += 1) {
+        const previous = locations[index - 1];
+        const point = locations[index];
+        const gapMinutes = (point.t - previous.t) / 60000;
+        const distance = kmBetween(previous, point);
+
+        if (gapMinutes > MAX_SAMPLE_GAP_MIN) {
+          closeCurrent();
+          continue;
+        }
+
+        if (distance >= MOVE_THRESHOLD_KM) {
+          if (current && (point.t - lastMovementAt) / 60000 >= STOP_AFTER_MIN) {
+            closeCurrent();
+          }
+          if (!current) current = { points: [previous], start: previous.t };
+          current.points.push(point);
+          current.end = point.t;
+          lastMovementAt = point.t;
+        } else if (current && (point.t - lastMovementAt) / 60000 >= STOP_AFTER_MIN) {
+          closeCurrent();
+        }
+      }
+      closeCurrent();
+      return found;
+    }
+
+    function addUncoveredMileageTrips(found, mileage, locations) {
+      const margin = MILEAGE_COVER_MARGIN_MIN * 60000;
+      for (let index = 1; index < mileage.length; index += 1) {
+        const startSample = mileage[index - 1];
+        const endSample = mileage[index];
+        const delta = endSample.value - startSample.value;
+        if (delta < MIN_TRIP_KM) continue;
+        const covered = found.some((trip) => (
+          endSample.t >= trip.start - margin && endSample.t <= trip.end + margin
+        ));
+        if (covered) continue;
+        found.push({
+          points: locations.filter((point) => point.t >= startSample.t && point.t <= endSample.t),
+          start: startSample.t,
+          end: endSample.t,
+          mileageStart: startSample.value,
+          mileageEnd: endSample.value,
+        });
+      }
+    }
+
+    function tripDistance(trip, mileage) {
+      const startMileage = trip.mileageStart ?? valueAt(mileage, trip.start);
+      const endMileage = trip.mileageEnd ?? valueAt(
+        mileage,
+        trip.end + MILEAGE_SETTLE_MIN * 60000,
+      );
+      const mileageKm = startMileage != null && endMileage != null
+        ? Math.max(0, endMileage - startMileage)
+        : 0;
+      const gpsKm = routeKm(trip.points);
+      return {
+        km: mileageKm >= MIN_TRIP_KM ? mileageKm : gpsKm,
+        mileageKm,
+        gpsKm,
+      };
+    }
+
+    function buildTrips(history) {
+      const byEntity = normalizeHistory(history);
+      const locations = (byEntity[ENTITY.location] || [])
+        .map((state) => ({
+          t: toTime(state),
+          lat: toNumber(state.attributes?.latitude),
+          lon: toNumber(state.attributes?.longitude),
+        }))
+        .filter((point) => (
+          Number.isFinite(point.t)
+          && Number.isFinite(point.lat)
+          && Number.isFinite(point.lon)
+        ));
+      const mileage = (byEntity[ENTITY.mileage] || [])
+        .map((state) => ({ t: toTime(state), value: toNumber(state.state) }))
+        .filter((point) => Number.isFinite(point.t) && Number.isFinite(point.value));
+
+      const found = splitLocationTrips(locations);
+      addUncoveredMileageTrips(found, mileage, locations);
+      return found
+        .map((trip) => ({ ...trip, ...tripDistance(trip, mileage), surface: null }))
+        .filter((trip) => trip.km >= MIN_TRIP_KM)
+        .sort((left, right) => right.start - left.start);
+    }
+
+    function routeWaypoints(points) {
+      const unique = points.filter((point, index) => (
+        index === 0 || kmBetween(points[index - 1], point) >= 0.02
+      ));
+      if (unique.length <= MAX_ROUTE_WAYPOINTS) return unique;
+      const sampled = [];
+      for (let index = 0; index < MAX_ROUTE_WAYPOINTS; index += 1) {
+        sampled.push(unique[Math.round(
+          index * (unique.length - 1) / (MAX_ROUTE_WAYPOINTS - 1),
+        )]);
+      }
+      return sampled;
+    }
+
+    function hashCoordinates(points) {
+      const coordinates = points
+        .map((point) => `${point.lat.toFixed(5)},${point.lon.toFixed(5)}`)
+        .join(";");
+      let hash = 2166136261;
+      for (let index = 0; index < coordinates.length; index += 1) {
+        hash ^= coordinates.charCodeAt(index);
+        hash = Math.imul(hash, 16777619);
+      }
+      return (hash >>> 0).toString(16);
+    }
+
+    function routeCacheKey(points) {
+      return `renault-road-route-v3-${hashCoordinates(points)}`;
+    }
+
+    function buildFiveSecondSamples(coordinates, speeds, durations) {
+      const samples = [];
+      let segmentStart = 0;
+      let nextSample = 0;
+      for (let index = 0; index < coordinates.length - 1; index += 1) {
+        const segmentDuration = Math.max(0.01, Number(durations[index]) || 0.01);
+        const segmentEnd = segmentStart + segmentDuration;
+        while (nextSample <= segmentEnd) {
+          const ratio = Math.min(
+            1,
+            Math.max(0, (nextSample - segmentStart) / segmentDuration),
+          );
+          const [lonA, latA] = coordinates[index];
+          const [lonB, latB] = coordinates[index + 1];
+          samples.push({
+            lat: latA + (latB - latA) * ratio,
+            lon: lonA + (lonB - lonA) * ratio,
+            speed: (Number(speeds[index]) || 0) * 3.6,
+            elapsed: nextSample,
+          });
+          nextSample += 5;
+        }
+        segmentStart = segmentEnd;
+      }
+      const [lastLon, lastLat] = coordinates[coordinates.length - 1];
+      samples.push({
+        lat: lastLat,
+        lon: lastLon,
+        speed: (Number(speeds[speeds.length - 1]) || 0) * 3.6,
+        elapsed: segmentStart,
+      });
+      return samples;
+    }
+
+    function addRouteSpeedStats(routeData) {
+      const speeds = (routeData.samples || [])
+        .map((sample) => Number(sample.speed))
+        .filter((speed) => Number.isFinite(speed) && speed >= 0);
+      return {
+        ...routeData,
+        averageSpeedKmh: routeData.duration > 0
+          ? Number(routeData.distance) / Number(routeData.duration) * 3.6
+          : null,
+        maxSpeedKmh: speeds.length ? Math.max(...speeds) : null,
+      };
+    }
+
+    async function getRoadRoute(points) {
+      const waypoints = routeWaypoints(points);
+      if (waypoints.length < 2) return { latlngs: [], distance: 0, duration: 0 };
+      const key = routeCacheKey(waypoints);
+      const cached = parseMaybeJson(localStorage.getItem(key));
+      if (
+        Array.isArray(cached?.latlngs)
+        && cached.latlngs.length >= 2
+        && Array.isArray(cached.samples)
+        && cached.samples.length >= 2
+      ) {
+        return addRouteSpeedStats(cached);
+      }
+
+      const coordinates = waypoints.map((point) => `${point.lon},${point.lat}`).join(";");
+      const controller = new AbortController();
+      const timeout = window.setTimeout(() => controller.abort(), 15000);
+      try {
+        const response = await fetch(
+          `${ROAD_ROUTER_URL}/${coordinates}?alternatives=false&steps=false&overview=full&geometries=geojson&annotations=speed,duration,distance`,
+          { signal: controller.signal },
+        );
+        if (!response.ok) throw new Error(`OSRM HTTP ${response.status}`);
+        const data = await response.json();
+        const route = data.routes?.[0];
+        if (!route?.geometry?.coordinates?.length) throw new Error("Maršruts nav atrasts");
+        const speeds = route.legs.flatMap((leg) => leg.annotation?.speed || []);
+        const durations = route.legs.flatMap((leg) => leg.annotation?.duration || []);
+        const routeData = addRouteSpeedStats({
+          latlngs: route.geometry.coordinates.map(([lon, lat]) => [lat, lon]),
+          samples: buildFiveSecondSamples(route.geometry.coordinates, speeds, durations),
+          distance: route.distance,
+          duration: route.duration,
+        });
+        try {
+          localStorage.setItem(key, JSON.stringify(routeData));
+        } catch (err) {
+          console.debug("Route cache is full", err);
+        }
+        return routeData;
+      } finally {
+        window.clearTimeout(timeout);
+      }
+    }
+
+    function sampleRoute(latlngs) {
+      if (latlngs.length <= MAX_SURFACE_POINTS) return latlngs;
+      const sampled = [];
+      for (let index = 0; index < MAX_SURFACE_POINTS; index += 1) {
+        sampled.push(latlngs[Math.round(
+          index * (latlngs.length - 1) / (MAX_SURFACE_POINTS - 1),
+        )]);
+      }
+      return sampled;
+    }
+
+    function scaledSurface(raw, tripKm, matchedRouteKm) {
+      const rawTotal = raw.hard + raw.loose + raw.unknown;
+      if (!(rawTotal > 0)) {
+        return { hard: 0, loose: 0, unknown: tripKm, coverage: 0 };
+      }
+      const matchedKm = Math.min(
+        tripKm,
+        Number.isFinite(matchedRouteKm) && matchedRouteKm > 0 ? matchedRouteKm : rawTotal,
+      );
+      const scale = matchedKm / rawTotal;
+      const hard = raw.hard * scale;
+      const loose = raw.loose * scale;
+      const unknown = Math.max(0, tripKm - hard - loose);
+      return {
+        hard,
+        loose,
+        unknown,
+        coverage: tripKm > 0 ? (hard + loose) / tripKm * 100 : 0,
+      };
+    }
+
+    async function getSurfaceBreakdown(trip) {
+      if (trip.points.length < 2) {
+        return { hard: 0, loose: 0, unknown: trip.km, coverage: 0 };
+      }
+      const route = await getRoadRoute(trip.points);
+      if (route.latlngs.length < 2) {
+        return { hard: 0, loose: 0, unknown: trip.km, coverage: 0 };
+      }
+      trip.speed = {
+        average: route.averageSpeedKmh,
+        max: route.maxSpeedKmh,
+      };
+      const matchedRouteKm = Number(route.distance) / 1000;
+      if (route.duration > 0 && matchedRouteKm > 0) {
+        const distanceScale = Math.min(8, Math.max(0.25, trip.km / matchedRouteKm));
+        trip.roadDurationMs = route.duration * distanceScale * 1000;
+      }
+
+      const sampled = sampleRoute(route.latlngs);
+      const cacheKey = `renault-road-surface-v1-${hashCoordinates(
+        sampled.map(([lat, lon]) => ({ lat, lon })),
+      )}`;
+      const cached = parseMaybeJson(localStorage.getItem(cacheKey));
+      if (
+        cached
+        && Number.isFinite(cached.hard)
+        && Number.isFinite(cached.loose)
+        && Number.isFinite(cached.unknown)
+      ) {
+        return scaledSurface(cached, trip.km, matchedRouteKm);
+      }
+
+      const controller = new AbortController();
+      const timeout = window.setTimeout(() => controller.abort(), 20000);
+      try {
+        const response = await fetch(SURFACE_ROUTER_URL, {
+          method: "POST",
+          signal: controller.signal,
+          headers: {
+            "Content-Type": "application/json",
+            "X-Client-Id": "ha-renault-zoe-smart-charger",
+          },
+          body: JSON.stringify({
+            shape: sampled.map(([lat, lon]) => ({ lat, lon })),
+            costing: "auto",
+            shape_match: "map_snap",
+            units: "kilometers",
+            trace_options: {
+              search_radius: 35,
+              gps_accuracy: 10,
+              breakage_distance: 1000,
+            },
+            filters: {
+              action: "include",
+              attributes: [
+                "edge.length",
+                "edge.surface",
+                "edge.unpaved",
+                "edge.road_class",
+                "edge.use",
+              ],
+            },
+          }),
+        });
+        if (!response.ok) throw new Error(`Valhalla HTTP ${response.status}`);
+        const data = await response.json();
+        const raw = { hard: 0, loose: 0, unknown: 0 };
+        for (const edge of data.edges || []) {
+          const length = Number(edge.length);
+          if (!(length > 0)) continue;
+          const surface = String(edge.surface || "").toLowerCase();
+          if (edge.unpaved === true || edge.unpaved === "true" || LOOSE_SURFACES.has(surface)) {
+            raw.loose += length;
+          } else if (HARD_SURFACES.has(surface)) {
+            raw.hard += length;
+          } else {
+            raw.unknown += length;
+          }
+        }
+        if (!(raw.hard + raw.loose + raw.unknown > 0)) {
+          throw new Error("Seguma dati nav atrasti");
+        }
+        try {
+          localStorage.setItem(cacheKey, JSON.stringify(raw));
+        } catch (err) {
+          console.debug("Surface cache is full", err);
+        }
+        return scaledSurface(raw, trip.km, matchedRouteKm);
+      } finally {
+        window.clearTimeout(timeout);
+      }
+    }
+
+    function surfaceTotals() {
+      return trips.reduce((total, trip) => {
+        if (trip.surface) {
+          total.hard += trip.surface.hard;
+          total.loose += trip.surface.loose;
+          total.unknown += trip.surface.unknown;
+          total.processed += 1;
+        }
+        return total;
+      }, { hard: 0, loose: 0, unknown: 0, processed: 0 });
+    }
+
+    function renderSummary() {
+      const totalKm = trips.reduce((sum, trip) => sum + trip.km, 0);
+      const surface = surfaceTotals();
+      const speedTrips = trips.filter((trip) => trip.speed?.average > 0);
+      const speedDistance = speedTrips.reduce((sum, trip) => sum + trip.km, 0);
+      const speedHours = speedTrips.reduce(
+        (sum, trip) => sum + trip.km / trip.speed.average,
+        0,
+      );
+      const averageSpeed = speedHours > 0 ? speedDistance / speedHours : null;
+      const maxSpeed = speedTrips.length
+        ? Math.max(...speedTrips.map((trip) => trip.speed.max || 0))
+        : null;
+      document.getElementById("mOdometer").textContent = fmt(currentMileage, 0, " km");
+      document.getElementById("mTrips").textContent = String(trips.length);
+      document.getElementById("mTotal").textContent = fmt(totalKm, 1, " km");
+      document.getElementById("mAvgSpeed").textContent = fmt(averageSpeed, 0, " km/h");
+      document.getElementById("mMaxSpeed").textContent = fmt(maxSpeed, 0, " km/h");
+      document.getElementById("mHard").textContent = surface.processed
+        ? fmt(surface.hard, 1, " km")
+        : "-";
+      document.getElementById("mLoose").textContent = surface.processed
+        ? fmt(surface.loose, 1, " km")
+        : "-";
+      document.getElementById("mUnknown").textContent = surface.processed
+        ? fmt(surface.unknown, 1, " km")
+        : "-";
+
+      const denominator = surface.hard + surface.loose + surface.unknown;
+      const percentage = (value) => denominator > 0 ? `${value / denominator * 100}%` : "0%";
+      document.getElementById("hardBar").style.width = percentage(surface.hard);
+      document.getElementById("looseBar").style.width = percentage(surface.loose);
+      document.getElementById("unknownBar").style.width = percentage(surface.unknown);
+    }
+
+    function renderDaily() {
+      const grouped = new Map();
+      for (const trip of trips) {
+        const key = localDateValue(new Date(tripDisplayStart(trip)));
+        if (!grouped.has(key)) grouped.set(key, { total: 0, hard: 0, loose: 0, unknown: 0 });
+        const day = grouped.get(key);
+        day.total += trip.km;
+        if (trip.surface) {
+          day.hard += trip.surface.hard;
+          day.loose += trip.surface.loose;
+          day.unknown += trip.surface.unknown;
+        } else {
+          day.unknown += trip.km;
+        }
+      }
+      const days = [...grouped.entries()].sort((left, right) => right[0].localeCompare(left[0]));
+      dailyEl.innerHTML = "";
+      dailyEmptyEl.hidden = days.length !== 0;
+      const max = Math.max(0, ...days.map(([, day]) => day.total));
+      for (const [date, day] of days) {
+        const width = max > 0 ? day.total / max * 100 : 0;
+        const partWidth = (value) => day.total > 0 ? value / day.total * width : 0;
+        const row = document.createElement("div");
+        row.className = "daily-row";
+        row.innerHTML = `
+          <span class="daily-date">${new Intl.DateTimeFormat("lv-LV", {
+            month: "2-digit",
+            day: "2-digit",
+          }).format(new Date(`${date}T12:00:00`))}</span>
+          <span class="daily-bar" title="Asfalts ${fmt(day.hard, 1, " km")}; grants ${fmt(day.loose, 1, " km")}; nezināms ${fmt(day.unknown, 1, " km")}">
+            <span class="hard" style="width:${partWidth(day.hard)}%"></span>
+            <span class="loose" style="width:${partWidth(day.loose)}%"></span>
+            <span class="unknown" style="width:${partWidth(day.unknown)}%"></span>
+          </span>
+          <strong class="daily-value">${fmt(day.total, 1, " km")}</strong>
+        `;
+        dailyEl.appendChild(row);
+      }
+    }
+
+    function renderTrips() {
+      tripsEl.innerHTML = "";
+      emptyEl.hidden = trips.length !== 0;
+      for (const trip of trips) {
+        const surface = trip.surface;
+        const row = document.createElement("tr");
+        row.innerHTML = `
+          <td>~${fmtDate(tripDisplayStart(trip))}</td>
+          <td>~${fmtDate(trip.end)}</td>
+          <td class="number">${fmt(trip.km, 1, " km")}</td>
+          <td class="number">${trip.speed ? fmt(trip.speed.average, 0, " km/h") : "..."}</td>
+          <td class="number">${trip.speed ? fmt(trip.speed.max, 0, " km/h") : "..."}</td>
+          <td class="number">${surface ? fmt(surface.hard, 1, " km") : "..."}</td>
+          <td class="number">${surface ? fmt(surface.loose, 1, " km") : "..."}</td>
+          <td class="number">${surface ? fmt(surface.unknown, 1, " km") : "..."}</td>
+          <td class="number">${surface ? fmt(surface.coverage, 0, "%") : "..."}</td>
+        `;
+        tripsEl.appendChild(row);
+      }
+    }
+
+    function render() {
+      renderSummary();
+      renderDaily();
+      renderTrips();
+    }
+
+    async function classifyTrips(currentTrips, requestId) {
+      let cursor = 0;
+      let finished = 0;
+      let failures = 0;
+      const worker = async () => {
+        while (cursor < currentTrips.length && requestId === loadRequestId) {
+          const index = cursor;
+          cursor += 1;
+          const trip = currentTrips[index];
+          try {
+            trip.surface = await getSurfaceBreakdown(trip);
+          } catch (err) {
+            failures += 1;
+            trip.surface = { hard: 0, loose: 0, unknown: trip.km, coverage: 0 };
+            console.warn("Road surface unavailable", err);
+          }
+          finished += 1;
+          if (requestId !== loadRequestId) return;
+          setStatus(`Nosaku ceļa segumu: ${finished}/${currentTrips.length} braucieni...`);
+          render();
+        }
+      };
+      await Promise.all(Array.from({ length: Math.min(2, currentTrips.length) }, worker));
+      return failures;
+    }
+
+    async function loadMileage() {
+      const requestId = ++loadRequestId;
+      const days = Number(daysEl.value);
+      reloadEl.disabled = true;
+      setStatus("Ielādēju HA vēsturi...");
+      try {
+        const now = new Date();
+        let end = now;
+        let start;
+        if (dayDateEl.value) {
+          start = new Date(`${dayDateEl.value}T00:00:00`);
+          end = new Date(start);
+          end.setDate(end.getDate() + 1);
+          if (end > now) end = now;
+        } else {
+          start = new Date(end.getTime() - days * 86400000);
+        }
+        const ids = [ENTITY.location, ENTITY.mileage].join(",");
+        const historyUrl = `/api/history/period/${encodeURIComponent(start.toISOString())}?end_time=${encodeURIComponent(end.toISOString())}&filter_entity_id=${encodeURIComponent(ids)}`;
+        const [history, mileageState] = await Promise.all([
+          haFetch(historyUrl),
+          haFetch(`/api/states/${encodeURIComponent(ENTITY.mileage)}`),
+        ]);
+        if (requestId !== loadRequestId) return;
+        trips = buildTrips(history);
+        currentMileage = toNumber(mileageState.state);
+        render();
+        if (!trips.length) {
+          setStatus(`Atjaunots ${new Intl.DateTimeFormat("lv-LV", {
+            hour: "2-digit",
+            minute: "2-digit",
+          }).format(new Date())}. Šajā periodā braucienu nav.`);
+          return;
+        }
+        const failures = await classifyTrips(trips, requestId);
+        if (requestId !== loadRequestId) return;
+        const updated = new Intl.DateTimeFormat("lv-LV", {
+          hour: "2-digit",
+          minute: "2-digit",
+        }).format(new Date());
+        setStatus(
+          failures
+            ? `Atjaunots ${updated}. ${failures} braucieniem seguma dati nebija pieejami; kilometri atstāti kā nezināmi.`
+            : `Atjaunots ${updated}. Ceļa segums noteikts visiem ${trips.length} braucieniem.`,
+          failures > 0,
+        );
+      } catch (err) {
+        if (requestId !== loadRequestId) return;
+        console.error(err);
+        setStatus(`Nevaru ielādēt nobraukuma statistiku: ${err.message}`, true);
+      } finally {
+        if (requestId === loadRequestId) reloadEl.disabled = false;
+      }
+    }
+
+    dayDateEl.max = localDateValue(new Date());
+    reloadEl.addEventListener("click", loadMileage);
+    daysEl.addEventListener("change", () => {
+      dayDateEl.value = "";
+      updateCalendarMode();
+      loadMileage();
+    });
+    dayDateEl.addEventListener("change", () => {
+      updateCalendarMode();
+      loadMileage();
+    });
+    clearDateEl.addEventListener("click", () => {
+      dayDateEl.value = "";
+      updateCalendarMode();
+      loadMileage();
+    });
+    window.setInterval(() => {
+      if (!document.hidden) loadMileage();
+    }, AUTO_REFRESH_MS);
+    loadMileage();
+  </script>
+</body>
+</html>

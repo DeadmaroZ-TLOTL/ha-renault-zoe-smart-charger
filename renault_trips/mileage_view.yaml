@@ -1,0 +1,8 @@
+title: Nobraukums
+path: mileage
+icon: mdi:road-variant
+type: panel
+cards:
+  - type: iframe
+    url: /local/renault_trips/mileage.html?v=1.8.2
+    aspect_ratio: 100%
