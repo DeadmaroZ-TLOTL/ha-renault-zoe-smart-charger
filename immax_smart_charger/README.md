@@ -24,11 +24,17 @@ stops the active smart session once and then restores manual operation.
 
 ## Solar control signal
 
-The package calculates available power as:
+With grid export selected, the package calculates net available power as:
 
 ```text
 charger power + grid export + battery charging - battery discharging - reserve
 ```
+
+If solar production is also selected, it caps that result so the requested
+charging power cannot exceed current PV production. If grid export is empty,
+solar production becomes the direct fallback source. Every optional source may
+be left empty and then contributes nothing; charger control and current remain
+required. Power sources may report either W or kW.
 
 All solar settings and reported values use kW. Charging starts only when the
 result can sustain the configured minimum power plus a 0.5 kW start margin.
@@ -47,6 +53,7 @@ two-minute guard.
 4. Restart Home Assistant.
 5. Open **Settings > Devices & services > Zoe New Extended > Configure >
    IMMAX entity sources** and select the entities used by the controller.
+   Leave any unused measurement or status source empty.
 6. Add `lovelace_card.yaml` as a manual card or as its own dashboard view.
 
 The integration publishes stable proxy entities, so changing a selected source

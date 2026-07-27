@@ -112,17 +112,21 @@ class ZoeNewImmaxProxyBinarySensor(BinarySensorEntity):
         self._attr_suggested_object_id = description.key
 
     @property
-    def source_entity_id(self) -> str:
+    def source_entity_id(self) -> str | None:
         """Return the selected source entity."""
-        return self.config_entry.options.get(
-            self.entity_description.option_key,
-            self.entity_description.default_entity_id,
+        return (
+            self.config_entry.options.get(
+                self.entity_description.option_key,
+                self.entity_description.default_entity_id,
+            )
+            or None
         )
 
     @property
     def source_state(self) -> State | None:
         """Return the selected source state."""
-        return self.hass.states.get(self.source_entity_id)
+        source_entity_id = self.source_entity_id
+        return self.hass.states.get(source_entity_id) if source_entity_id else None
 
     @property
     @override
@@ -143,17 +147,23 @@ class ZoeNewImmaxProxyBinarySensor(BinarySensorEntity):
 
     @property
     @override
-    def extra_state_attributes(self) -> dict[str, str]:
+    def extra_state_attributes(self) -> dict[str, Any]:
         """Expose which entity supplies this state."""
-        return {"source_entity_id": self.source_entity_id}
+        return {
+            "source_entity_id": self.source_entity_id,
+            "configured": self.source_entity_id is not None,
+        }
 
     async def async_added_to_hass(self) -> None:
         """Track the selected source entity."""
         await super().async_added_to_hass()
+        source_entity_id = self.source_entity_id
+        if source_entity_id is None:
+            return
         self.async_on_remove(
             async_track_state_change_event(
                 self.hass,
-                [self.source_entity_id],
+                [source_entity_id],
                 self._async_source_changed,
             )
         )

@@ -291,8 +291,9 @@ automation:
     alias: IMMAX smart charging
     description: >-
       Select either Nord Pool price planning or dynamic solar-surplus charging.
-      The solar controller uses grid export plus battery net charging and adds
-      the charger's power back into the control signal.
+      The solar controller uses the selected optional solar, grid-export, and
+      battery-flow sources and adds the charger's power back into the net-flow
+      control signal.
     triggers:
       - trigger: time_pattern
         seconds: /30
@@ -323,6 +324,7 @@ automation:
           - sensor.renault_zoe_new_immax_voltage_a
           - sensor.renault_zoe_new_immax_voltage_b
           - sensor.renault_zoe_new_immax_voltage_c
+          - sensor.renault_zoe_new_immax_solar_production
           - sensor.renault_zoe_new_immax_grid_export
           - sensor.renault_zoe_new_immax_battery_charging
           - sensor.renault_zoe_new_immax_battery_discharging
@@ -331,12 +333,23 @@ automation:
           mode: "{{ states('input_select.immax_smart_charging_mode') }}"
           charger_on: >-
             {{ is_state('switch.renault_zoe_new_immax_charging', 'on') }}
+          status_configured: >-
+            {{ is_state_attr('sensor.renault_zoe_new_immax_status',
+                             'configured', true) }}
           charger_status: >-
             {{ states('sensor.renault_zoe_new_immax_status') }}
+          online_configured: >-
+            {{ is_state_attr('binary_sensor.renault_zoe_new_immax_online',
+                             'configured', true) }}
           online: >-
-            {{ is_state('binary_sensor.renault_zoe_new_immax_online', 'on') }}
+            {{ not online_configured or
+               is_state('binary_sensor.renault_zoe_new_immax_online', 'on') }}
+          fault_configured: >-
+            {{ is_state_attr('binary_sensor.renault_zoe_new_immax_problem',
+                             'configured', true) }}
           fault: >-
-            {{ is_state('binary_sensor.renault_zoe_new_immax_problem', 'on') }}
+            {{ fault_configured and
+               is_state('binary_sensor.renault_zoe_new_immax_problem', 'on') }}
           percentage_enabled: >-
             {{ is_state('input_boolean.immax_charge_to_percentage_enabled', 'on') }}
           soc_valid: >-
@@ -351,12 +364,20 @@ automation:
           last_counter_update: >-
             {{ as_timestamp(states('input_datetime.immax_energy_counter_last_update'), 0) }}
           phase_power: >-
-            {{ ([states('sensor.renault_zoe_new_immax_power_a') |
-                   float(0), 0] | max) +
-               ([states('sensor.renault_zoe_new_immax_power_b') |
-                   float(0), 0] | max) +
-               ([states('sensor.renault_zoe_new_immax_power_c') |
-                   float(0), 0] | max) }}
+            {% set ns = namespace(total=0) %}
+            {% for entity in [
+              'sensor.renault_zoe_new_immax_power_a',
+              'sensor.renault_zoe_new_immax_power_b',
+              'sensor.renault_zoe_new_immax_power_c'
+            ] %}
+              {% set value = states(entity) | float(0) %}
+              {% set watts =
+                value * 1000
+                if state_attr(entity, 'unit_of_measurement') == 'kW'
+                else value %}
+              {% set ns.total = ns.total + [watts, 0] | max %}
+            {% endfor %}
+            {{ ns.total }}
       - variables:
           elapsed_seconds: >-
             {{ [[as_timestamp(now()) - last_counter_update | float(0), 0] | max, 120] | min }}
@@ -394,7 +415,9 @@ automation:
               {{ [energy_target | float - delivered_now | float, 0] | max }}
             {% endif %}
           plugged: >-
-            {{ charger_status in ['plugged_in', 'waiting', 'charging', 'paused', 'charged'] }}
+            {{ not status_configured or
+               charger_status in
+                 ['plugged_in', 'waiting', 'charging', 'paused', 'charged'] }}
           planning_power: "{{ states('input_number.immax_planning_power') | float(12) }}"
           cap_on: "{{ is_state('input_boolean.immax_max_price_enabled', 'on') }}"
           cap: "{{ states('input_number.immax_max_energy_price') | float(100) }}"
@@ -402,14 +425,49 @@ automation:
             {{ states('sensor.renault_zoe_new_immax_nord_pool_price') |
                float(999) }}
           ready: "{{ states('input_datetime.immax_ready_by') }}"
+          solar_configured: >-
+            {{ is_state_attr('sensor.renault_zoe_new_immax_solar_production',
+                             'configured', true) }}
+          solar_power: >-
+            {% set value =
+              states('sensor.renault_zoe_new_immax_solar_production') |
+              float(0) %}
+            {{ value * 1000
+               if state_attr('sensor.renault_zoe_new_immax_solar_production',
+                             'unit_of_measurement') == 'kW'
+               else value }}
+          grid_configured: >-
+            {{ is_state_attr('sensor.renault_zoe_new_immax_grid_export',
+                             'configured', true) }}
           grid_surplus: >-
-            {{ states('sensor.renault_zoe_new_immax_grid_export') | float(0) }}
+            {% set value =
+              states('sensor.renault_zoe_new_immax_grid_export') | float(0) %}
+            {{ value * 1000
+               if state_attr('sensor.renault_zoe_new_immax_grid_export',
+                             'unit_of_measurement') == 'kW'
+               else value }}
+          battery_in_configured: >-
+            {{ is_state_attr('sensor.renault_zoe_new_immax_battery_charging',
+                             'configured', true) }}
           battery_in: >-
-            {{ states('sensor.renault_zoe_new_immax_battery_charging') |
-               float(0) }}
+            {% set value =
+              states('sensor.renault_zoe_new_immax_battery_charging') |
+              float(0) %}
+            {{ value * 1000
+               if state_attr('sensor.renault_zoe_new_immax_battery_charging',
+                             'unit_of_measurement') == 'kW'
+               else value }}
+          battery_out_configured: >-
+            {{ is_state_attr('sensor.renault_zoe_new_immax_battery_discharging',
+                             'configured', true) }}
           battery_out: >-
-            {{ states('sensor.renault_zoe_new_immax_battery_discharging') |
-               float(0) }}
+            {% set value =
+              states('sensor.renault_zoe_new_immax_battery_discharging') |
+              float(0) %}
+            {{ value * 1000
+               if state_attr('sensor.renault_zoe_new_immax_battery_discharging',
+                             'unit_of_measurement') == 'kW'
+               else value }}
           reserve_power_kw: >-
             {{ states('input_number.immax_solar_reserve_power') | float(0.5) }}
           solar_phase_mode: >-
@@ -459,9 +517,22 @@ automation:
                round(0, 'ceil') | int
                if planning_power | float > 0 else 999 }}
           available_solar_power_w: >-
-            {{ [phase_power | float(0) + grid_surplus | float(0) +
-                  battery_in | float(0) - battery_out | float(0) -
-                  reserve_power_kw | float(0.5) * 1000, 0] | max }}
+            {% set reserve = reserve_power_kw | float(0.5) * 1000 %}
+            {% if grid_configured %}
+              {% set net =
+                phase_power | float(0) +
+                grid_surplus | float(0) +
+                (battery_in | float(0) if battery_in_configured else 0) -
+                (battery_out | float(0) if battery_out_configured else 0) -
+                reserve %}
+              {% set available = [net, 0] | max %}
+              {{ [available, [solar_power | float(0), 0] | max] | min
+                 if solar_configured else available }}
+            {% elif solar_configured %}
+              {{ [solar_power | float(0) - reserve, 0] | max }}
+            {% else %}
+              0
+            {% endif %}
       - variables:
           available_solar_power_kw: >-
             {{ (available_solar_power_w | float(0) / 1000) | round(2) }}

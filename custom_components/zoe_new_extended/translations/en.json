@@ -32,7 +32,7 @@
       },
       "immax_entities": {
         "title": "IMMAX entity sources",
-        "description": "Select the Home Assistant entities used by the IMMAX controller. Calculated power, plan, cost, and status values remain read-only.",
+        "description": "Select the Home Assistant entities used by the IMMAX controller. Charger control and current are required; every measurement or status source may be left empty and is then excluded. Calculated values remain read-only.",
         "data": {
           "immax_charger_switch_entity": "Charger switch",
           "immax_charger_current_entity": "Charger current control",
@@ -46,6 +46,7 @@
           "immax_voltage_b_entity": "Phase B voltage",
           "immax_voltage_c_entity": "Phase C voltage",
           "immax_charger_energy_entity": "Charger energy",
+          "immax_solar_power_entity": "Solar production power",
           "immax_grid_export_entity": "Grid export power",
           "immax_battery_charge_entity": "Battery charging power",
           "immax_battery_discharge_entity": "Battery discharging power",

@@ -28,7 +28,8 @@ used by the included Nord Pool smart charger package.
   solar-surplus modes, switchable one/three-phase kW regulation, battery-flow
   protection, and either a Zoe SOC target or a generic energy target. The
   charger-specific 6-32 A command conversion stays internal. Charger, solar,
-  battery, vehicle SOC, and price entities are selected in integration options.
+  battery, solar production, vehicle SOC, and price entities are selected in
+  integration options. Measurement and status sources can be left empty.
 - Optional automatic Renault Trips dashboard with day selection, route maps,
   speed samples, distance, and estimated energy consumption.
 
@@ -50,9 +51,11 @@ The official Renault integration must already contain a loaded Zoe phase 2.
 Open **Zoe New Extended > Configure > Renault smart charging** to select the
 planner's Nord Pool country and allowed zones. Use **Configure > IMMAX entity
 sources** to select the charger controls, phase measurements, grid export,
-battery flow, vehicle SOC, and price entities. Two global switches expose the
-location guard and unrestricted-location option without duplicating every zone
-as a device switch.
+battery flow, solar production, vehicle SOC, and price entities. Charger
+control and current are required; every measurement or status source can be
+left empty and is then excluded. Two global switches expose the location guard
+and unrestricted-location option without duplicating every zone as a device
+switch.
 
 ### Manual
 

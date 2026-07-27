@@ -38,6 +38,7 @@ from .const import (
     CONF_IMMAX_POWER_A_ENTITY,
     CONF_IMMAX_POWER_B_ENTITY,
     CONF_IMMAX_POWER_C_ENTITY,
+    CONF_IMMAX_SOLAR_POWER_ENTITY,
     CONF_IMMAX_VEHICLE_SOC_ENTITY,
     CONF_IMMAX_VOLTAGE_A_ENTITY,
     CONF_IMMAX_VOLTAGE_B_ENTITY,
@@ -51,6 +52,7 @@ from .const import (
     DEFAULT_IMMAX_POWER_A_ENTITY,
     DEFAULT_IMMAX_POWER_B_ENTITY,
     DEFAULT_IMMAX_POWER_C_ENTITY,
+    DEFAULT_IMMAX_SOLAR_POWER_ENTITY,
     DEFAULT_IMMAX_VEHICLE_SOC_ENTITY,
     DEFAULT_IMMAX_VOLTAGE_A_ENTITY,
     DEFAULT_IMMAX_VOLTAGE_B_ENTITY,
@@ -136,6 +138,14 @@ IMMAX_PROXY_SENSOR_DESCRIPTIONS = (
         device_class=SensorDeviceClass.ENERGY,
         option_key=CONF_IMMAX_CHARGER_ENERGY_ENTITY,
         default_entity_id=DEFAULT_IMMAX_CHARGER_ENERGY_ENTITY,
+    ),
+    ImmaxProxySensorEntityDescription(
+        key="renault_zoe_new_immax_solar_production",
+        name="IMMAX solar production",
+        icon="mdi:solar-power",
+        device_class=SensorDeviceClass.POWER,
+        option_key=CONF_IMMAX_SOLAR_POWER_ENTITY,
+        default_entity_id=DEFAULT_IMMAX_SOLAR_POWER_ENTITY,
     ),
     ImmaxProxySensorEntityDescription(
         key="renault_zoe_new_immax_grid_export",
@@ -336,19 +346,23 @@ class ZoeNewImmaxProxySensor(SensorEntity):
         self._attr_suggested_object_id = description.key
 
     @property
-    def source_entity_id(self) -> str:
+    def source_entity_id(self) -> str | None:
         """Return the selected source entity."""
         if self.entity_description.option_key is None:
             return self.entity_description.default_entity_id
-        return self.config_entry.options.get(
-            self.entity_description.option_key,
-            self.entity_description.default_entity_id,
+        return (
+            self.config_entry.options.get(
+                self.entity_description.option_key,
+                self.entity_description.default_entity_id,
+            )
+            or None
         )
 
     @property
     def source_state(self) -> State | None:
         """Return the selected source state."""
-        return self.hass.states.get(self.source_entity_id)
+        source_entity_id = self.source_entity_id
+        return self.hass.states.get(source_entity_id) if source_entity_id else None
 
     @property
     @override
@@ -384,7 +398,10 @@ class ZoeNewImmaxProxySensor(SensorEntity):
     def extra_state_attributes(self) -> dict[str, Any]:
         """Expose source details and planner attributes."""
         source = self.source_state
-        attributes = {"source_entity_id": self.source_entity_id}
+        attributes = {
+            "source_entity_id": self.source_entity_id,
+            "configured": self.source_entity_id is not None,
+        }
         if source is None:
             return attributes
         attributes.update(
@@ -406,10 +423,13 @@ class ZoeNewImmaxProxySensor(SensorEntity):
     async def async_added_to_hass(self) -> None:
         """Track the selected source entity."""
         await super().async_added_to_hass()
+        source_entity_id = self.source_entity_id
+        if source_entity_id is None:
+            return
         self.async_on_remove(
             async_track_state_change_event(
                 self.hass,
-                [self.source_entity_id],
+                [source_entity_id],
                 self._async_source_changed,
             )
         )

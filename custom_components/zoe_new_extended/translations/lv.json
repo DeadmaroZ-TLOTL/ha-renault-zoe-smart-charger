@@ -32,7 +32,7 @@
       },
       "immax_entities": {
         "title": "IMMAX entītiju avoti",
-        "description": "Izvēlieties Home Assistant entītijas, kuras izmanto IMMAX regulators. Aprēķinātā jauda, plāns, izmaksas un statusi paliek tikai lasāmi.",
+        "description": "Izvēlieties Home Assistant entītijas, kuras izmanto IMMAX regulators. Lādētāja vadība un strāva ir obligāta; jebkuru mērījumu vai statusa avotu var atstāt tukšu, un tad tas netiek izmantots. Aprēķinātās vērtības paliek tikai lasāmas.",
         "data": {
           "immax_charger_switch_entity": "Lādētāja slēdzis",
           "immax_charger_current_entity": "Lādētāja strāvas vadība",
@@ -46,6 +46,7 @@
           "immax_voltage_b_entity": "B fāzes spriegums",
           "immax_voltage_c_entity": "C fāzes spriegums",
           "immax_charger_energy_entity": "Lādētāja enerģija",
+          "immax_solar_power_entity": "Saules ražošanas jauda",
           "immax_grid_export_entity": "Tīklā nodotā jauda",
           "immax_battery_charge_entity": "Baterijas uzlādes jauda",
           "immax_battery_discharge_entity": "Baterijas izlādes jauda",

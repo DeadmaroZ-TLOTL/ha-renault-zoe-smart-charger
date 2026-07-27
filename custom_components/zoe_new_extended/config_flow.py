@@ -29,6 +29,7 @@ from .const import (
     CONF_IMMAX_POWER_A_ENTITY,
     CONF_IMMAX_POWER_B_ENTITY,
     CONF_IMMAX_POWER_C_ENTITY,
+    CONF_IMMAX_SOLAR_POWER_ENTITY,
     CONF_IMMAX_VEHICLE_SOC_ENTITY,
     CONF_IMMAX_VOLTAGE_A_ENTITY,
     CONF_IMMAX_VOLTAGE_B_ENTITY,
@@ -48,6 +49,7 @@ from .const import (
     DEFAULT_IMMAX_POWER_A_ENTITY,
     DEFAULT_IMMAX_POWER_B_ENTITY,
     DEFAULT_IMMAX_POWER_C_ENTITY,
+    DEFAULT_IMMAX_SOLAR_POWER_ENTITY,
     DEFAULT_IMMAX_VEHICLE_SOC_ENTITY,
     DEFAULT_IMMAX_VOLTAGE_A_ENTITY,
     DEFAULT_IMMAX_VOLTAGE_B_ENTITY,
@@ -57,9 +59,12 @@ from .const import (
     NORDPOOL_AREAS,
 )
 
-IMMAX_ENTITY_FIELDS = (
+IMMAX_REQUIRED_ENTITY_FIELDS = (
     (CONF_IMMAX_CHARGER_SWITCH_ENTITY, DEFAULT_IMMAX_CHARGER_SWITCH_ENTITY, "switch"),
     (CONF_IMMAX_CHARGER_CURRENT_ENTITY, DEFAULT_IMMAX_CHARGER_CURRENT_ENTITY, "number"),
+)
+
+IMMAX_OPTIONAL_ENTITY_FIELDS = (
     (CONF_IMMAX_CHARGER_STATUS_ENTITY, DEFAULT_IMMAX_CHARGER_STATUS_ENTITY, "sensor"),
     (CONF_IMMAX_CHARGER_ONLINE_ENTITY, DEFAULT_IMMAX_CHARGER_ONLINE_ENTITY, "switch"),
     (
@@ -74,6 +79,11 @@ IMMAX_ENTITY_FIELDS = (
     (CONF_IMMAX_VOLTAGE_B_ENTITY, DEFAULT_IMMAX_VOLTAGE_B_ENTITY, "sensor"),
     (CONF_IMMAX_VOLTAGE_C_ENTITY, DEFAULT_IMMAX_VOLTAGE_C_ENTITY, "sensor"),
     (CONF_IMMAX_CHARGER_ENERGY_ENTITY, DEFAULT_IMMAX_CHARGER_ENERGY_ENTITY, "sensor"),
+    (
+        CONF_IMMAX_SOLAR_POWER_ENTITY,
+        DEFAULT_IMMAX_SOLAR_POWER_ENTITY,
+        "sensor",
+    ),
     (CONF_IMMAX_GRID_EXPORT_ENTITY, DEFAULT_IMMAX_GRID_EXPORT_ENTITY, "sensor"),
     (
         CONF_IMMAX_BATTERY_CHARGE_ENTITY,
@@ -124,10 +134,12 @@ class ZoeNewExtendedOptionsFlow(config_entries.OptionsFlow):
             menu_options=["smart_charging", "immax_entities"],
         )
 
-    def _create_merged_entry(self, user_input):
+    def _create_merged_entry(self, user_input, *, clear_missing=()):
         """Save one settings page without dropping options from another."""
         options = dict(self.config_entry.options)
         options.update(user_input)
+        for key in clear_missing:
+            options[key] = user_input.get(key) or ""
         return self.async_create_entry(title="", data=options)
 
     async def async_step_smart_charging(self, user_input=None):
@@ -180,17 +192,30 @@ class ZoeNewExtendedOptionsFlow(config_entries.OptionsFlow):
     async def async_step_immax_entities(self, user_input=None):
         """Configure the source entities used by the IMMAX controller."""
         if user_input is not None:
-            return self._create_merged_entry(user_input)
+            return self._create_merged_entry(
+                user_input,
+                clear_missing=(
+                    key for key, _default, _domain in IMMAX_OPTIONAL_ENTITY_FIELDS
+                ),
+            )
+
+        schema = {
+            vol.Required(
+                key,
+                default=self.config_entry.options.get(key, default),
+            ): EntitySelector(EntitySelectorConfig(domain=domain))
+            for key, default, domain in IMMAX_REQUIRED_ENTITY_FIELDS
+        }
+        for key, default, domain in IMMAX_OPTIONAL_ENTITY_FIELDS:
+            selected = self.config_entry.options.get(key, default)
+            marker = (
+                vol.Optional(key, description={"suggested_value": selected})
+                if selected
+                else vol.Optional(key)
+            )
+            schema[marker] = EntitySelector(EntitySelectorConfig(domain=domain))
 
         return self.async_show_form(
             step_id="immax_entities",
-            data_schema=vol.Schema(
-                {
-                    vol.Required(
-                        key,
-                        default=self.config_entry.options.get(key, default),
-                    ): EntitySelector(EntitySelectorConfig(domain=domain))
-                    for key, default, domain in IMMAX_ENTITY_FIELDS
-                }
-            ),
+            data_schema=vol.Schema(schema),
         )
