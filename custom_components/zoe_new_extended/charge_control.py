@@ -21,7 +21,7 @@ from homeassistant.exceptions import HomeAssistantError
 
 MODEL_CODE = "X102VE"
 STOP_DELAY = timedelta(hours=24)
-CONFIRM_DELAYS = (10, 20, 30, 60, 60)
+CONFIRM_TIMEOUT = 15 * 60
 KCM_CHARGE_START = EndpointDefinition("/kcm/v1/vehicles/{vin}/charge/start", mode="kcm")
 
 
@@ -121,8 +121,13 @@ class ZoeNewChargeControl:
                 KCM_CHARGE_START, self._payload(when)
             )
         except RenaultException as err:
-            self.state = "error"
             self.last_error = str(err)
+            error_text = self.last_error.casefold()
+            self.state = (
+                "rate_limited"
+                if "too many requests" in error_text or "429" in error_text
+                else "error"
+            )
             self._notify()
             raise HomeAssistantError(f"Renault charge command failed: {err}") from err
 
@@ -152,17 +157,22 @@ class ZoeNewChargeControl:
             self._notify()
             return
 
-        try:
-            for delay in CONFIRM_DELAYS:
-                await asyncio.sleep(delay)
-                try:
-                    await coordinator.async_request_refresh()
-                except Exception as err:  # Renault status polling is best-effort.
-                    self.last_error = str(err)
-                    self._notify()
-                    continue
+        update_event = asyncio.Event()
 
-                charge_state = coordinator.data.get_charging_status()
+        @callback
+        def handle_coordinator_update() -> None:
+            update_event.set()
+
+        unsubscribe = coordinator.async_add_listener(handle_coordinator_update)
+        deadline = asyncio.get_running_loop().time() + CONFIRM_TIMEOUT
+
+        try:
+            while True:
+                charge_state = (
+                    coordinator.data.get_charging_status()
+                    if coordinator.data is not None
+                    else None
+                )
                 self.last_vehicle_state = (
                     charge_state.name.lower() if charge_state is not None else None
                 )
@@ -184,10 +194,21 @@ class ZoeNewChargeControl:
                     self._notify()
                     return
 
+                remaining = deadline - asyncio.get_running_loop().time()
+                if remaining <= 0:
+                    break
+                try:
+                    await asyncio.wait_for(update_event.wait(), timeout=remaining)
+                except TimeoutError:
+                    break
+                update_event.clear()
+
             self.state = "timeout"
             self._notify()
         except asyncio.CancelledError:
             raise
+        finally:
+            unsubscribe()
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
