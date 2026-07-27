@@ -127,16 +127,29 @@ class NordPoolPriceCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         attributes = state.attributes
         value = _as_float(state.state)
         country, vat = NORDPOOL_AREAS[area]
+        raw_today, raw_tomorrow = _normalize_source_slots(
+            [
+                *attributes.get("raw_today", []),
+                *attributes.get("raw_tomorrow", []),
+            ],
+            dt_util.now().date(),
+        )
+        values_today = [item["value"] for item in raw_today]
+        values_tomorrow = [item["value"] for item in raw_tomorrow]
         return {
             "value": value,
-            "average": attributes.get("average"),
-            "min": attributes.get("min"),
-            "max": attributes.get("max"),
-            "today": attributes.get("today", []),
-            "tomorrow": attributes.get("tomorrow", []),
-            "tomorrow_valid": attributes.get("tomorrow_valid", False),
-            "raw_today": attributes.get("raw_today", []),
-            "raw_tomorrow": attributes.get("raw_tomorrow", []),
+            "average": (
+                sum(values_today) / len(values_today)
+                if values_today
+                else attributes.get("average")
+            ),
+            "min": min(values_today) if values_today else attributes.get("min"),
+            "max": max(values_today) if values_today else attributes.get("max"),
+            "today": values_today or attributes.get("today", []),
+            "tomorrow": values_tomorrow or attributes.get("tomorrow", []),
+            "tomorrow_valid": bool(raw_tomorrow),
+            "raw_today": raw_today,
+            "raw_tomorrow": raw_tomorrow,
             "currency": "EUR",
             "country": attributes.get("country", country),
             "region": area,
@@ -208,6 +221,40 @@ def _contains_time(item: dict[str, Any], now) -> bool:
     start = dt_util.parse_datetime(item["start"])
     end = dt_util.parse_datetime(item["end"])
     return start is not None and end is not None and start <= now < end
+
+
+def _normalize_source_slots(
+    slots: list[dict[str, Any]], today: date
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Deduplicate source intervals and split them into today and tomorrow."""
+    tomorrow = today + timedelta(days=1)
+    by_day: dict[date, dict[str, dict[str, Any]]] = {
+        today: {},
+        tomorrow: {},
+    }
+    for item in slots:
+        if not isinstance(item, dict):
+            continue
+        start = dt_util.parse_datetime(str(item.get("start", "")))
+        end = dt_util.parse_datetime(str(item.get("end", "")))
+        value = _as_float(item.get("value"))
+        if start is None or end is None or value is None:
+            continue
+        local_start = dt_util.as_local(start)
+        day_slots = by_day.get(local_start.date())
+        if day_slots is None:
+            continue
+        local_end = dt_util.as_local(end)
+        start_key = local_start.isoformat()
+        day_slots[start_key] = {
+            "start": start_key,
+            "end": local_end.isoformat(),
+            "value": value,
+        }
+    return (
+        list(sorted(by_day[today].values(), key=lambda item: item["start"])),
+        list(sorted(by_day[tomorrow].values(), key=lambda item: item["start"])),
+    )
 
 
 def _as_float(value: str) -> float | None:

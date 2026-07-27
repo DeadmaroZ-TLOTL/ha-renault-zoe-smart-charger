@@ -272,7 +272,7 @@
                     "in_header": "raw",
                     "legend_value": false
                   },
-                  "data_generator": "const slots = [\n  ...(entity.attributes.raw_today || []),\n  ...(entity.attributes.raw_tomorrow || []),\n];\nreturn slots\n  .map((slot) => [new Date(slot.start).getTime(), Number(slot.value)])\n  .filter(([timestamp, value]) => Number.isFinite(timestamp) && Number.isFinite(value))\n  .sort((left, right) => left[0] - right[0]);"
+                  "data_generator": "const slots = [\n  ...(entity.attributes.raw_today || []),\n  ...(entity.attributes.raw_tomorrow || []),\n];\nconst pricesByStart = new Map();\nfor (const slot of slots) {\n  const timestamp = new Date(slot.start).getTime();\n  const value = Number(slot.value);\n  if (Number.isFinite(timestamp) && Number.isFinite(value)) {\n    pricesByStart.set(timestamp, value);\n  }\n}\nreturn [...pricesByStart.entries()].sort((left, right) => left[0] - right[0]);"
                 },
                 {
                   "entity": "input_number.zoe_max_energy_price",
