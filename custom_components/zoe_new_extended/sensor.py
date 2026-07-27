@@ -367,12 +367,8 @@ class ZoeNewImmaxProxySensor(SensorEntity):
     @property
     @override
     def available(self) -> bool:
-        """Return whether the selected source has a usable state."""
-        source = self.source_state
-        return source is not None and source.state not in {
-            STATE_UNAVAILABLE,
-            STATE_UNKNOWN,
-        }
+        """Keep the proxy available so optional-source metadata is retained."""
+        return True
 
     @property
     @override
@@ -401,6 +397,10 @@ class ZoeNewImmaxProxySensor(SensorEntity):
         attributes = {
             "source_entity_id": self.source_entity_id,
             "configured": self.source_entity_id is not None,
+            "source_available": (
+                source is not None
+                and source.state not in {STATE_UNAVAILABLE, STATE_UNKNOWN}
+            ),
         }
         if source is None:
             return attributes
