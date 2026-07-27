@@ -230,7 +230,7 @@
                 "show_states": true,
                 "colorize_states": true
               },
-              "graph_span": "24h",
+              "graph_span": "48h",
               "span": {
                 "start": "day"
               },
@@ -252,7 +252,7 @@
                 },
                 "tooltip": {
                   "x": {
-                    "format": "HH:mm"
+                    "format": "dd.MM HH:mm"
                   }
                 }
               },
@@ -272,7 +272,7 @@
                     "in_header": "raw",
                     "legend_value": false
                   },
-                  "data_generator": "const today = entity.attributes.raw_today || [];\nreturn today.map((slot) => [new Date(slot.start).getTime(), Number(slot.value)]);"
+                  "data_generator": "const slots = [\n  ...(entity.attributes.raw_today || []),\n  ...(entity.attributes.raw_tomorrow || []),\n];\nreturn slots\n  .map((slot) => [new Date(slot.start).getTime(), Number(slot.value)])\n  .filter(([timestamp, value]) => Number.isFinite(timestamp) && Number.isFinite(value))\n  .sort((left, right) => left[0] - right[0]);"
                 },
                 {
                   "entity": "input_number.zoe_max_energy_price",
@@ -289,7 +289,7 @@
                     "in_header": "raw",
                     "legend_value": false
                   },
-                  "data_generator": "const dayStart = new Date();\ndayStart.setHours(0, 0, 0, 0);\nconst dayEnd = new Date(dayStart);\ndayEnd.setDate(dayEnd.getDate() + 1);\nconst value = Number(entity.state);\nreturn [[dayStart.getTime(), value], [dayEnd.getTime(), value]];"
+                  "data_generator": "const dayStart = new Date();\ndayStart.setHours(0, 0, 0, 0);\nconst rangeEnd = new Date(dayStart);\nrangeEnd.setDate(rangeEnd.getDate() + 2);\nconst value = Number(entity.state);\nreturn [[dayStart.getTime(), value], [rangeEnd.getTime(), value]];"
                 }
               ]
             }
