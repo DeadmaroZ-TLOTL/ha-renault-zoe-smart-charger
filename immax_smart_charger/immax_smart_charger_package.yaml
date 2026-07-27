@@ -19,6 +19,14 @@ input_select:
     initial: "Off"
     icon: mdi:ev-station
 
+  immax_solar_phase_mode:
+    name: IMMAX solar phase mode
+    options:
+      - "1 phase"
+      - "3 phases"
+    initial: "3 phases"
+    icon: mdi:sine-wave
+
 input_boolean:
   immax_max_price_enabled:
     name: IMMAX max price enabled
@@ -78,7 +86,7 @@ input_number:
 
   immax_solar_min_power:
     name: IMMAX solar min power
-    min: 4.2
+    min: 1.4
     max: 22
     step: 0.1
     initial: 4.2
@@ -88,7 +96,7 @@ input_number:
 
   immax_solar_max_power:
     name: IMMAX solar max power
-    min: 4.2
+    min: 1.4
     max: 22
     step: 0.1
     initial: 22
@@ -250,6 +258,39 @@ automation:
               value: Manual control
     mode: restart
 
+  - id: immax_solar_phase_defaults_package
+    alias: IMMAX solar phase defaults
+    description: Apply nominal solar-power limits for the selected phase mode.
+    triggers:
+      - trigger: state
+        entity_id: input_select.immax_solar_phase_mode
+    actions:
+      - choose:
+          - conditions: "{{ trigger.to_state.state == '1 phase' }}"
+            sequence:
+              - action: input_number.set_value
+                target:
+                  entity_id: input_number.immax_solar_min_power
+                data:
+                  value: 1.4
+              - action: input_number.set_value
+                target:
+                  entity_id: input_number.immax_solar_max_power
+                data:
+                  value: 7.4
+        default:
+          - action: input_number.set_value
+            target:
+              entity_id: input_number.immax_solar_min_power
+            data:
+              value: 4.2
+          - action: input_number.set_value
+            target:
+              entity_id: input_number.immax_solar_max_power
+            data:
+              value: 22
+    mode: restart
+
   - id: immax_smart_charger_package
     alias: IMMAX smart charging
     description: >-
@@ -272,6 +313,7 @@ automation:
           - input_number.immax_solar_reserve_power
           - input_number.immax_solar_min_power
           - input_number.immax_solar_max_power
+          - input_select.immax_solar_phase_mode
           - input_datetime.immax_ready_by
           - sensor.renault_zoe_new_nord_pool_price
           - sensor.battery
@@ -360,18 +402,43 @@ automation:
           battery_out: "{{ states('sensor.unibms_battery_out') | float(0) }}"
           reserve_power_kw: >-
             {{ states('input_number.immax_solar_reserve_power') | float(0.5) }}
+          solar_phase_mode: >-
+            {{ states('input_select.immax_solar_phase_mode') }}
           voltage_sum: >-
             {% set value =
               (states('sensor.immax_ev_charger_voltage_a') | float(0)) +
               (states('sensor.immax_ev_charger_voltage_b') | float(0)) +
               (states('sensor.immax_ev_charger_voltage_c') | float(0)) %}
             {{ value if value > 500 else 690 }}
-          solar_min_power_kw: >-
+          single_phase_voltage: >-
+            {% set value =
+              (states('sensor.immax_ev_charger_voltage_a') | float(0)) +
+              (states('sensor.immax_ev_charger_voltage_b') | float(0)) +
+              (states('sensor.immax_ev_charger_voltage_c') | float(0)) %}
+            {{ value / 3 if value > 500 else 230 }}
+          configured_solar_min_power_kw: >-
             {{ states('input_number.immax_solar_min_power') | float(4.2) }}
-          solar_max_power_kw: >-
+          configured_solar_max_power_kw: >-
             {{ states('input_number.immax_solar_max_power') | float(22) }}
           current_limit: "{{ states('number.immax_ev_charger_current') | int(6) }}"
       - variables:
+          control_voltage: >-
+            {{ single_phase_voltage | float(230)
+               if solar_phase_mode == '1 phase'
+               else voltage_sum | float(690) }}
+          solar_start_margin_kw: >-
+            {{ 0.2 if solar_phase_mode == '1 phase' else 0.5 }}
+          solar_stop_margin_kw: >-
+            {{ 0.3 if solar_phase_mode == '1 phase' else 0.7 }}
+      - variables:
+          solar_min_power_kw: >-
+            {{ [configured_solar_min_power_kw | float(4.2),
+                control_voltage | float(690) * 6 / 1000] | max }}
+          solar_max_power_kw: >-
+            {{ [[configured_solar_max_power_kw | float(22),
+                 control_voltage | float(690) * 32 / 1000] | min,
+                [configured_solar_min_power_kw | float(4.2),
+                 control_voltage | float(690) * 6 / 1000] | max] | max }}
           deadline: >-
             {{ as_timestamp(now() + timedelta(hours=12))
                if ready in ['unknown', 'unavailable', '']
@@ -395,18 +462,20 @@ automation:
                else [[available, minimum] | max, maximum] | min }}
           solar_recommended_current: >-
             {% set target = solar_requested_power_kw | float(0) %}
-            {% set raw = (target * 1000 / voltage_sum | float(690)) |
+            {% set raw = (target * 1000 / control_voltage | float(690)) |
                          round(0, 'floor') | int %}
             {{ 0 if target <= 0 else [[raw, 6] | max, 32] | min }}
           solar_target_power_kw: >-
             {{ (solar_recommended_current | int(0) *
-                voltage_sum | float(690) / 1000) | round(1) }}
+                control_voltage | float(690) / 1000) | round(1) }}
           start_solar: >-
             {{ available_solar_power_kw | float(0) >=
-               solar_min_power_kw | float(4.2) + 0.5 }}
+               solar_min_power_kw | float(4.2) +
+               solar_start_margin_kw | float(0.5) }}
           stop_solar: >-
             {{ available_solar_power_kw | float(0) <
-               [solar_min_power_kw | float(4.2) - 0.7, 0] | max }}
+               [solar_min_power_kw | float(4.2) -
+                solar_stop_margin_kw | float(0.7), 0] | max }}
           adjusted_solar_current: >-
             {% set difference =
               solar_recommended_current | int(0) - current_limit | int(6) %}
@@ -617,11 +686,15 @@ automation:
               Nord Pool: waiting for selected price window
             {% elif mode == 'Solar surplus' and
                     solar_recommended_current | int(0) >= 6 %}
-              Solar: {{ available_solar_power_kw | float(0) | round(1) }} kW
+              Solar {{ '1-phase' if solar_phase_mode == '1 phase'
+                        else '3-phase' }}:
+              {{ available_solar_power_kw | float(0) | round(1) }} kW
               available, {{ solar_target_power_kw | float(0) | round(1) }} kW target
             {% else %}
-              Solar: waiting for {{ solar_min_power_kw | float(4.2) | round(1) }}
-              kW surplus
+              Solar {{ '1-phase' if solar_phase_mode == '1 phase'
+                        else '3-phase' }}: waiting for
+              {{ (solar_min_power_kw | float(4.2) +
+                  solar_start_margin_kw | float(0.5)) | round(1) }} kW surplus
             {% endif %}
       - choose:
           - conditions: "{{ mode == 'Nord Pool' }}"

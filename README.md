@@ -25,9 +25,9 @@ used by the included Nord Pool smart charger package.
 - Optional Nord Pool planner, switchable SOC/range target, maximum spot price, deadline,
   estimated cost, and adaptive charging model.
 - Optional IMMAX EV charger controller with separate Nord Pool and dynamic
-  solar-surplus modes, kW-based solar regulation, battery-flow protection, and
-  either a Zoe SOC target or a generic energy target. The charger-specific
-  6-32 A command conversion stays internal.
+  solar-surplus modes, switchable one/three-phase kW regulation, battery-flow
+  protection, and either a Zoe SOC target or a generic energy target. The
+  charger-specific 6-32 A command conversion stays internal.
 - Optional automatic Renault Trips dashboard with day selection, route maps,
   speed samples, distance, and estimated energy consumption.
 

@@ -12,6 +12,12 @@ for an IMMAX three-phase Tuya EV charger:
   This avoids the feedback loop that would otherwise reduce charging power as
   soon as the charger starts.
 
+Solar control can use either a one-phase or three-phase power model. The
+nominal limits are 1.4-7.4 kW for one phase and 4.2-22 kW for three phases.
+Changing this option changes the control calculation; it does not physically
+switch charger phases unless the installation has separate phase-switching
+hardware.
+
 The modes share one selector, so they cannot issue conflicting commands. `Off`
 leaves the charger under manual control. Moving from a smart mode to `Off`
 stops the active smart session once and then restores manual operation.
@@ -28,9 +34,10 @@ All solar settings and reported values use kW. Charging starts only when the
 result can sustain the configured minimum power plus a 0.5 kW start margin.
 Because the charger protocol accepts only whole-ampere commands, Home Assistant
 converts the requested kW internally using the measured three-phase voltage.
-The internal command is limited to 6-32 A and changes by at most 2 A per
-adjustment. Commands are spaced by at least 45 seconds, and low-surplus
-shutdown has a two-minute guard.
+In one-phase mode it uses the average measured phase voltage instead. The
+internal command is limited to 6-32 A and changes by at most 2 A per adjustment.
+Commands are spaced by at least 45 seconds, and low-surplus shutdown has a
+two-minute guard.
 
 ## Installation
 
