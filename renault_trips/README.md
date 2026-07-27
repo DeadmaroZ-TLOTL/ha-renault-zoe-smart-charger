@@ -26,8 +26,10 @@ Change the `ENTITY` object near the top of the script in
 
 1. Copy `www/renault_trips/index.html` to
    `/config/www/renault_trips/index.html`.
-2. Add the panel view from `dashboard_view.yaml` to a Lovelace dashboard.
-3. Keep Recorder history enabled for the position, odometer, and battery
+2. Install ApexCharts Card 2.2.3 or newer through HACS. The complete dashboard
+   uses it for the Nord Pool price curve and price-cap line.
+3. Add the panel view from `dashboard_view.yaml` to a Lovelace dashboard.
+4. Keep Recorder history enabled for the position, odometer, and battery
    entities.
 
 `dashboard.json` is the complete two-view dashboard export used by this
