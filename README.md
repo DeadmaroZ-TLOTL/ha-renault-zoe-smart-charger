@@ -24,6 +24,9 @@ used by the included Nord Pool smart charger package.
 - Local Renault icon and logo on Home Assistant 2026.3 or newer.
 - Optional Nord Pool planner, switchable SOC/range target, maximum spot price, deadline,
   estimated cost, and adaptive charging model.
+- Optional IMMAX EV charger controller with separate Nord Pool and dynamic
+  solar-surplus modes, 6-32 A regulation, battery-flow protection, and either
+  a Zoe SOC target or a generic energy target.
 - Optional automatic Renault Trips dashboard with day selection, route maps,
   speed samples, distance, and estimated energy consumption.
 
@@ -65,6 +68,17 @@ The optional files are in [`smart_charger`](smart_charger):
 Read [`smart_charger/README.md`](smart_charger/README.md) before enabling the
 automation. Check every entity ID first, especially the Renault buttons and
 Nord Pool price sensor.
+
+## IMMAX Smart Charger
+
+The optional files in [`immax_smart_charger`](immax_smart_charger) provide
+Nord Pool scheduling and dynamic three-phase solar-surplus regulation for the
+IMMAX Tuya EV charger. The two modes are mutually exclusive and `Off` preserves
+manual charger control.
+
+Read [`immax_smart_charger/README.md`](immax_smart_charger/README.md) and verify
+the charger, grid-export, battery-flow, and vehicle SOC entity IDs before
+enabling either smart mode.
 
 ## Renault Trips
 

@@ -1,0 +1,685 @@
+# IMMAX EV charger smart control package.
+#
+# Verify these entity IDs before using this package on another Home Assistant:
+#   Charger switch: switch.immax_ev_charger
+#   Current limit: number.immax_ev_charger_current
+#   Charger status: sensor.immax_ev_charger_status
+#   Nord Pool price: sensor.renault_zoe_new_nord_pool_price
+#   Grid export: sensor.solax_srd9cccxv6_feed_in_power
+#   Battery charge/discharge: sensor.unibms_battery_in / sensor.unibms_battery_out
+#   Vehicle SOC: sensor.battery
+
+input_select:
+  immax_smart_charging_mode:
+    name: IMMAX smart charging mode
+    options:
+      - "Off"
+      - "Nord Pool"
+      - "Solar surplus"
+    initial: "Off"
+    icon: mdi:ev-station
+
+input_boolean:
+  immax_max_price_enabled:
+    name: IMMAX max price enabled
+    initial: false
+    icon: mdi:cash-lock
+
+input_number:
+  immax_max_energy_price:
+    name: IMMAX max energy price
+    min: -20
+    max: 100
+    step: 0.1
+    initial: 5
+    mode: box
+    unit_of_measurement: "c/kWh"
+    icon: mdi:cash-lock-outline
+
+  immax_energy_to_add:
+    name: IMMAX energy to add
+    min: 1
+    max: 80
+    step: 0.5
+    initial: 20
+    mode: box
+    unit_of_measurement: "kWh"
+    icon: mdi:battery-plus
+
+  immax_nordpool_current:
+    name: IMMAX nordpool current
+    min: 6
+    max: 32
+    step: 1
+    initial: 32
+    mode: box
+    unit_of_measurement: "A"
+    icon: mdi:current-ac
+
+  immax_planning_power:
+    name: IMMAX planning power
+    min: 1
+    max: 22
+    step: 0.1
+    initial: 12
+    mode: box
+    unit_of_measurement: "kW"
+    icon: mdi:lightning-bolt
+
+  immax_solar_reserve_power:
+    name: IMMAX solar reserve power
+    min: 0
+    max: 5000
+    step: 100
+    initial: 500
+    mode: box
+    unit_of_measurement: "W"
+    icon: mdi:battery-arrow-down-outline
+
+  immax_solar_min_current:
+    name: IMMAX solar min current
+    min: 6
+    max: 16
+    step: 1
+    initial: 6
+    mode: box
+    unit_of_measurement: "A"
+    icon: mdi:current-ac
+
+  immax_solar_max_current:
+    name: IMMAX solar max current
+    min: 6
+    max: 32
+    step: 1
+    initial: 32
+    mode: box
+    unit_of_measurement: "A"
+    icon: mdi:current-ac
+
+  immax_solar_available_power:
+    name: IMMAX solar available power
+    min: 0
+    max: 30000
+    step: 10
+    initial: 0
+    mode: box
+    unit_of_measurement: "W"
+    icon: mdi:solar-power
+
+  immax_solar_recommended_current:
+    name: IMMAX solar recommended current
+    min: 0
+    max: 32
+    step: 1
+    initial: 0
+    mode: box
+    unit_of_measurement: "A"
+    icon: mdi:current-ac
+
+  immax_session_delivered_energy:
+    name: IMMAX session delivered energy
+    min: 0
+    max: 100
+    step: 0.01
+    initial: 0
+    mode: box
+    unit_of_measurement: "kWh"
+    icon: mdi:counter
+
+  immax_planned_energy:
+    name: IMMAX planned energy
+    min: 0
+    max: 100
+    step: 0.1
+    initial: 0
+    mode: box
+    unit_of_measurement: "kWh"
+    icon: mdi:battery-clock-outline
+
+  immax_estimated_charge_cost:
+    name: IMMAX estimated charge cost
+    min: 0
+    max: 100
+    step: 0.01
+    initial: 0
+    mode: box
+    unit_of_measurement: "EUR"
+    icon: mdi:cash-clock
+
+input_datetime:
+  immax_ready_by:
+    name: IMMAX ready by
+    has_date: true
+    has_time: true
+    icon: mdi:calendar-clock
+
+  immax_energy_counter_last_update:
+    name: IMMAX energy counter last update
+    has_date: true
+    has_time: true
+    icon: mdi:clock-check-outline
+
+input_text:
+  immax_smart_charge_status:
+    name: IMMAX smart charge status
+    initial: Manual control
+    max: 255
+    icon: mdi:text-box-check-outline
+
+  immax_planned_charging_times:
+    name: IMMAX planned charging times
+    initial: Planner disabled
+    max: 255
+    icon: mdi:calendar-clock
+
+automation:
+  - id: immax_smart_session_reset_package
+    alias: IMMAX smart session reset
+    description: Reset the generic energy counter when a new smart mode is selected.
+    triggers:
+      - trigger: state
+        entity_id: input_select.immax_smart_charging_mode
+    conditions:
+      - condition: template
+        value_template: "{{ trigger.to_state.state != trigger.from_state.state }}"
+    actions:
+      - action: input_number.set_value
+        target:
+          entity_id: input_number.immax_session_delivered_energy
+        data:
+          value: 0
+      - action: input_datetime.set_datetime
+        target:
+          entity_id: input_datetime.immax_energy_counter_last_update
+        data:
+          datetime: "{{ now().strftime('%Y-%m-%d %H:%M:%S') }}"
+      - if: "{{ trigger.to_state.state == 'Off' }}"
+        then:
+          - if: "{{ is_state('switch.immax_ev_charger', 'on') }}"
+            then:
+              - action: switch.turn_off
+                target:
+                  entity_id: switch.immax_ev_charger
+          - action: input_boolean.turn_off
+            target:
+              entity_id: input_boolean.immax_charge_to_percentage_active
+          - action: input_text.set_value
+            target:
+              entity_id: input_text.immax_smart_charge_status
+            data:
+              value: Manual control
+    mode: restart
+
+  - id: immax_smart_charger_package
+    alias: IMMAX smart charging
+    description: >-
+      Select either Nord Pool price planning or dynamic solar-surplus charging.
+      The solar controller uses grid export plus battery net charging and adds
+      the charger's current load back into the control signal.
+    triggers:
+      - trigger: time_pattern
+        seconds: /30
+      - trigger: state
+        entity_id:
+          - input_select.immax_smart_charging_mode
+          - input_boolean.immax_max_price_enabled
+          - input_boolean.immax_charge_to_percentage_enabled
+          - input_number.immax_max_energy_price
+          - input_number.immax_energy_to_add
+          - input_number.immax_charge_target_percentage
+          - input_number.immax_nordpool_current
+          - input_number.immax_planning_power
+          - input_number.immax_solar_reserve_power
+          - input_number.immax_solar_min_current
+          - input_number.immax_solar_max_current
+          - input_datetime.immax_ready_by
+          - sensor.renault_zoe_new_nord_pool_price
+          - sensor.battery
+          - sensor.immax_ev_charger_status
+          - binary_sensor.immax_ev_charger_problem
+          - switch.immax_ev_charger_online_state
+          - switch.immax_ev_charger
+          - sensor.immax_ev_charger_power_a
+          - sensor.immax_ev_charger_power_b
+          - sensor.immax_ev_charger_power_c
+          - sensor.immax_ev_charger_voltage_a
+          - sensor.immax_ev_charger_voltage_b
+          - sensor.immax_ev_charger_voltage_c
+          - sensor.solax_srd9cccxv6_feed_in_power
+          - sensor.unibms_battery_in
+          - sensor.unibms_battery_out
+    actions:
+      - variables:
+          mode: "{{ states('input_select.immax_smart_charging_mode') }}"
+          charger_on: "{{ is_state('switch.immax_ev_charger', 'on') }}"
+          charger_status: "{{ states('sensor.immax_ev_charger_status') }}"
+          online: "{{ is_state('switch.immax_ev_charger_online_state', 'on') }}"
+          fault: "{{ is_state('binary_sensor.immax_ev_charger_problem', 'on') }}"
+          percentage_enabled: >-
+            {{ is_state('input_boolean.immax_charge_to_percentage_enabled', 'on') }}
+          soc_valid: "{{ states('sensor.battery') | is_number }}"
+          soc: "{{ states('sensor.battery') | float(0) }}"
+          target_soc: >-
+            {{ states('input_number.immax_charge_target_percentage') | float(80) }}
+          energy_target: "{{ states('input_number.immax_energy_to_add') | float(20) }}"
+          delivered: >-
+            {{ states('input_number.immax_session_delivered_energy') | float(0) }}
+          last_counter_update: >-
+            {{ as_timestamp(states('input_datetime.immax_energy_counter_last_update'), 0) }}
+          phase_power: >-
+            {{ ([states('sensor.immax_ev_charger_power_a') | float(0), 0] | max) +
+               ([states('sensor.immax_ev_charger_power_b') | float(0), 0] | max) +
+               ([states('sensor.immax_ev_charger_power_c') | float(0), 0] | max) }}
+      - variables:
+          elapsed_seconds: >-
+            {{ [[as_timestamp(now()) - last_counter_update | float(0), 0] | max, 120] | min }}
+          energy_increment: >-
+            {{ phase_power | float(0) / 1000 * elapsed_seconds | float(0) / 3600
+               if charger_on and
+                  (charger_status == 'charging' or phase_power | float(0) > 1000)
+               else 0 }}
+      - if: "{{ mode != 'Off' }}"
+        then:
+          - if: "{{ energy_increment | float(0) > 0 }}"
+            then:
+              - action: input_number.set_value
+                target:
+                  entity_id: input_number.immax_session_delivered_energy
+                data:
+                  value: >-
+                    {{ [delivered | float(0) + energy_increment | float(0), 100] |
+                       min | round(2) }}
+          - action: input_datetime.set_datetime
+            target:
+              entity_id: input_datetime.immax_energy_counter_last_update
+            data:
+              datetime: "{{ now().strftime('%Y-%m-%d %H:%M:%S') }}"
+      - variables:
+          delivered_now: >-
+            {{ delivered | float(0) + energy_increment | float(0) }}
+          target_reached: >-
+            {{ (percentage_enabled and soc_valid and soc | float >= target_soc | float) or
+               (not percentage_enabled and delivered_now | float >= energy_target | float) }}
+          needed_energy: >-
+            {% if percentage_enabled and soc_valid %}
+              {{ ([target_soc | float - soc | float, 0] | max) * 52 / 100 / 0.9 }}
+            {% else %}
+              {{ [energy_target | float - delivered_now | float, 0] | max }}
+            {% endif %}
+          plugged: >-
+            {{ charger_status in ['plugged_in', 'waiting', 'charging', 'paused', 'charged'] }}
+          planning_power: "{{ states('input_number.immax_planning_power') | float(12) }}"
+          cap_on: "{{ is_state('input_boolean.immax_max_price_enabled', 'on') }}"
+          cap: "{{ states('input_number.immax_max_energy_price') | float(100) }}"
+          current_price: >-
+            {{ states('sensor.renault_zoe_new_nord_pool_price') | float(999) }}
+          ready: "{{ states('input_datetime.immax_ready_by') }}"
+          grid_surplus: >-
+            {{ states('sensor.solax_srd9cccxv6_feed_in_power') | float(0) }}
+          battery_in: "{{ states('sensor.unibms_battery_in') | float(0) }}"
+          battery_out: "{{ states('sensor.unibms_battery_out') | float(0) }}"
+          reserve_power: >-
+            {{ states('input_number.immax_solar_reserve_power') | float(500) }}
+          voltage_sum: >-
+            {% set value =
+              (states('sensor.immax_ev_charger_voltage_a') | float(0)) +
+              (states('sensor.immax_ev_charger_voltage_b') | float(0)) +
+              (states('sensor.immax_ev_charger_voltage_c') | float(0)) %}
+            {{ value if value > 500 else 690 }}
+          solar_min_current: >-
+            {{ states('input_number.immax_solar_min_current') | int(6) }}
+          solar_max_current: >-
+            {{ states('input_number.immax_solar_max_current') | int(32) }}
+          current_limit: "{{ states('number.immax_ev_charger_current') | int(6) }}"
+      - variables:
+          deadline: >-
+            {{ as_timestamp(now() + timedelta(hours=12))
+               if ready in ['unknown', 'unavailable', '']
+               else as_timestamp(ready) }}
+          slot_count: >-
+            {{ (needed_energy | float / (planning_power | float * 0.25)) |
+               round(0, 'ceil') | int
+               if planning_power | float > 0 else 999 }}
+          available_solar_power: >-
+            {{ [phase_power | float(0) + grid_surplus | float(0) +
+                  battery_in | float(0) - battery_out | float(0) -
+                  reserve_power | float(0), 0] | max }}
+      - variables:
+          recommended_raw: >-
+            {{ (available_solar_power | float(0) / voltage_sum | float(690)) |
+               round(0, 'floor') | int }}
+          solar_recommended: >-
+            {% set raw = recommended_raw | int(0) %}
+            {% set minimum = solar_min_current | int(6) %}
+            {% set maximum = [solar_max_current | int(32), 32] | min %}
+            {{ 0 if raw < minimum else [[raw, minimum] | max, maximum] | min }}
+          start_solar: >-
+            {{ available_solar_power | float(0) >=
+               solar_min_current | float(6) * voltage_sum | float(690) + 500 }}
+          stop_solar: >-
+            {{ available_solar_power | float(0) <
+               (solar_min_current | float(6) - 1) * voltage_sum | float(690) }}
+          adjusted_solar_current: >-
+            {% set difference = solar_recommended | int(0) - current_limit | int(6) %}
+            {% if difference > 2 %}
+              {{ current_limit | int(6) + 2 }}
+            {% elif difference < -2 %}
+              {{ current_limit | int(6) - 2 }}
+            {% else %}
+              {{ solar_recommended | int(0) }}
+            {% endif %}
+          selected_now: >-
+            {% set slots =
+              (state_attr('sensor.renault_zoe_new_nord_pool_price', 'raw_today') or []) +
+              (state_attr('sensor.renault_zoe_new_nord_pool_price', 'raw_tomorrow') or []) %}
+            {% set ns = namespace(before=[], after=[], active=false) %}
+            {% for grouped in slots | groupby('start') %}
+              {% set slot = grouped.list[0] %}
+              {% if as_timestamp(slot.end) > as_timestamp(now()) and
+                    (not cap_on or slot.value | float(0) <= cap | float) %}
+                {% if as_timestamp(slot.end) <= deadline | float %}
+                  {% set ns.before = ns.before + [slot] %}
+                {% else %}
+                  {% set ns.after = ns.after + [slot] %}
+                {% endif %}
+              {% endif %}
+            {% endfor %}
+            {% set before = (ns.before | sort(attribute='value'))[:slot_count | int] %}
+            {% set remaining = [slot_count | int - before | count, 0] | max %}
+            {% set after = (ns.after | sort(attribute='start'))[:remaining] %}
+            {% for slot in before + after %}
+              {% if as_timestamp(slot.start) <= as_timestamp(now()) <
+                    as_timestamp(slot.end) %}
+                {% set ns.active = true %}
+              {% endif %}
+            {% endfor %}
+            {{ ns.active }}
+          must_charge: >-
+            {{ needed_energy | float > 0 and planning_power | float > 0 and
+               deadline | float - as_timestamp(now()) <=
+               needed_energy | float / planning_power | float * 3600 + 900 }}
+      - variables:
+          price_should_charge: >-
+            {{ mode == 'Nord Pool' and online and not fault and plugged and
+               not target_reached and needed_energy | float > 0 and
+               (not cap_on or current_price | float <= cap | float) and
+               (selected_now or must_charge) }}
+          plan_text: >-
+            {% set slots =
+              (state_attr('sensor.renault_zoe_new_nord_pool_price', 'raw_today') or []) +
+              (state_attr('sensor.renault_zoe_new_nord_pool_price', 'raw_tomorrow') or []) %}
+            {% set ns = namespace(before=[], after=[], ranges=[], start='', end='') %}
+            {% for grouped in slots | groupby('start') %}
+              {% set slot = grouped.list[0] %}
+              {% if as_timestamp(slot.end) > as_timestamp(now()) and
+                    (not cap_on or slot.value | float(0) <= cap | float) %}
+                {% if as_timestamp(slot.end) <= deadline | float %}
+                  {% set ns.before = ns.before + [slot] %}
+                {% else %}
+                  {% set ns.after = ns.after + [slot] %}
+                {% endif %}
+              {% endif %}
+            {% endfor %}
+            {% set before = (ns.before | sort(attribute='value'))[:slot_count | int] %}
+            {% set remaining = [slot_count | int - before | count, 0] | max %}
+            {% set after = (ns.after | sort(attribute='start'))[:remaining] %}
+            {% set selected = (before + after) | sort(attribute='start') %}
+            {% for slot in selected %}
+              {% if ns.start == '' %}
+                {% set ns.start, ns.end = slot.start, slot.end %}
+              {% elif slot.start == ns.end %}
+                {% set ns.end = slot.end %}
+              {% else %}
+                {% set ns.ranges = ns.ranges + [[ns.start, ns.end]] %}
+                {% set ns.start, ns.end = slot.start, slot.end %}
+              {% endif %}
+            {% endfor %}
+            {% if ns.start != '' %}
+              {% set ns.ranges = ns.ranges + [[ns.start, ns.end]] %}
+            {% endif %}
+            {% if mode != 'Nord Pool' %}
+              {{ 'Solar mode active' if mode == 'Solar surplus' else 'Planner disabled' }}
+            {% elif needed_energy | float <= 0 %}
+              Target reached
+            {% elif ns.ranges | count == 0 %}
+              {{ 'No slots below maximum price' if cap_on else 'Waiting for price data' }}
+            {% else %}
+              {% set out = namespace(value='') %}
+              {% for period in ns.ranges %}
+                {% set start = as_local(as_datetime(period[0])) %}
+                {% set end = as_local(as_datetime(period[1])) %}
+                {% set label = start.strftime('%d.%m %H:%M') ~ '-' ~
+                   (end.strftime('%H:%M') if start.date() == end.date()
+                    else end.strftime('%d.%m %H:%M')) %}
+                {% set out.value = out.value ~ ('; ' if out.value else '') ~ label %}
+              {% endfor %}
+              {{ out.value[:255] }}
+            {% endif %}
+          planned_energy: >-
+            {% set slots =
+              (state_attr('sensor.renault_zoe_new_nord_pool_price', 'raw_today') or []) +
+              (state_attr('sensor.renault_zoe_new_nord_pool_price', 'raw_tomorrow') or []) %}
+            {% set ns = namespace(before=0, after=0) %}
+            {% for grouped in slots | groupby('start') %}
+              {% set slot = grouped.list[0] %}
+              {% if as_timestamp(slot.end) > as_timestamp(now()) and
+                    (not cap_on or slot.value | float(0) <= cap | float) %}
+                {% if as_timestamp(slot.end) <= deadline | float %}
+                  {% set ns.before = ns.before + 1 %}
+                {% else %}
+                  {% set ns.after = ns.after + 1 %}
+                {% endif %}
+              {% endif %}
+            {% endfor %}
+            {% set before = [ns.before, slot_count | int] | min %}
+            {% set after = [ns.after, [slot_count | int - before, 0] | max] | min %}
+            {{ [[(before + after) * planning_power | float * 0.25,
+                  needed_energy | float] | min, 0] | max | round(1) }}
+          estimated_cost: >-
+            {% set slots =
+              (state_attr('sensor.renault_zoe_new_nord_pool_price', 'raw_today') or []) +
+              (state_attr('sensor.renault_zoe_new_nord_pool_price', 'raw_tomorrow') or []) %}
+            {% set ns = namespace(before=[], after=[], remaining=needed_energy | float, cost=0) %}
+            {% for grouped in slots | groupby('start') %}
+              {% set slot = grouped.list[0] %}
+              {% if as_timestamp(slot.end) > as_timestamp(now()) and
+                    (not cap_on or slot.value | float(0) <= cap | float) %}
+                {% if as_timestamp(slot.end) <= deadline | float %}
+                  {% set ns.before = ns.before + [slot] %}
+                {% else %}
+                  {% set ns.after = ns.after + [slot] %}
+                {% endif %}
+              {% endif %}
+            {% endfor %}
+            {% set before = (ns.before | sort(attribute='value'))[:slot_count | int] %}
+            {% set remaining_slots = [slot_count | int - before | count, 0] | max %}
+            {% set after = (ns.after | sort(attribute='start'))[:remaining_slots] %}
+            {% for slot in before + after %}
+              {% set energy = [planning_power | float * 0.25, ns.remaining] | min %}
+              {% set ns.cost = ns.cost +
+                 energy * ((slot.value | float(0) / 100) + 0.0479402) %}
+              {% set ns.remaining = [ns.remaining - energy, 0] | max %}
+            {% endfor %}
+            {{ ns.cost | round(2) }}
+      - action: input_number.set_value
+        target:
+          entity_id: input_number.immax_solar_available_power
+        data:
+          value: "{{ [available_solar_power | float(0), 30000] | min | round(0) }}"
+      - action: input_number.set_value
+        target:
+          entity_id: input_number.immax_solar_recommended_current
+        data:
+          value: "{{ solar_recommended | int(0) }}"
+      - action: input_number.set_value
+        target:
+          entity_id: input_number.immax_planned_energy
+        data:
+          value: "{{ planned_energy | float(0) }}"
+      - action: input_number.set_value
+        target:
+          entity_id: input_number.immax_estimated_charge_cost
+        data:
+          value: "{{ estimated_cost | float(0) }}"
+      - action: input_text.set_value
+        target:
+          entity_id: input_text.immax_planned_charging_times
+        data:
+          value: "{{ plan_text }}"
+      - action: input_text.set_value
+        target:
+          entity_id: input_text.immax_smart_charge_status
+        data:
+          value: >-
+            {% if mode == 'Off' %}Manual control
+            {% elif not online %}Charger offline
+            {% elif fault %}Charger fault
+            {% elif not plugged %}Waiting for vehicle
+            {% elif target_reached %}Target reached
+            {% elif mode == 'Nord Pool' and price_should_charge %}
+              Nord Pool: charging in selected price window
+            {% elif mode == 'Nord Pool' %}
+              Nord Pool: waiting for selected price window
+            {% elif mode == 'Solar surplus' and solar_recommended | int(0) >=
+                    solar_min_current | int(6) %}
+              Solar: {{ (available_solar_power | float(0) / 1000) | round(1) }} kW
+              available, {{ solar_recommended | int(0) }} A target
+            {% else %}
+              Solar: waiting for at least {{ solar_min_current | int(6) }} A surplus
+            {% endif %}
+      - choose:
+          - conditions: "{{ mode == 'Nord Pool' }}"
+            sequence:
+              - choose:
+                  - conditions: "{{ price_should_charge }}"
+                    sequence:
+                      - if: >-
+                          {{ (states('number.immax_ev_charger_current') | float(0) -
+                              states('input_number.immax_nordpool_current') | float(32)) |
+                             abs >= 1 and
+                             as_timestamp(now()) -
+                             as_timestamp(
+                               states.number.immax_ev_charger_current.last_changed
+                             ) >= 30 }}
+                        then:
+                          - action: number.set_value
+                            target:
+                              entity_id: number.immax_ev_charger_current
+                            data:
+                              value: >-
+                                {{ states('input_number.immax_nordpool_current') | int(32) }}
+                      - if: >-
+                          {{ not charger_on and
+                             as_timestamp(now()) -
+                             as_timestamp(states.switch.immax_ev_charger.last_changed) >= 60 }}
+                        then:
+                          - if: "{{ percentage_enabled }}"
+                            then:
+                              - action: input_boolean.turn_on
+                                target:
+                                  entity_id: input_boolean.immax_charge_to_percentage_active
+                          - action: switch.turn_on
+                            target:
+                              entity_id: switch.immax_ev_charger
+                  - conditions: >-
+                      {{ charger_on and
+                         as_timestamp(now()) -
+                         as_timestamp(states.switch.immax_ev_charger.last_changed) >= 60 }}
+                    sequence:
+                      - action: switch.turn_off
+                        target:
+                          entity_id: switch.immax_ev_charger
+          - conditions: "{{ mode == 'Solar surplus' }}"
+            sequence:
+              - choose:
+                  - conditions: >-
+                      {{ online and not fault and plugged and not target_reached and
+                         solar_recommended | int(0) >= solar_min_current | int(6) }}
+                    sequence:
+                      - if: >-
+                          {{ not charger_on and start_solar and
+                             as_timestamp(now()) -
+                             as_timestamp(states.switch.immax_ev_charger.last_changed) >= 120 }}
+                        then:
+                          - action: number.set_value
+                            target:
+                              entity_id: number.immax_ev_charger_current
+                            data:
+                              value: "{{ solar_recommended | int(6) }}"
+                          - delay:
+                              seconds: 2
+                          - if: "{{ percentage_enabled }}"
+                            then:
+                              - action: input_boolean.turn_on
+                                target:
+                                  entity_id: input_boolean.immax_charge_to_percentage_active
+                          - action: switch.turn_on
+                            target:
+                              entity_id: switch.immax_ev_charger
+                      - if: >-
+                          {{ charger_on and
+                             (current_limit | int(6) -
+                              adjusted_solar_current | int(6)) | abs >= 1 and
+                             as_timestamp(now()) -
+                             as_timestamp(
+                               states.number.immax_ev_charger_current.last_changed
+                             ) >= 45 }}
+                        then:
+                          - action: number.set_value
+                            target:
+                              entity_id: number.immax_ev_charger_current
+                            data:
+                              value: >-
+                                {{ [[adjusted_solar_current | int(6),
+                                      solar_min_current | int(6)] | max,
+                                      solar_max_current | int(32)] | min }}
+                  - conditions: >-
+                      {{ charger_on and
+                         (target_reached or not online or fault or not plugged or stop_solar) and
+                         as_timestamp(now()) -
+                         as_timestamp(states.switch.immax_ev_charger.last_changed) >= 120 }}
+                    sequence:
+                      - action: switch.turn_off
+                        target:
+                          entity_id: switch.immax_ev_charger
+    mode: restart
+    max_exceeded: silent
+
+  - id: immax_ready_by_roll_forward_package
+    alias: IMMAX ready by roll forward
+    description: Move a completed or expired deadline twelve hours ahead.
+    triggers:
+      - trigger: time_pattern
+        minutes: /1
+      - trigger: state
+        entity_id:
+          - sensor.battery
+          - input_number.immax_session_delivered_energy
+    conditions:
+      - condition: template
+        value_template: >-
+          {% set ready = states('input_datetime.immax_ready_by') %}
+          {% set pct = is_state('input_boolean.immax_charge_to_percentage_enabled', 'on') %}
+          {% set complete =
+            (pct and states('sensor.battery') | is_number and
+             states('sensor.battery') | float(0) >=
+             states('input_number.immax_charge_target_percentage') | float(80)) or
+            (not pct and
+             states('input_number.immax_session_delivered_energy') | float(0) >=
+             states('input_number.immax_energy_to_add') | float(20)) %}
+          {% set expired =
+            ready not in ['unknown', 'unavailable', ''] and
+            as_timestamp(ready) <= as_timestamp(now()) %}
+          {% set completed_deadline_needs_update =
+            complete and
+            (ready in ['unknown', 'unavailable', ''] or
+             as_timestamp(ready) <
+             as_timestamp(now() + timedelta(hours=11))) %}
+          {{ expired or completed_deadline_needs_update }}
+    actions:
+      - action: input_datetime.set_datetime
+        target:
+          entity_id: input_datetime.immax_ready_by
+        data:
+          datetime: "{{ (now() + timedelta(hours=12)).strftime('%Y-%m-%d %H:%M:%S') }}"
+    mode: restart
