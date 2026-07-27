@@ -8,8 +8,20 @@ entities:
     name: Smart mode
   - entity: input_text.immax_smart_charge_status
     name: Smart status
-  - entity: number.immax_ev_charger_current
-    name: Current limit
+  - type: conditional
+    conditions:
+      - entity: input_select.immax_smart_charging_mode
+        state: "Off"
+    row:
+      entity: number.immax_ev_charger_current
+      name: Current limit
+  - type: conditional
+    conditions:
+      - entity: input_select.immax_smart_charging_mode
+        state: "Nord Pool"
+    row:
+      entity: number.immax_ev_charger_current
+      name: Current limit
   - entity: sensor.immax_ev_charger_status
     name: Charger status
   - type: divider
@@ -102,21 +114,21 @@ entities:
         state: "Solar surplus"
     row:
       entity: input_number.immax_solar_reserve_power
-      name: Battery/grid reserve
+      name: Battery/grid reserve power
   - type: conditional
     conditions:
       - entity: input_select.immax_smart_charging_mode
         state: "Solar surplus"
     row:
-      entity: input_number.immax_solar_min_current
-      name: Solar minimum current
+      entity: input_number.immax_solar_min_power
+      name: Minimum charging power
   - type: conditional
     conditions:
       - entity: input_select.immax_smart_charging_mode
         state: "Solar surplus"
     row:
-      entity: input_number.immax_solar_max_current
-      name: Solar maximum current
+      entity: input_number.immax_solar_max_power
+      name: Maximum charging power
   - type: conditional
     conditions:
       - entity: input_select.immax_smart_charging_mode
@@ -131,8 +143,8 @@ entities:
       - entity: input_select.immax_smart_charging_mode
         state: "Solar surplus"
     row:
-      entity: input_number.immax_solar_recommended_current
-      name: Solar target current
+      entity: input_number.immax_solar_target_power
+      name: Target charging power
       tap_action:
         action: none
   - type: conditional
@@ -140,22 +152,37 @@ entities:
       - entity: input_select.immax_smart_charging_mode
         state: "Solar surplus"
     row:
-      entity: sensor.solax_srd9cccxv6_feed_in_power
+      entity: input_number.immax_solar_charger_power
+      name: Actual charging power
+      tap_action:
+        action: none
+  - type: conditional
+    conditions:
+      - entity: input_select.immax_smart_charging_mode
+        state: "Solar surplus"
+    row:
+      entity: input_number.immax_solar_grid_export
       name: Grid export
+      tap_action:
+        action: none
   - type: conditional
     conditions:
       - entity: input_select.immax_smart_charging_mode
         state: "Solar surplus"
     row:
-      entity: sensor.unibms_battery_in
+      entity: input_number.immax_solar_battery_charge
       name: Battery charging
+      tap_action:
+        action: none
   - type: conditional
     conditions:
       - entity: input_select.immax_smart_charging_mode
         state: "Solar surplus"
     row:
-      entity: sensor.unibms_battery_out
+      entity: input_number.immax_solar_battery_discharge
       name: Battery discharging
+      tap_action:
+        action: none
   - type: divider
   - entity: sensor.immax_ev_charger_power_a
     name: Phase A power

@@ -69,52 +69,92 @@ input_number:
   immax_solar_reserve_power:
     name: IMMAX solar reserve power
     min: 0
-    max: 5000
-    step: 100
-    initial: 500
+    max: 5
+    step: 0.1
+    initial: 0.5
     mode: box
-    unit_of_measurement: "W"
+    unit_of_measurement: "kW"
     icon: mdi:battery-arrow-down-outline
 
-  immax_solar_min_current:
-    name: IMMAX solar min current
-    min: 6
-    max: 16
-    step: 1
-    initial: 6
+  immax_solar_min_power:
+    name: IMMAX solar min power
+    min: 4.2
+    max: 22
+    step: 0.1
+    initial: 4.2
     mode: box
-    unit_of_measurement: "A"
-    icon: mdi:current-ac
+    unit_of_measurement: "kW"
+    icon: mdi:solar-power-variant
 
-  immax_solar_max_current:
-    name: IMMAX solar max current
-    min: 6
-    max: 32
-    step: 1
-    initial: 32
+  immax_solar_max_power:
+    name: IMMAX solar max power
+    min: 4.2
+    max: 22
+    step: 0.1
+    initial: 22
     mode: box
-    unit_of_measurement: "A"
-    icon: mdi:current-ac
+    unit_of_measurement: "kW"
+    icon: mdi:solar-power-variant
 
   immax_solar_available_power:
     name: IMMAX solar available power
     min: 0
-    max: 30000
-    step: 10
+    max: 30
+    step: 0.1
     initial: 0
     mode: box
-    unit_of_measurement: "W"
+    unit_of_measurement: "kW"
     icon: mdi:solar-power
 
-  immax_solar_recommended_current:
-    name: IMMAX solar recommended current
+  immax_solar_target_power:
+    name: IMMAX solar target power
     min: 0
-    max: 32
-    step: 1
+    max: 22
+    step: 0.1
     initial: 0
     mode: box
-    unit_of_measurement: "A"
-    icon: mdi:current-ac
+    unit_of_measurement: "kW"
+    icon: mdi:ev-station
+
+  immax_solar_charger_power:
+    name: IMMAX solar charger power
+    min: 0
+    max: 30
+    step: 0.1
+    initial: 0
+    mode: box
+    unit_of_measurement: "kW"
+    icon: mdi:ev-plug-type2
+
+  immax_solar_grid_export:
+    name: IMMAX solar grid export
+    min: -30
+    max: 30
+    step: 0.1
+    initial: 0
+    mode: box
+    unit_of_measurement: "kW"
+    icon: mdi:transmission-tower-export
+
+  immax_solar_battery_charge:
+    name: IMMAX solar battery charge
+    min: 0
+    max: 30
+    step: 0.1
+    initial: 0
+    mode: box
+    unit_of_measurement: "kW"
+    icon: mdi:battery-arrow-up
+
+  immax_solar_battery_discharge:
+    name: IMMAX solar battery discharge
+    min: 0
+    max: 30
+    step: 0.1
+    initial: 0
+    mode: box
+    unit_of_measurement: "kW"
+    icon: mdi:battery-arrow-down
 
   immax_session_delivered_energy:
     name: IMMAX session delivered energy
@@ -215,7 +255,7 @@ automation:
     description: >-
       Select either Nord Pool price planning or dynamic solar-surplus charging.
       The solar controller uses grid export plus battery net charging and adds
-      the charger's current load back into the control signal.
+      the charger's power back into the control signal.
     triggers:
       - trigger: time_pattern
         seconds: /30
@@ -230,8 +270,8 @@ automation:
           - input_number.immax_nordpool_current
           - input_number.immax_planning_power
           - input_number.immax_solar_reserve_power
-          - input_number.immax_solar_min_current
-          - input_number.immax_solar_max_current
+          - input_number.immax_solar_min_power
+          - input_number.immax_solar_max_power
           - input_datetime.immax_ready_by
           - sensor.renault_zoe_new_nord_pool_price
           - sensor.battery
@@ -318,18 +358,18 @@ automation:
             {{ states('sensor.solax_srd9cccxv6_feed_in_power') | float(0) }}
           battery_in: "{{ states('sensor.unibms_battery_in') | float(0) }}"
           battery_out: "{{ states('sensor.unibms_battery_out') | float(0) }}"
-          reserve_power: >-
-            {{ states('input_number.immax_solar_reserve_power') | float(500) }}
+          reserve_power_kw: >-
+            {{ states('input_number.immax_solar_reserve_power') | float(0.5) }}
           voltage_sum: >-
             {% set value =
               (states('sensor.immax_ev_charger_voltage_a') | float(0)) +
               (states('sensor.immax_ev_charger_voltage_b') | float(0)) +
               (states('sensor.immax_ev_charger_voltage_c') | float(0)) %}
             {{ value if value > 500 else 690 }}
-          solar_min_current: >-
-            {{ states('input_number.immax_solar_min_current') | int(6) }}
-          solar_max_current: >-
-            {{ states('input_number.immax_solar_max_current') | int(32) }}
+          solar_min_power_kw: >-
+            {{ states('input_number.immax_solar_min_power') | float(4.2) }}
+          solar_max_power_kw: >-
+            {{ states('input_number.immax_solar_max_power') | float(22) }}
           current_limit: "{{ states('number.immax_ev_charger_current') | int(6) }}"
       - variables:
           deadline: >-
@@ -340,33 +380,42 @@ automation:
             {{ (needed_energy | float / (planning_power | float * 0.25)) |
                round(0, 'ceil') | int
                if planning_power | float > 0 else 999 }}
-          available_solar_power: >-
+          available_solar_power_w: >-
             {{ [phase_power | float(0) + grid_surplus | float(0) +
                   battery_in | float(0) - battery_out | float(0) -
-                  reserve_power | float(0), 0] | max }}
+                  reserve_power_kw | float(0.5) * 1000, 0] | max }}
       - variables:
-          recommended_raw: >-
-            {{ (available_solar_power | float(0) / voltage_sum | float(690)) |
-               round(0, 'floor') | int }}
-          solar_recommended: >-
-            {% set raw = recommended_raw | int(0) %}
-            {% set minimum = solar_min_current | int(6) %}
-            {% set maximum = [solar_max_current | int(32), 32] | min %}
-            {{ 0 if raw < minimum else [[raw, minimum] | max, maximum] | min }}
+          available_solar_power_kw: >-
+            {{ (available_solar_power_w | float(0) / 1000) | round(2) }}
+          solar_requested_power_kw: >-
+            {% set available = available_solar_power_w | float(0) / 1000 %}
+            {% set minimum = solar_min_power_kw | float(4.2) %}
+            {% set maximum = [[solar_max_power_kw | float(22), minimum] | max, 22] | min %}
+            {{ 0 if available < minimum
+               else [[available, minimum] | max, maximum] | min }}
+          solar_recommended_current: >-
+            {% set target = solar_requested_power_kw | float(0) %}
+            {% set raw = (target * 1000 / voltage_sum | float(690)) |
+                         round(0, 'floor') | int %}
+            {{ 0 if target <= 0 else [[raw, 6] | max, 32] | min }}
+          solar_target_power_kw: >-
+            {{ (solar_recommended_current | int(0) *
+                voltage_sum | float(690) / 1000) | round(1) }}
           start_solar: >-
-            {{ available_solar_power | float(0) >=
-               solar_min_current | float(6) * voltage_sum | float(690) + 500 }}
+            {{ available_solar_power_kw | float(0) >=
+               solar_min_power_kw | float(4.2) + 0.5 }}
           stop_solar: >-
-            {{ available_solar_power | float(0) <
-               (solar_min_current | float(6) - 1) * voltage_sum | float(690) }}
+            {{ available_solar_power_kw | float(0) <
+               [solar_min_power_kw | float(4.2) - 0.7, 0] | max }}
           adjusted_solar_current: >-
-            {% set difference = solar_recommended | int(0) - current_limit | int(6) %}
+            {% set difference =
+              solar_recommended_current | int(0) - current_limit | int(6) %}
             {% if difference > 2 %}
               {{ current_limit | int(6) + 2 }}
             {% elif difference < -2 %}
               {{ current_limit | int(6) - 2 }}
             {% else %}
-              {{ solar_recommended | int(0) }}
+              {{ solar_recommended_current | int(0) }}
             {% endif %}
           selected_now: >-
             {% set slots =
@@ -505,12 +554,38 @@ automation:
         target:
           entity_id: input_number.immax_solar_available_power
         data:
-          value: "{{ [available_solar_power | float(0), 30000] | min | round(0) }}"
+          value: "{{ [available_solar_power_kw | float(0), 30] | min | round(1) }}"
       - action: input_number.set_value
         target:
-          entity_id: input_number.immax_solar_recommended_current
+          entity_id: input_number.immax_solar_target_power
         data:
-          value: "{{ solar_recommended | int(0) }}"
+          value: "{{ solar_target_power_kw | float(0) }}"
+      - action: input_number.set_value
+        target:
+          entity_id: input_number.immax_solar_charger_power
+        data:
+          value: "{{ [phase_power | float(0) / 1000, 30] | min | round(1) }}"
+      - action: input_number.set_value
+        target:
+          entity_id: input_number.immax_solar_grid_export
+        data:
+          value: >-
+            {{ [[grid_surplus | float(0) / 1000, -30] | max, 30] |
+               min | round(1) }}
+      - action: input_number.set_value
+        target:
+          entity_id: input_number.immax_solar_battery_charge
+        data:
+          value: >-
+            {{ [[battery_in | float(0) / 1000, 0] | max, 30] |
+               min | round(1) }}
+      - action: input_number.set_value
+        target:
+          entity_id: input_number.immax_solar_battery_discharge
+        data:
+          value: >-
+            {{ [[battery_out | float(0) / 1000, 0] | max, 30] |
+               min | round(1) }}
       - action: input_number.set_value
         target:
           entity_id: input_number.immax_planned_energy
@@ -540,12 +615,13 @@ automation:
               Nord Pool: charging in selected price window
             {% elif mode == 'Nord Pool' %}
               Nord Pool: waiting for selected price window
-            {% elif mode == 'Solar surplus' and solar_recommended | int(0) >=
-                    solar_min_current | int(6) %}
-              Solar: {{ (available_solar_power | float(0) / 1000) | round(1) }} kW
-              available, {{ solar_recommended | int(0) }} A target
+            {% elif mode == 'Solar surplus' and
+                    solar_recommended_current | int(0) >= 6 %}
+              Solar: {{ available_solar_power_kw | float(0) | round(1) }} kW
+              available, {{ solar_target_power_kw | float(0) | round(1) }} kW target
             {% else %}
-              Solar: waiting for at least {{ solar_min_current | int(6) }} A surplus
+              Solar: waiting for {{ solar_min_power_kw | float(4.2) | round(1) }}
+              kW surplus
             {% endif %}
       - choose:
           - conditions: "{{ mode == 'Nord Pool' }}"
@@ -594,7 +670,7 @@ automation:
               - choose:
                   - conditions: >-
                       {{ online and not fault and plugged and not target_reached and
-                         solar_recommended | int(0) >= solar_min_current | int(6) }}
+                         solar_recommended_current | int(0) >= 6 }}
                     sequence:
                       - if: >-
                           {{ not charger_on and start_solar and
@@ -605,7 +681,7 @@ automation:
                             target:
                               entity_id: number.immax_ev_charger_current
                             data:
-                              value: "{{ solar_recommended | int(6) }}"
+                              value: "{{ solar_recommended_current | int(6) }}"
                           - delay:
                               seconds: 2
                           - if: "{{ percentage_enabled }}"
@@ -630,9 +706,8 @@ automation:
                               entity_id: number.immax_ev_charger_current
                             data:
                               value: >-
-                                {{ [[adjusted_solar_current | int(6),
-                                      solar_min_current | int(6)] | max,
-                                      solar_max_current | int(32)] | min }}
+                                {{ [[adjusted_solar_current | int(6), 6] | max, 32] |
+                                   min }}
                   - conditions: >-
                       {{ charger_on and
                          (target_reached or not online or fault or not plugged or stop_solar) and
