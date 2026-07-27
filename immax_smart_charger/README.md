@@ -31,9 +31,12 @@ charger power + grid export + battery charging - battery discharging - reserve
 ```
 
 If solar production is also selected, it caps that result so the requested
-charging power cannot exceed current PV production. If grid export is empty,
-solar production becomes the direct fallback source. Every optional source may
-be left empty and then contributes nothing; charger control and current remain
+charging power cannot exceed current PV production plus any explicitly allowed
+battery support. A positive reserve leaves that much power available for the
+battery or grid; a negative reserve permits the charger to draw up to its
+absolute value beyond the available solar power. If grid export is empty, solar
+production becomes the direct fallback source. Every optional source may be
+left empty and then contributes nothing; charger control and current remain
 required. Power sources may report either W or kW.
 
 All solar settings and reported values use kW. Charging starts only when the
@@ -67,4 +70,5 @@ sign conventions:
 The card keeps target, deadline, mode, reserve, and limit settings editable.
 Calculated status, planned energy, estimated cost, available solar power,
 target power, actual charger power, grid export, and battery flow are exposed
-as read-only sensors.
+as read-only sensors. Selecting a sensor row opens Home Assistant's standard
+more-info dialog with its recorded history.

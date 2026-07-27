@@ -277,8 +277,9 @@ automation:
     description: >-
       Charge in the cheapest eligible 15-minute intervals before the deadline.
       If the target can no longer be reached by the deadline, use the earliest
-      later intervals below the configured price cap. Use Renault Always mode
-      when smart charging is disabled or the current location is not allowed.
+      later intervals below the configured price cap. Select Renault Always
+      mode before a planned start, and also when smart charging is disabled or
+      the current location is not allowed.
     triggers:
       - trigger: time_pattern
         minutes: /5
@@ -387,9 +388,30 @@ automation:
       - choose:
           - conditions: "{{ should_charge and not charging and cooldown_ok }}"
             sequence:
-              - action: button.press
-                target:
-                  entity_id: button.start_charge
+              - if:
+                  - condition: template
+                    value_template: >-
+                      {{ states('select.renault_zoe_new_charging_mode') !=
+                         'always' }}
+                then:
+                  - action: select.select_option
+                    target:
+                      entity_id: select.renault_zoe_new_charging_mode
+                    data:
+                      option: always
+                  - action: homeassistant.update_entity
+                    target:
+                      entity_id: sensor.battery
+              - if:
+                  - condition: template
+                    value_template: >-
+                      {{ not is_state('binary_sensor.charging', 'on') and
+                         not is_state('sensor.charge_state',
+                                      'charge_in_progress') }}
+                then:
+                  - action: button.press
+                    target:
+                      entity_id: button.start_charge
               - action: input_datetime.set_datetime
                 target:
                   entity_id: input_datetime.zoe_last_charge_command

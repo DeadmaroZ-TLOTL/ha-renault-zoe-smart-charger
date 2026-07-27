@@ -71,7 +71,7 @@ input_number:
 
   immax_solar_reserve_power:
     name: IMMAX solar reserve power
-    min: 0
+    min: -22
     max: 5
     step: 0.1
     initial: 0.5
@@ -518,6 +518,7 @@ automation:
                if planning_power | float > 0 else 999 }}
           available_solar_power_w: >-
             {% set reserve = reserve_power_kw | float(0.5) * 1000 %}
+            {% set battery_allowance = [-reserve, 0] | max %}
             {% if grid_configured %}
               {% set net =
                 phase_power | float(0) +
@@ -526,7 +527,9 @@ automation:
                 (battery_out | float(0) if battery_out_configured else 0) -
                 reserve %}
               {% set available = [net, 0] | max %}
-              {{ [available, [solar_power | float(0), 0] | max] | min
+              {% set source_limit =
+                ([solar_power | float(0), 0] | max) + battery_allowance %}
+              {{ [available, source_limit] | min
                  if solar_configured else available }}
             {% elif solar_configured %}
               {{ [solar_power | float(0) - reserve, 0] | max }}
