@@ -143,15 +143,23 @@ template:
           {% set cap_on = is_state('input_boolean.zoe_max_price_enabled', 'on') %}
           {% set slots = (state_attr(price_entity, 'raw_today') or []) +
                          (state_attr(price_entity, 'raw_tomorrow') or []) %}
-          {% set ns = namespace(eligible=[], ranges=[], start='', end='') %}
+          {% set ns = namespace(before_deadline=[], after_deadline=[], ranges=[], start='', end='') %}
           {% for grouped in slots | groupby('start') %}
             {% set slot = grouped.list[0] %}
-            {% if as_datetime(slot.end) > now() and as_datetime(slot.end) <= deadline and
+            {% if as_datetime(slot.end) > now() and
                   (not cap_on or slot.value | float(0) <= cap) %}
-              {% set ns.eligible = ns.eligible + [slot] %}
+              {% if as_datetime(slot.end) <= deadline %}
+                {% set ns.before_deadline = ns.before_deadline + [slot] %}
+              {% else %}
+                {% set ns.after_deadline = ns.after_deadline + [slot] %}
+              {% endif %}
             {% endif %}
           {% endfor %}
-          {% for slot in (ns.eligible | sort(attribute='value'))[:slot_count] | sort(attribute='start') %}
+          {% set selected_before = (ns.before_deadline | sort(attribute='value'))[:slot_count] %}
+          {% set remaining_slots = [slot_count - selected_before | count, 0] | max %}
+          {% set selected_after = (ns.after_deadline | sort(attribute='start'))[:remaining_slots] %}
+          {% set selected = (selected_before + selected_after) | sort(attribute='start') %}
+          {% for slot in selected %}
             {% if ns.start == '' %}
               {% set ns.start, ns.end = slot.start, slot.end %}
             {% elif slot.start == ns.end %}
@@ -202,15 +210,22 @@ template:
           {% set cap_on = is_state('input_boolean.zoe_max_price_enabled', 'on') %}
           {% set slots = (state_attr(price_entity, 'raw_today') or []) +
                          (state_attr(price_entity, 'raw_tomorrow') or []) %}
-          {% set ns = namespace(count=0) %}
+          {% set ns = namespace(before_count=0, after_count=0) %}
           {% for grouped in slots | groupby('start') %}
             {% set slot = grouped.list[0] %}
-            {% if as_datetime(slot.end) > now() and as_datetime(slot.end) <= deadline and
+            {% if as_datetime(slot.end) > now() and
                   (not cap_on or slot.value | float(0) <= cap) %}
-              {% set ns.count = ns.count + 1 %}
+              {% if as_datetime(slot.end) <= deadline %}
+                {% set ns.before_count = ns.before_count + 1 %}
+              {% else %}
+                {% set ns.after_count = ns.after_count + 1 %}
+              {% endif %}
             {% endif %}
           {% endfor %}
-          {% set selected = [ns.count, slot_count] | min %}
+          {% set selected_before_count = [ns.before_count, slot_count] | min %}
+          {% set remaining_slots = [slot_count - selected_before_count, 0] | max %}
+          {% set selected_after_count = [ns.after_count, remaining_slots] | min %}
+          {% set selected = selected_before_count + selected_after_count %}
           {% set planned_soc = soc + [selected * power * 0.25, needed] | min * 0.9 / 52 * 100 %}
           {{ ([planned_soc, target, 100] | min) | round(1) }}
 
@@ -234,15 +249,22 @@ template:
           {% set cap_on = is_state('input_boolean.zoe_max_price_enabled', 'on') %}
           {% set slots = (state_attr(price_entity, 'raw_today') or []) +
                          (state_attr(price_entity, 'raw_tomorrow') or []) %}
-          {% set ns = namespace(eligible=[], remaining=needed, cost=0) %}
+          {% set ns = namespace(before_deadline=[], after_deadline=[], remaining=needed, cost=0) %}
           {% for grouped in slots | groupby('start') %}
             {% set slot = grouped.list[0] %}
-            {% if as_datetime(slot.end) > now() and as_datetime(slot.end) <= deadline and
+            {% if as_datetime(slot.end) > now() and
                   (not cap_on or slot.value | float(0) <= cap) %}
-              {% set ns.eligible = ns.eligible + [slot] %}
+              {% if as_datetime(slot.end) <= deadline %}
+                {% set ns.before_deadline = ns.before_deadline + [slot] %}
+              {% else %}
+                {% set ns.after_deadline = ns.after_deadline + [slot] %}
+              {% endif %}
             {% endif %}
           {% endfor %}
-          {% for slot in (ns.eligible | sort(attribute='value'))[:slot_count] %}
+          {% set selected_before = (ns.before_deadline | sort(attribute='value'))[:slot_count] %}
+          {% set remaining_slots = [slot_count - selected_before | count, 0] | max %}
+          {% set selected_after = (ns.after_deadline | sort(attribute='start'))[:remaining_slots] %}
+          {% for slot in selected_before + selected_after %}
             {% set energy = [power * 0.25, ns.remaining] | min %}
             {% set ns.cost = ns.cost + energy * ((slot.value | float(0) / 100) + 0.0479402) %}
             {% set ns.remaining = [ns.remaining - energy, 0] | max %}
@@ -254,8 +276,9 @@ automation:
     alias: Zoe Nord Pool smart charging
     description: >-
       Charge in the cheapest eligible 15-minute intervals before the deadline.
-      Use Renault Always mode when smart charging is disabled or the current
-      location is not allowed.
+      If the target can no longer be reached by the deadline, use the earliest
+      later intervals below the configured price cap. Use Renault Always mode
+      when smart charging is disabled or the current location is not allowed.
     triggers:
       - trigger: time_pattern
         minutes: /5
@@ -309,15 +332,22 @@ automation:
           selected_now: >-
             {% set slots = (state_attr(price_entity, 'raw_today') or []) +
                            (state_attr(price_entity, 'raw_tomorrow') or []) %}
-            {% set ns = namespace(eligible=[], active=false) %}
-            {% for slot in slots %}
+            {% set ns = namespace(before_deadline=[], after_deadline=[], active=false) %}
+            {% for grouped in slots | groupby('start') %}
+              {% set slot = grouped.list[0] %}
               {% if as_timestamp(slot.end) > as_timestamp(now()) and
-                    as_timestamp(slot.end) <= deadline | float and
                     (not cap_on or slot.value | float(0) <= cap | float) %}
-                {% set ns.eligible = ns.eligible + [slot] %}
+                {% if as_timestamp(slot.end) <= deadline | float %}
+                  {% set ns.before_deadline = ns.before_deadline + [slot] %}
+                {% else %}
+                  {% set ns.after_deadline = ns.after_deadline + [slot] %}
+                {% endif %}
               {% endif %}
             {% endfor %}
-            {% for slot in (ns.eligible | sort(attribute='value'))[:slots_needed | int] %}
+            {% set selected_before = (ns.before_deadline | sort(attribute='value'))[:slots_needed | int] %}
+            {% set remaining_slots = [slots_needed | int - selected_before | count, 0] | max %}
+            {% set selected_after = (ns.after_deadline | sort(attribute='start'))[:remaining_slots] %}
+            {% for slot in selected_before + selected_after %}
               {% if as_timestamp(slot.start) <= as_timestamp(now()) < as_timestamp(slot.end) %}
                 {% set ns.active = true %}
               {% endif %}

@@ -5,6 +5,9 @@ deadline and controls the Renault start/stop charge buttons supplied by Home
 Assistant. It also respects the locations selected in Zoe New Extended.
 When smart charging is disabled or the car is outside the selected locations,
 the automation changes Renault's charging mode to `Always`.
+If the remaining eligible slots cannot reach the target before the deadline,
+the planner continues with the earliest later slots below the configured price
+cap until the target is reached or the published price data runs out.
 
 ## Requirements
 
