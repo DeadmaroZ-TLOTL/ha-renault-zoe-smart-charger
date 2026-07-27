@@ -1,13 +1,8 @@
 # IMMAX EV charger smart control package.
 #
 # Verify these entity IDs before using this package on another Home Assistant:
-#   Charger switch: switch.immax_ev_charger
-#   Current limit: number.immax_ev_charger_current
-#   Charger status: sensor.immax_ev_charger_status
-#   Nord Pool price: sensor.renault_zoe_new_nord_pool_price
-#   Grid export: sensor.solax_srd9cccxv6_feed_in_power
-#   Battery charge/discharge: sensor.unibms_battery_in / sensor.unibms_battery_out
-#   Vehicle SOC: sensor.battery
+# Source entities are selected under Zoe New Extended > Configure >
+# IMMAX entity sources. The automation uses the stable proxy entities below.
 
 input_select:
   immax_smart_charging_mode:
@@ -243,11 +238,12 @@ automation:
           datetime: "{{ now().strftime('%Y-%m-%d %H:%M:%S') }}"
       - if: "{{ trigger.to_state.state == 'Off' }}"
         then:
-          - if: "{{ is_state('switch.immax_ev_charger', 'on') }}"
+          - if: >-
+              {{ is_state('switch.renault_zoe_new_immax_charging', 'on') }}
             then:
               - action: switch.turn_off
                 target:
-                  entity_id: switch.immax_ev_charger
+                  entity_id: switch.renault_zoe_new_immax_charging
           - action: input_boolean.turn_off
             target:
               entity_id: input_boolean.immax_charge_to_percentage_active
@@ -315,32 +311,38 @@ automation:
           - input_number.immax_solar_max_power
           - input_select.immax_solar_phase_mode
           - input_datetime.immax_ready_by
-          - sensor.renault_zoe_new_nord_pool_price
-          - sensor.battery
-          - sensor.immax_ev_charger_status
-          - binary_sensor.immax_ev_charger_problem
-          - switch.immax_ev_charger_online_state
-          - switch.immax_ev_charger
-          - sensor.immax_ev_charger_power_a
-          - sensor.immax_ev_charger_power_b
-          - sensor.immax_ev_charger_power_c
-          - sensor.immax_ev_charger_voltage_a
-          - sensor.immax_ev_charger_voltage_b
-          - sensor.immax_ev_charger_voltage_c
-          - sensor.solax_srd9cccxv6_feed_in_power
-          - sensor.unibms_battery_in
-          - sensor.unibms_battery_out
+          - sensor.renault_zoe_new_immax_nord_pool_price
+          - sensor.renault_zoe_new_immax_vehicle_soc
+          - sensor.renault_zoe_new_immax_status
+          - binary_sensor.renault_zoe_new_immax_problem
+          - binary_sensor.renault_zoe_new_immax_online
+          - switch.renault_zoe_new_immax_charging
+          - sensor.renault_zoe_new_immax_power_a
+          - sensor.renault_zoe_new_immax_power_b
+          - sensor.renault_zoe_new_immax_power_c
+          - sensor.renault_zoe_new_immax_voltage_a
+          - sensor.renault_zoe_new_immax_voltage_b
+          - sensor.renault_zoe_new_immax_voltage_c
+          - sensor.renault_zoe_new_immax_grid_export
+          - sensor.renault_zoe_new_immax_battery_charge
+          - sensor.renault_zoe_new_immax_battery_discharge
     actions:
       - variables:
           mode: "{{ states('input_select.immax_smart_charging_mode') }}"
-          charger_on: "{{ is_state('switch.immax_ev_charger', 'on') }}"
-          charger_status: "{{ states('sensor.immax_ev_charger_status') }}"
-          online: "{{ is_state('switch.immax_ev_charger_online_state', 'on') }}"
-          fault: "{{ is_state('binary_sensor.immax_ev_charger_problem', 'on') }}"
+          charger_on: >-
+            {{ is_state('switch.renault_zoe_new_immax_charging', 'on') }}
+          charger_status: >-
+            {{ states('sensor.renault_zoe_new_immax_status') }}
+          online: >-
+            {{ is_state('binary_sensor.renault_zoe_new_immax_online', 'on') }}
+          fault: >-
+            {{ is_state('binary_sensor.renault_zoe_new_immax_problem', 'on') }}
           percentage_enabled: >-
             {{ is_state('input_boolean.immax_charge_to_percentage_enabled', 'on') }}
-          soc_valid: "{{ states('sensor.battery') | is_number }}"
-          soc: "{{ states('sensor.battery') | float(0) }}"
+          soc_valid: >-
+            {{ states('sensor.renault_zoe_new_immax_vehicle_soc') | is_number }}
+          soc: >-
+            {{ states('sensor.renault_zoe_new_immax_vehicle_soc') | float(0) }}
           target_soc: >-
             {{ states('input_number.immax_charge_target_percentage') | float(80) }}
           energy_target: "{{ states('input_number.immax_energy_to_add') | float(20) }}"
@@ -349,9 +351,12 @@ automation:
           last_counter_update: >-
             {{ as_timestamp(states('input_datetime.immax_energy_counter_last_update'), 0) }}
           phase_power: >-
-            {{ ([states('sensor.immax_ev_charger_power_a') | float(0), 0] | max) +
-               ([states('sensor.immax_ev_charger_power_b') | float(0), 0] | max) +
-               ([states('sensor.immax_ev_charger_power_c') | float(0), 0] | max) }}
+            {{ ([states('sensor.renault_zoe_new_immax_power_a') |
+                   float(0), 0] | max) +
+               ([states('sensor.renault_zoe_new_immax_power_b') |
+                   float(0), 0] | max) +
+               ([states('sensor.renault_zoe_new_immax_power_c') |
+                   float(0), 0] | max) }}
       - variables:
           elapsed_seconds: >-
             {{ [[as_timestamp(now()) - last_counter_update | float(0), 0] | max, 120] | min }}
@@ -394,33 +399,39 @@ automation:
           cap_on: "{{ is_state('input_boolean.immax_max_price_enabled', 'on') }}"
           cap: "{{ states('input_number.immax_max_energy_price') | float(100) }}"
           current_price: >-
-            {{ states('sensor.renault_zoe_new_nord_pool_price') | float(999) }}
+            {{ states('sensor.renault_zoe_new_immax_nord_pool_price') |
+               float(999) }}
           ready: "{{ states('input_datetime.immax_ready_by') }}"
           grid_surplus: >-
-            {{ states('sensor.solax_srd9cccxv6_feed_in_power') | float(0) }}
-          battery_in: "{{ states('sensor.unibms_battery_in') | float(0) }}"
-          battery_out: "{{ states('sensor.unibms_battery_out') | float(0) }}"
+            {{ states('sensor.renault_zoe_new_immax_grid_export') | float(0) }}
+          battery_in: >-
+            {{ states('sensor.renault_zoe_new_immax_battery_charge') |
+               float(0) }}
+          battery_out: >-
+            {{ states('sensor.renault_zoe_new_immax_battery_discharge') |
+               float(0) }}
           reserve_power_kw: >-
             {{ states('input_number.immax_solar_reserve_power') | float(0.5) }}
           solar_phase_mode: >-
             {{ states('input_select.immax_solar_phase_mode') }}
           voltage_sum: >-
             {% set value =
-              (states('sensor.immax_ev_charger_voltage_a') | float(0)) +
-              (states('sensor.immax_ev_charger_voltage_b') | float(0)) +
-              (states('sensor.immax_ev_charger_voltage_c') | float(0)) %}
+              (states('sensor.renault_zoe_new_immax_voltage_a') | float(0)) +
+              (states('sensor.renault_zoe_new_immax_voltage_b') | float(0)) +
+              (states('sensor.renault_zoe_new_immax_voltage_c') | float(0)) %}
             {{ value if value > 500 else 690 }}
           single_phase_voltage: >-
             {% set value =
-              (states('sensor.immax_ev_charger_voltage_a') | float(0)) +
-              (states('sensor.immax_ev_charger_voltage_b') | float(0)) +
-              (states('sensor.immax_ev_charger_voltage_c') | float(0)) %}
+              (states('sensor.renault_zoe_new_immax_voltage_a') | float(0)) +
+              (states('sensor.renault_zoe_new_immax_voltage_b') | float(0)) +
+              (states('sensor.renault_zoe_new_immax_voltage_c') | float(0)) %}
             {{ value / 3 if value > 500 else 230 }}
           configured_solar_min_power_kw: >-
             {{ states('input_number.immax_solar_min_power') | float(4.2) }}
           configured_solar_max_power_kw: >-
             {{ states('input_number.immax_solar_max_power') | float(22) }}
-          current_limit: "{{ states('number.immax_ev_charger_current') | int(6) }}"
+          current_limit: >-
+            {{ states('number.renault_zoe_new_immax_current') | int(6) }}
       - variables:
           control_voltage: >-
             {{ single_phase_voltage | float(230)
@@ -488,8 +499,10 @@ automation:
             {% endif %}
           selected_now: >-
             {% set slots =
-              (state_attr('sensor.renault_zoe_new_nord_pool_price', 'raw_today') or []) +
-              (state_attr('sensor.renault_zoe_new_nord_pool_price', 'raw_tomorrow') or []) %}
+              (state_attr('sensor.renault_zoe_new_immax_nord_pool_price',
+                          'raw_today') or []) +
+              (state_attr('sensor.renault_zoe_new_immax_nord_pool_price',
+                          'raw_tomorrow') or []) %}
             {% set ns = namespace(before=[], after=[], active=false) %}
             {% for grouped in slots | groupby('start') %}
               {% set slot = grouped.list[0] %}
@@ -524,8 +537,10 @@ automation:
                (selected_now or must_charge) }}
           plan_text: >-
             {% set slots =
-              (state_attr('sensor.renault_zoe_new_nord_pool_price', 'raw_today') or []) +
-              (state_attr('sensor.renault_zoe_new_nord_pool_price', 'raw_tomorrow') or []) %}
+              (state_attr('sensor.renault_zoe_new_immax_nord_pool_price',
+                          'raw_today') or []) +
+              (state_attr('sensor.renault_zoe_new_immax_nord_pool_price',
+                          'raw_tomorrow') or []) %}
             {% set ns = namespace(before=[], after=[], ranges=[], start='', end='') %}
             {% for grouped in slots | groupby('start') %}
               {% set slot = grouped.list[0] %}
@@ -575,8 +590,10 @@ automation:
             {% endif %}
           planned_energy: >-
             {% set slots =
-              (state_attr('sensor.renault_zoe_new_nord_pool_price', 'raw_today') or []) +
-              (state_attr('sensor.renault_zoe_new_nord_pool_price', 'raw_tomorrow') or []) %}
+              (state_attr('sensor.renault_zoe_new_immax_nord_pool_price',
+                          'raw_today') or []) +
+              (state_attr('sensor.renault_zoe_new_immax_nord_pool_price',
+                          'raw_tomorrow') or []) %}
             {% set ns = namespace(before=0, after=0) %}
             {% for grouped in slots | groupby('start') %}
               {% set slot = grouped.list[0] %}
@@ -595,8 +612,10 @@ automation:
                   needed_energy | float] | min, 0] | max | round(1) }}
           estimated_cost: >-
             {% set slots =
-              (state_attr('sensor.renault_zoe_new_nord_pool_price', 'raw_today') or []) +
-              (state_attr('sensor.renault_zoe_new_nord_pool_price', 'raw_tomorrow') or []) %}
+              (state_attr('sensor.renault_zoe_new_immax_nord_pool_price',
+                          'raw_today') or []) +
+              (state_attr('sensor.renault_zoe_new_immax_nord_pool_price',
+                          'raw_tomorrow') or []) %}
             {% set ns = namespace(before=[], after=[], remaining=needed_energy | float, cost=0) %}
             {% for grouped in slots | groupby('start') %}
               {% set slot = grouped.list[0] %}
@@ -703,24 +722,27 @@ automation:
                   - conditions: "{{ price_should_charge }}"
                     sequence:
                       - if: >-
-                          {{ (states('number.immax_ev_charger_current') | float(0) -
+                          {{ (states('number.renault_zoe_new_immax_current') |
+                              float(0) -
                               states('input_number.immax_nordpool_current') | float(32)) |
                              abs >= 1 and
                              as_timestamp(now()) -
                              as_timestamp(
-                               states.number.immax_ev_charger_current.last_changed
+                               states.number.renault_zoe_new_immax_current.last_changed
                              ) >= 30 }}
                         then:
                           - action: number.set_value
                             target:
-                              entity_id: number.immax_ev_charger_current
+                              entity_id: number.renault_zoe_new_immax_current
                             data:
                               value: >-
                                 {{ states('input_number.immax_nordpool_current') | int(32) }}
                       - if: >-
                           {{ not charger_on and
                              as_timestamp(now()) -
-                             as_timestamp(states.switch.immax_ev_charger.last_changed) >= 60 }}
+                             as_timestamp(
+                               states.switch.renault_zoe_new_immax_charging.last_changed
+                             ) >= 60 }}
                         then:
                           - if: "{{ percentage_enabled }}"
                             then:
@@ -729,15 +751,17 @@ automation:
                                   entity_id: input_boolean.immax_charge_to_percentage_active
                           - action: switch.turn_on
                             target:
-                              entity_id: switch.immax_ev_charger
+                              entity_id: switch.renault_zoe_new_immax_charging
                   - conditions: >-
                       {{ charger_on and
                          as_timestamp(now()) -
-                         as_timestamp(states.switch.immax_ev_charger.last_changed) >= 60 }}
+                         as_timestamp(
+                           states.switch.renault_zoe_new_immax_charging.last_changed
+                         ) >= 60 }}
                     sequence:
                       - action: switch.turn_off
                         target:
-                          entity_id: switch.immax_ev_charger
+                          entity_id: switch.renault_zoe_new_immax_charging
           - conditions: "{{ mode == 'Solar surplus' }}"
             sequence:
               - choose:
@@ -748,11 +772,13 @@ automation:
                       - if: >-
                           {{ not charger_on and start_solar and
                              as_timestamp(now()) -
-                             as_timestamp(states.switch.immax_ev_charger.last_changed) >= 120 }}
+                             as_timestamp(
+                               states.switch.renault_zoe_new_immax_charging.last_changed
+                             ) >= 120 }}
                         then:
                           - action: number.set_value
                             target:
-                              entity_id: number.immax_ev_charger_current
+                              entity_id: number.renault_zoe_new_immax_current
                             data:
                               value: "{{ solar_recommended_current | int(6) }}"
                           - delay:
@@ -764,19 +790,19 @@ automation:
                                   entity_id: input_boolean.immax_charge_to_percentage_active
                           - action: switch.turn_on
                             target:
-                              entity_id: switch.immax_ev_charger
+                              entity_id: switch.renault_zoe_new_immax_charging
                       - if: >-
                           {{ charger_on and
                              (current_limit | int(6) -
                               adjusted_solar_current | int(6)) | abs >= 1 and
                              as_timestamp(now()) -
                              as_timestamp(
-                               states.number.immax_ev_charger_current.last_changed
+                               states.number.renault_zoe_new_immax_current.last_changed
                              ) >= 45 }}
                         then:
                           - action: number.set_value
                             target:
-                              entity_id: number.immax_ev_charger_current
+                              entity_id: number.renault_zoe_new_immax_current
                             data:
                               value: >-
                                 {{ [[adjusted_solar_current | int(6), 6] | max, 32] |
@@ -785,11 +811,13 @@ automation:
                       {{ charger_on and
                          (target_reached or not online or fault or not plugged or stop_solar) and
                          as_timestamp(now()) -
-                         as_timestamp(states.switch.immax_ev_charger.last_changed) >= 120 }}
+                         as_timestamp(
+                           states.switch.renault_zoe_new_immax_charging.last_changed
+                         ) >= 120 }}
                     sequence:
                       - action: switch.turn_off
                         target:
-                          entity_id: switch.immax_ev_charger
+                          entity_id: switch.renault_zoe_new_immax_charging
     mode: restart
     max_exceeded: silent
 
@@ -801,7 +829,7 @@ automation:
         minutes: /1
       - trigger: state
         entity_id:
-          - sensor.battery
+          - sensor.renault_zoe_new_immax_vehicle_soc
           - input_number.immax_session_delivered_energy
     conditions:
       - condition: template
@@ -809,8 +837,9 @@ automation:
           {% set ready = states('input_datetime.immax_ready_by') %}
           {% set pct = is_state('input_boolean.immax_charge_to_percentage_enabled', 'on') %}
           {% set complete =
-            (pct and states('sensor.battery') | is_number and
-             states('sensor.battery') | float(0) >=
+            (pct and
+             states('sensor.renault_zoe_new_immax_vehicle_soc') | is_number and
+             states('sensor.renault_zoe_new_immax_vehicle_soc') | float(0) >=
              states('input_number.immax_charge_target_percentage') | float(80)) or
             (not pct and
              states('input_number.immax_session_delivered_energy') | float(0) >=

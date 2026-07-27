@@ -43,10 +43,21 @@ two-minute guard.
 
 1. Enable Home Assistant packages in `configuration.yaml`.
 2. Copy `immax_smart_charger_package.yaml` into the packages directory.
-3. Check every entity ID listed at the top of the package.
+3. Install or update Zoe New Extended to version 1.9.0 or newer.
 4. Restart Home Assistant.
-5. Add `lovelace_card.yaml` as a manual card.
+5. Open **Settings > Devices & services > Zoe New Extended > Configure >
+   IMMAX entity sources** and select the entities used by the controller.
+6. Add `lovelace_card.yaml` as a manual card or as its own dashboard view.
 
-The supplied defaults match the author's installation. In particular,
-`sensor.solax_srd9cccxv6_feed_in_power` must be positive while exporting, and
-the UniBMS `battery_in` / `battery_out` sensors must report positive watts.
+The integration publishes stable proxy entities, so changing a selected source
+does not require editing the package or card. The source values must use these
+sign conventions:
+
+- Grid export is positive while power is sent to the grid.
+- Battery charging and discharging are separate positive values.
+- Phase power and voltage entities report each charger phase.
+
+The card keeps target, deadline, mode, reserve, and limit settings editable.
+Calculated status, planned energy, estimated cost, available solar power,
+target power, actual charger power, grid export, and battery flow are exposed
+as read-only sensors.

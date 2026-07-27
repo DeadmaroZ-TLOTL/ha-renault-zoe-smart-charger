@@ -26,12 +26,14 @@ from .nordpool import NordPoolPriceCoordinator
 RETRY_SECONDS = 15
 PLATFORMS = (
     Platform.BINARY_SENSOR,
+    Platform.NUMBER,
     Platform.SELECT,
     Platform.SENSOR,
     Platform.SWITCH,
 )
 
-LOCATION_SWITCH_UNIQUE_ID_SUFFIXES = (
+PRESERVED_SWITCH_UNIQUE_ID_SUFFIXES = (
+    "_immax_charging",
     "_smart_charging_any_location",
     "_smart_charging_location_control",
 )
@@ -63,7 +65,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             registry_entry.config_entry_id == entry.entry_id
             and registry_entry.entity_id.startswith("switch.")
             and not registry_entry.unique_id.endswith(
-                LOCATION_SWITCH_UNIQUE_ID_SUFFIXES
+                PRESERVED_SWITCH_UNIQUE_ID_SUFFIXES
             )
         ):
             entity_registry.async_remove(registry_entry.entity_id)

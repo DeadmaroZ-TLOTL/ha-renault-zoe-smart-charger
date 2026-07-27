@@ -27,7 +27,8 @@ used by the included Nord Pool smart charger package.
 - Optional IMMAX EV charger controller with separate Nord Pool and dynamic
   solar-surplus modes, switchable one/three-phase kW regulation, battery-flow
   protection, and either a Zoe SOC target or a generic energy target. The
-  charger-specific 6-32 A command conversion stays internal.
+  charger-specific 6-32 A command conversion stays internal. Charger, solar,
+  battery, vehicle SOC, and price entities are selected in integration options.
 - Optional automatic Renault Trips dashboard with day selection, route maps,
   speed samples, distance, and estimated energy consumption.
 
@@ -46,10 +47,12 @@ in this integration can be removed.
 4. Add **Zoe New Extended** from **Settings > Devices & services**.
 
 The official Renault integration must already contain a loaded Zoe phase 2.
-Choose the planner's Nord Pool country under **Zoe New Extended > Configure**.
-The same options dialog is the only place where allowed zones are selected.
-Two global switches expose the location guard and unrestricted-location option
-without duplicating every zone as a device switch.
+Open **Zoe New Extended > Configure > Renault smart charging** to select the
+planner's Nord Pool country and allowed zones. Use **Configure > IMMAX entity
+sources** to select the charger controls, phase measurements, grid export,
+battery flow, vehicle SOC, and price entities. Two global switches expose the
+location guard and unrestricted-location option without duplicating every zone
+as a device switch.
 
 ### Manual
 
@@ -73,13 +76,14 @@ Nord Pool price sensor.
 ## IMMAX Smart Charger
 
 The optional files in [`immax_smart_charger`](immax_smart_charger) provide
-Nord Pool scheduling and dynamic three-phase solar-surplus regulation for the
-IMMAX Tuya EV charger. The two modes are mutually exclusive and `Off` preserves
-manual charger control.
+Nord Pool scheduling and dynamic one- or three-phase solar-surplus regulation
+for the IMMAX Tuya EV charger. The two modes are mutually exclusive and `Off`
+preserves manual charger control. The supplied card shows calculated planner
+and solar values as read-only sensors; only actual settings remain editable.
 
-Read [`immax_smart_charger/README.md`](immax_smart_charger/README.md) and verify
-the charger, grid-export, battery-flow, and vehicle SOC entity IDs before
-enabling either smart mode.
+Read [`immax_smart_charger/README.md`](immax_smart_charger/README.md), select
+the source entities in the integration options, and verify their live values
+before enabling either smart mode.
 
 ## Renault Trips
 
