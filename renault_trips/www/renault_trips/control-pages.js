@@ -2,7 +2,6 @@
 
 const QUERY = new URLSearchParams(window.location.search);
 const PAGE = QUERY.get("page") === "immax" ? "immax" : "charging";
-const LANGUAGE_KEY = "renaultDashboardLanguage";
 const DAY_MS = 86400000;
 const REFRESH_CURRENT_MS = 15000;
 const REFRESH_HISTORY_MS = 300000;
@@ -11,7 +10,14 @@ const I18N = {
   lv: {
     refresh: "Atjaunot",
     settings: "Iestatījumi",
+    entitySettings: "IMMAX entītiju avoti",
     clearDate: "Notīrīt datumu",
+    periodLabel: "Vēstures periods",
+    specificDate: "Konkrēts datums",
+    summary: "Kopsavilkums",
+    commands: "Komandas",
+    historyChart: "Vēstures grafiks",
+    detailedHistoryChart: "Detalizētas vēstures grafiks",
     loading: "Ielādēju Home Assistant datus...",
     updated: "Atjaunots {time}. Grafikos var pārvietot peli vai pieskarties, lai redzētu vērtības konkrētā laikā.",
     loadError: "Datus neizdevās ielādēt: {error}",
@@ -32,7 +38,7 @@ const I18N = {
     chargerControl: "Lādētāja vadība",
     limitsAndTarget: "Limiti un mērķis",
     activeMode: "Aktīvā režīma iestatījumi",
-    measurements: "Mērījumi un padomdevējs",
+    measurements: "Mērījumi",
     priceAndPower: "Nord Pool cena un ZOE uzlādes jauda",
     priceAndPowerNote: "Cena c/kWh, jauda kW",
     batteryHistory: "Baterijas un uzlādes vēsture",
@@ -123,12 +129,20 @@ const I18N = {
     status: "Statuss",
     total: "Kopā",
     noSessions: "Šajā mēnesī pabeigtu uzlādes sesiju nav.",
+    valueSaved: "Saglabāts: {value}",
     commandDone: "Komanda izpildīta.",
   },
   en: {
     refresh: "Refresh",
     settings: "Settings",
+    entitySettings: "IMMAX entity sources",
     clearDate: "Clear date",
+    periodLabel: "History period",
+    specificDate: "Specific date",
+    summary: "Summary",
+    commands: "Commands",
+    historyChart: "History chart",
+    detailedHistoryChart: "Detailed history chart",
     loading: "Loading Home Assistant data...",
     updated: "Updated {time}. Hover or touch the charts to inspect values at a specific time.",
     loadError: "Could not load data: {error}",
@@ -149,7 +163,7 @@ const I18N = {
     chargerControl: "Charger control",
     limitsAndTarget: "Limits and target",
     activeMode: "Active mode settings",
-    measurements: "Measurements and advisor",
+    measurements: "Measurements",
     priceAndPower: "Nord Pool price and ZOE charging power",
     priceAndPowerNote: "Price c/kWh, power kW",
     batteryHistory: "Battery and charging history",
@@ -240,6 +254,7 @@ const I18N = {
     status: "Status",
     total: "Total",
     noSessions: "No completed charge sessions in the current month.",
+    valueSaved: "Saved: {value}",
     commandDone: "Command completed.",
   },
 };
@@ -322,7 +337,7 @@ const CONFIG = {
     metrics: [
       ["sensor.immax_ev_charger_status", "chargerStatus"],
       ["sensor.renault_zoe_new_immax_solar_charger_power", "chargingPower"],
-      ["sensor.ac_tuya_meter_power", "totalLoad"],
+      ["sensor.renault_zoe_new_immax_total_site_load", "totalLoad"],
       ["number.immax_ev_charger_current", "currentLimit"],
       ["sensor.immax_ev_charger_energy", "chargerEnergy"],
       ["sensor.unibms_soc", "siteBatterySoc"],
@@ -377,10 +392,6 @@ const CONFIG = {
       {
         title: "measurements",
         items: [
-          ["input_boolean.immax_ai_advisor_enabled", "aiAdvisor"],
-          ["input_number.immax_ai_advisor_interval", "analysisInterval"],
-          ["input_number.immax_ai_current_cap", "aiCurrentCap"],
-          ["input_text.immax_ai_advice", "aiAdvice"],
           ["sensor.immax_ev_charger_voltage_a", "phaseAVoltage"],
           ["sensor.immax_ev_charger_current_a", "phaseACurrent"],
           ["sensor.immax_ev_charger_voltage_b", "phaseBVoltage"],
@@ -421,6 +432,7 @@ const periodEl = document.getElementById("period");
 const dayDateEl = document.getElementById("dayDate");
 const clearDateEl = document.getElementById("clearDate");
 const settingsEl = document.getElementById("settings");
+const entitySettingsEl = document.getElementById("entitySettings");
 const reloadEl = document.getElementById("reload");
 const reloadLabelEl = document.getElementById("reloadLabel");
 const detailTitleEl = document.getElementById("detailTitle");
@@ -430,9 +442,8 @@ const mainChartTitleEl = document.getElementById("mainChartTitle");
 const mainChartSubtitleEl = document.getElementById("mainChartSubtitle");
 const secondaryChartTitleEl = document.getElementById("secondaryChartTitle");
 const secondaryChartSubtitleEl = document.getElementById("secondaryChartSubtitle");
-const languageButtons = [...document.querySelectorAll("[data-language]")];
 
-let language = localStorage.getItem(LANGUAGE_KEY) === "en" ? "en" : "lv";
+let language = "lv";
 let cachedParentHass = null;
 let currentStates = {};
 let loading = false;
@@ -571,13 +582,14 @@ async function haFetch(path, options = {}) {
 }
 
 async function callService(domain, service, entityId, data = {}) {
+  const serviceData = { ...data, entity_id: entityId };
   const hass = await getParentHass();
   if (hass?.callService) {
-    return hass.callService(domain, service, data, { entity_id: entityId });
+    return hass.callService(domain, service, serviceData);
   }
   return haFetch(`/api/services/${domain}/${service}`, {
     method: "POST",
-    body: { entity_id: entityId, ...data },
+    body: serviceData,
   });
 }
 
@@ -592,6 +604,32 @@ async function showMoreInfo(entityId) {
   } catch (error) {
     console.debug("Could not open more-info", error);
     window.parent.location.assign(`/history?entity_id=${encodeURIComponent(entityId)}`);
+  }
+}
+
+async function openIntegrationOptions(stepId) {
+  try {
+    const entries = await haFetch("/api/config/config_entries/entry");
+    const entry = entries.find((item) => item.domain === "zoe_new_extended");
+    if (!entry) throw new Error("Integration entry not found");
+    let flow = await haFetch("/api/config/config_entries/options/flow", {
+      method: "POST",
+      body: {
+        handler: entry.entry_id,
+        show_advanced_options: false,
+      },
+    });
+    if (flow?.type === "menu") {
+      flow = await haFetch(`/api/config/config_entries/options/flow/${flow.flow_id}`, {
+        method: "POST",
+        body: { next_step_id: stepId },
+      });
+    }
+    if (!flow?.flow_id) throw new Error("Options flow did not start");
+    window.parent.location.assign(`/config/integrations/options/flow/${flow.flow_id}`);
+  } catch (error) {
+    console.debug("Could not open the requested options step", error);
+    window.parent.location.assign("/config/integrations/integration/zoe_new_extended");
   }
 }
 
@@ -665,6 +703,40 @@ function displayState(state) {
   if (state.state === "on") return language === "lv" ? "Ieslēgts" : "On";
   if (state.state === "off") return language === "lv" ? "Izslēgts" : "Off";
   return state.state;
+}
+
+function displayOption(option) {
+  const translations = {
+    lv: {
+      Off: "Izslēgts",
+      "Solar surplus": "Saules pārpalikums",
+      Auto: "Automātiski",
+      "1 phase": "1 fāze",
+      "3 phases": "3 fāzes",
+      "SOC (%)": "SOC (%)",
+      "Range (km)": "Nobraukums (km)",
+      immediate: "Tūlītēja uzlāde",
+      charge_to_percent: "Uzlāde līdz procentiem",
+      fixed_charge: "Fiksēta uzlāde",
+      scheduled_charge: "Ieplānota uzlāde",
+      delayed_charge: "Atlikta uzlāde",
+    },
+    en: {
+      Off: "Off",
+      "Solar surplus": "Solar surplus",
+      Auto: "Automatic",
+      "1 phase": "1 phase",
+      "3 phases": "3 phases",
+      "SOC (%)": "SOC (%)",
+      "Range (km)": "Range (km)",
+      immediate: "Immediate charging",
+      charge_to_percent: "Charge to percentage",
+      fixed_charge: "Fixed charging",
+      scheduled_charge: "Scheduled charging",
+      delayed_charge: "Delayed charging",
+    },
+  };
+  return translations[language][option] || option;
 }
 
 function isWritable(entityId) {
@@ -788,18 +860,52 @@ function controlValue(entityId, state) {
     if (Number.isFinite(toNumber(state.attributes?.max))) input.max = state.attributes.max;
     input.step = state.attributes?.step || "any";
     input.title = state.attributes?.unit_of_measurement || "";
-    input.addEventListener("change", async () => {
+    let saveTimer = null;
+    let saving = false;
+    let saveQueued = false;
+    let lastSavedValue = toNumber(state.state);
+    const saveValue = async () => {
+      if (saveTimer) {
+        window.clearTimeout(saveTimer);
+        saveTimer = null;
+      }
       const value = toNumber(input.value);
       if (!Number.isFinite(value)) return;
-      input.disabled = true;
+      if (
+        Number.isFinite(lastSavedValue)
+        && Math.abs(value - lastSavedValue) < Number.EPSILON
+      ) return;
+      if (saving) {
+        saveQueued = true;
+        return;
+      }
+      saving = true;
+      input.dataset.saving = "true";
       try {
         await callService(domain, "set_value", entityId, { value });
+        lastSavedValue = value;
+        setStatus(t("valueSaved", { value: input.value }));
         await loadCurrent(true);
       } catch (error) {
         setStatus(t("loadError", { error: error.message }), true);
       } finally {
-        input.disabled = false;
+        saving = false;
+        delete input.dataset.saving;
+        if (saveQueued) {
+          saveQueued = false;
+          window.setTimeout(saveValue, 0);
+        }
       }
+    };
+    input.addEventListener("input", () => {
+      if (saveTimer) window.clearTimeout(saveTimer);
+      saveTimer = window.setTimeout(saveValue, 500);
+    });
+    input.addEventListener("change", saveValue);
+    input.addEventListener("keydown", (event) => {
+      if (event.key !== "Enter") return;
+      event.preventDefault();
+      saveValue();
     });
     return input;
   }
@@ -810,7 +916,7 @@ function controlValue(entityId, state) {
     for (const option of options) {
       const item = document.createElement("option");
       item.value = option;
-      item.textContent = option;
+      item.textContent = displayOption(option);
       item.selected = option === state.state;
       select.append(item);
     }
@@ -818,6 +924,7 @@ function controlValue(entityId, state) {
       select.disabled = true;
       try {
         await callService(domain, "select_option", entityId, { option: select.value });
+        setStatus(t("valueSaved", { value: select.value }));
         await loadCurrent(true);
       } catch (error) {
         setStatus(t("loadError", { error: error.message }), true);
@@ -839,6 +946,7 @@ function controlValue(entityId, state) {
         await callService(domain, "set_datetime", entityId, {
           datetime: input.value.replace("T", " "),
         });
+        setStatus(t("valueSaved", { value: input.value.replace("T", " ") }));
         await loadCurrent(true);
       } catch (error) {
         setStatus(t("loadError", { error: error.message }), true);
@@ -872,9 +980,8 @@ function renderPanels() {
       row.className = "control-row";
       const label = document.createElement("div");
       label.className = "control-label";
-      label.innerHTML = `
-        <strong>${escapeHtml(t(labelKey))}</strong>
-        <small>${escapeHtml(entityId)}</small>`;
+      label.innerHTML = `<strong>${escapeHtml(t(labelKey))}</strong>`;
+      label.title = entityId;
       const value = document.createElement("div");
       value.className = "control-value";
       value.append(controlValue(entityId, state));
@@ -894,19 +1001,29 @@ function applyLanguage() {
   reloadLabelEl.textContent = t("refresh");
   settingsEl.title = t("settings");
   settingsEl.setAttribute("aria-label", t("settings"));
+  entitySettingsEl.title = t("entitySettings");
+  entitySettingsEl.setAttribute("aria-label", t("entitySettings"));
   clearDateEl.title = t("clearDate");
   clearDateEl.setAttribute("aria-label", t("clearDate"));
+  periodEl.setAttribute("aria-label", t("periodLabel"));
+  dayDateEl.title = t("specificDate");
+  dayDateEl.setAttribute("aria-label", t("specificDate"));
+  metricsEl.setAttribute("aria-label", t("summary"));
+  actionsEl.setAttribute("aria-label", t("commands"));
+  document.getElementById("mainChart").setAttribute(
+    "aria-label",
+    t("historyChart"),
+  );
+  document.getElementById("secondaryChart").setAttribute(
+    "aria-label",
+    t("detailedHistoryChart"),
+  );
   mainChartTitleEl.textContent = t(pageConfig.mainChart.title);
   mainChartSubtitleEl.textContent = t(pageConfig.mainChart.subtitle);
   secondaryChartTitleEl.textContent = t(pageConfig.secondaryChart.title);
   secondaryChartSubtitleEl.textContent = t(pageConfig.secondaryChart.subtitle);
   detailTitleEl.textContent = t(pageConfig.detailTitle);
   detailSubtitleEl.textContent = t(pageConfig.detailSubtitle);
-  for (const button of languageButtons) {
-    const active = button.dataset.language === language;
-    button.classList.toggle("active", active);
-    button.setAttribute("aria-pressed", String(active));
-  }
   const selected = periodEl.value;
   const periodLabels = language === "lv"
     ? { "24h": "24 h", "48h": "48 h", "7d": "7 dienas", "30d": "30 dienas" }
@@ -1090,6 +1207,7 @@ class TimeChart {
     this.range = { start: Date.now() - DAY_MS, end: Date.now() };
     this.axis = {};
     this.pointerX = null;
+    this.hiddenSeries = new Set();
     this.canvas.addEventListener("pointermove", (event) => this.onPointer(event));
     this.canvas.addEventListener("pointerleave", () => {
       this.pointerX = null;
@@ -1102,27 +1220,51 @@ class TimeChart {
   }
 
   setData(series, range, axis = {}) {
-    this.series = series.filter((item) => item.points.length);
+    this.series = series
+      .filter((item) => item.points.length)
+      .map((item, index) => ({ ...item, id: item.id || `series-${index}` }));
     this.range = range;
     this.axis = axis;
+    const availableIds = new Set(this.series.map((item) => item.id));
+    this.hiddenSeries = new Set(
+      [...this.hiddenSeries].filter((id) => availableIds.has(id)),
+    );
     this.renderLegend();
     this.draw();
+  }
+
+  visibleSeries() {
+    return this.series.filter((series) => !this.hiddenSeries.has(series.id));
   }
 
   renderLegend() {
     this.legend.replaceChildren();
     for (const series of this.series) {
-      const item = document.createElement("span");
-      item.className = "legend-item";
+      const hidden = this.hiddenSeries.has(series.id);
+      const item = document.createElement("button");
+      item.type = "button";
+      item.className = `legend-item ${hidden ? "is-hidden" : ""}`;
+      item.setAttribute("aria-pressed", String(!hidden));
+      item.title = language === "lv"
+        ? `${hidden ? "Rādīt" : "Paslēpt"}: ${series.name}`
+        : `${hidden ? "Show" : "Hide"}: ${series.name}`;
       item.innerHTML = `
         <span class="legend-swatch" style="background:${escapeHtml(series.color)}"></span>
         <span>${escapeHtml(series.name)}</span>`;
+      item.addEventListener("click", () => {
+        if (this.hiddenSeries.has(series.id)) this.hiddenSeries.delete(series.id);
+        else this.hiddenSeries.add(series.id);
+        this.pointerX = null;
+        this.tooltip.hidden = true;
+        this.renderLegend();
+        this.draw();
+      });
       this.legend.append(item);
     }
   }
 
   bounds(axisName) {
-    const values = this.series
+    const values = this.visibleSeries()
       .filter((series) => (series.axis || "left") === axisName)
       .flatMap((series) => series.points.map((point) => point.y))
       .filter(Number.isFinite);
@@ -1156,7 +1298,7 @@ class TimeChart {
 
     const margin = {
       left: 58,
-      right: this.series.some((series) => series.axis === "right") ? 58 : 18,
+      right: this.visibleSeries().some((series) => series.axis === "right") ? 58 : 18,
       top: 14,
       bottom: 42,
     };
@@ -1188,7 +1330,7 @@ class TimeChart {
       const leftValue = leftBounds.max - fraction * (leftBounds.max - leftBounds.min);
       context.textAlign = "right";
       context.fillText(formatAxis(leftValue), plot.x - 8, y);
-      if (this.series.some((series) => series.axis === "right")) {
+      if (this.visibleSeries().some((series) => series.axis === "right")) {
         const rightValue = rightBounds.max - fraction * (rightBounds.max - rightBounds.min);
         context.textAlign = "left";
         context.fillText(formatAxis(rightValue), plot.x + plot.width + 8, y);
@@ -1214,7 +1356,7 @@ class TimeChart {
       context.fillText(dateFormatter.format(time).replace(", ", " "), x, plot.y + plot.height + 9);
     }
 
-    for (const series of this.series) {
+    for (const series of this.visibleSeries()) {
       const bounds = series.axis === "right" ? rightBounds : leftBounds;
       context.beginPath();
       context.strokeStyle = series.color;
@@ -1246,7 +1388,7 @@ class TimeChart {
     }
 
     if (Number.isFinite(this.pointerX)) this.drawPointer();
-    if (!this.series.length) {
+    if (!this.visibleSeries().length) {
       context.fillStyle = textColor;
       context.textAlign = "center";
       context.textBaseline = "middle";
@@ -1278,7 +1420,7 @@ class TimeChart {
     );
     this.pointerX = x;
     const time = this.range.start + (x - this.plot.x) / this.plot.width * (this.range.end - this.range.start);
-    const rows = this.series
+    const rows = this.visibleSeries()
       .map((series) => ({ series, point: this.nearestPoint(series.points, time) }))
       .filter(({ point }) => point && Math.abs(point.x - time) < (this.range.end - this.range.start) / 12);
     if (!rows.length) {
@@ -1319,7 +1461,7 @@ class TimeChart {
     context.lineTo(this.pointerX, plot.y + plot.height);
     context.stroke();
     context.setLineDash([]);
-    for (const series of this.series) {
+    for (const series of this.visibleSeries()) {
       const point = this.nearestPoint(series.points, time);
       if (!point) continue;
       const bounds = series.axis === "right" ? this.chartBounds.right : this.chartBounds.left;
@@ -1366,7 +1508,7 @@ async function loadHistory() {
     : [
       "sensor.renault_zoe_new_immax_solar_production",
       "sensor.renault_zoe_new_immax_solar_charger_power",
-      "sensor.ac_tuya_meter_power",
+      "sensor.renault_zoe_new_immax_total_site_load",
       "sensor.unibms_soc",
       "sensor.immax_ev_charger_current_a",
       "sensor.immax_ev_charger_current_b",
@@ -1382,7 +1524,7 @@ async function loadHistory() {
       "sensor.renault_zoe_new_nord_pool_price",
       "sensor.renault_zoe_new_immax_solar_production",
       "sensor.renault_zoe_new_immax_solar_charger_power",
-      "sensor.ac_tuya_meter_power",
+      "sensor.renault_zoe_new_immax_total_site_load",
       "sensor.unibms_soc",
       "sensor.immax_ev_charger_current_a",
       "sensor.immax_ev_charger_current_b",
@@ -1472,32 +1614,33 @@ function renderChargingCharts(historyMap, statisticsMap, range) {
   );
   const battery = pointsFor(historyMap, statisticsMap, batteryEntity);
   mainChart.setData([
-    { name: language === "lv" ? "Nord Pool cena" : "Nord Pool price", points: price, color: cssColor("--accent"), unit: "c/kWh", axis: "left", step: true, maximumGap: 2 * 3600000 },
-    { name: language === "lv" ? "Maks. cena" : "Max price", points: constantPoints(maxPrice, range), color: cssColor("--red"), unit: "c/kWh", axis: "left", width: 2.5, maximumGap: Number.POSITIVE_INFINITY },
-    { name: language === "lv" ? "ZOE jauda" : "ZOE power", points: power, color: cssColor("--orange"), unit: "kW", axis: "right" },
+    { id: "price", name: language === "lv" ? "Nord Pool cena" : "Nord Pool price", points: price, color: cssColor("--accent"), unit: "c/kWh", axis: "left", step: true, maximumGap: 2 * 3600000 },
+    { id: "price-cap", name: language === "lv" ? "Maks. cena" : "Max price", points: constantPoints(maxPrice, range), color: cssColor("--red"), unit: "c/kWh", axis: "left", width: 2.5, maximumGap: Number.POSITIVE_INFINITY },
+    { id: "zoe-power", name: language === "lv" ? "ZOE jauda" : "ZOE power", points: power, color: cssColor("--orange"), unit: "kW", axis: "right" },
   ], range, { left: {}, right: { min: 0 } });
   secondaryChart.setData([
-    { name: language === "lv" ? "Baterija" : "Battery", points: battery, color: cssColor("--green"), unit: "%", axis: "left" },
-    { name: language === "lv" ? "Uzlādes jauda" : "Charging power", points: power, color: cssColor("--orange"), unit: "kW", axis: "right" },
+    { id: "battery", name: language === "lv" ? "Baterija" : "Battery", points: battery, color: cssColor("--green"), unit: "%", axis: "left" },
+    { id: "zoe-power", name: language === "lv" ? "Uzlādes jauda" : "Charging power", points: power, color: cssColor("--orange"), unit: "kW", axis: "right" },
   ], range, { left: { min: 0, max: 100 }, right: { min: 0 } });
 }
 
 function renderImmaxCharts(historyMap, statisticsMap, range) {
   const solarEntity = "sensor.renault_zoe_new_immax_solar_production";
   const chargerEntity = "sensor.renault_zoe_new_immax_solar_charger_power";
-  const loadEntity = "sensor.ac_tuya_meter_power";
+  const loadEntity = "sensor.renault_zoe_new_immax_total_site_load";
   const socEntity = "sensor.unibms_soc";
   const powerTransform = (entityId) => (value) => toKw(entityId, value);
   mainChart.setData([
-    { name: language === "lv" ? "Saule" : "Solar", points: pointsFor(historyMap, statisticsMap, solarEntity, powerTransform(solarEntity)), color: "#e3a516", unit: "kW", axis: "left" },
-    { name: "IMMAX", points: pointsFor(historyMap, statisticsMap, chargerEntity, powerTransform(chargerEntity)), color: cssColor("--orange"), unit: "kW", axis: "left" },
-    { name: language === "lv" ? "Kopējā slodze" : "Total load", points: pointsFor(historyMap, statisticsMap, loadEntity, powerTransform(loadEntity)), color: cssColor("--blue"), unit: "kW", axis: "left" },
-    { name: language === "lv" ? "Baterijas SOC" : "Battery SOC", points: pointsFor(historyMap, statisticsMap, socEntity), color: cssColor("--green"), unit: "%", axis: "right" },
+    { id: "solar", name: language === "lv" ? "Saule" : "Solar", points: pointsFor(historyMap, statisticsMap, solarEntity, powerTransform(solarEntity)), color: "#e3a516", unit: "kW", axis: "left" },
+    { id: "immax-power", name: "IMMAX", points: pointsFor(historyMap, statisticsMap, chargerEntity, powerTransform(chargerEntity)), color: cssColor("--orange"), unit: "kW", axis: "left" },
+    { id: "total-load", name: language === "lv" ? "Kopējā slodze" : "Total load", points: pointsFor(historyMap, statisticsMap, loadEntity, powerTransform(loadEntity)), color: cssColor("--blue"), unit: "kW", axis: "left" },
+    { id: "site-soc", name: language === "lv" ? "Baterijas SOC" : "Battery SOC", points: pointsFor(historyMap, statisticsMap, socEntity), color: cssColor("--green"), unit: "%", axis: "right" },
   ], range, { left: { min: 0 }, right: { min: 0, max: 100 } });
 
   const phaseColors = ["#2878b5", "#c96b16", "#27834a"];
   const phaseNames = language === "lv" ? ["Fāze A", "Fāze B", "Fāze C"] : ["Phase A", "Phase B", "Phase C"];
   const currentSeries = ["a", "b", "c"].map((phase, index) => ({
+    id: `current-${phase}`,
     name: `${phaseNames[index]} ${t("current")}`,
     points: pointsFor(historyMap, statisticsMap, `sensor.immax_ev_charger_current_${phase}`),
     color: phaseColors[index],
@@ -1505,6 +1648,7 @@ function renderImmaxCharts(historyMap, statisticsMap, range) {
     axis: "left",
   }));
   const voltageSeries = ["a", "b", "c"].map((phase, index) => ({
+    id: `voltage-${phase}`,
     name: `${phaseNames[index]} ${t("voltage")}`,
     points: pointsFor(historyMap, statisticsMap, `sensor.immax_ev_charger_voltage_${phase}`),
     color: phaseColors[index],
@@ -1604,7 +1748,7 @@ function renderImmaxFreshness() {
   const entities = [
     ["sensor.renault_zoe_new_immax_solar_production", "solarProduction"],
     ["sensor.renault_zoe_new_immax_solar_charger_power", "chargingPower"],
-    ["sensor.ac_tuya_meter_power", "totalLoad"],
+    ["sensor.renault_zoe_new_immax_total_site_load", "totalLoad"],
     ["sensor.unibms_soc", "siteBatterySoc"],
     ["sensor.immax_ev_charger_energy", "chargerEnergy"],
     ["sensor.immax_ev_charger_current_a", "phaseA"],
@@ -1639,6 +1783,16 @@ function renderDetail() {
   else renderImmaxFreshness();
 }
 
+function applyConfiguredLanguage() {
+  const configured = stateFor(
+    "sensor.renault_zoe_new_cost_settings",
+  )?.attributes?.dashboard_language;
+  const nextLanguage = configured === "en" ? "en" : "lv";
+  if (nextLanguage === language) return;
+  language = nextLanguage;
+  applyLanguage();
+}
+
 async function loadCurrent(silent = false) {
   if (loading) return;
   if (
@@ -1656,6 +1810,7 @@ async function loadCurrent(silent = false) {
       const states = await haFetch("/api/states");
       currentStates = Object.fromEntries(states.map((state) => [state.entity_id, state]));
     }
+    applyConfiguredLanguage();
     renderMetrics();
     renderActions();
     renderPanels();
@@ -1686,16 +1841,9 @@ async function reloadAll() {
 
 titleIconEl.innerHTML = pageConfig.icon;
 if (PAGE === "immax") periodEl.value = "24h";
+entitySettingsEl.hidden = PAGE !== "immax";
 dayDateEl.max = localDateValue(new Date());
 applyLanguage();
-
-for (const button of languageButtons) {
-  button.addEventListener("click", () => {
-    language = button.dataset.language;
-    localStorage.setItem(LANGUAGE_KEY, language);
-    applyLanguage();
-  });
-}
 
 periodEl.addEventListener("change", () => {
   dayDateEl.value = "";
@@ -1712,7 +1860,10 @@ clearDateEl.addEventListener("click", () => {
   loadHistory();
 });
 settingsEl.addEventListener("click", () => {
-  window.parent.location.assign("/config/integrations/integration/zoe_new_extended");
+  openIntegrationOptions(PAGE === "immax" ? "immax_setpoints" : "smart_charging");
+});
+entitySettingsEl.addEventListener("click", () => {
+  openIntegrationOptions("immax_entities");
 });
 reloadEl.addEventListener("click", reloadAll);
 

@@ -114,38 +114,6 @@
       gap: 8px;
     }
 
-    .language-switch {
-      display: inline-grid;
-      grid-template-columns: repeat(2, minmax(42px, 1fr));
-      gap: 2px;
-      padding: 2px;
-      border: 1px solid var(--line-strong);
-      border-radius: 6px;
-      background: var(--surface-muted);
-    }
-
-    .language-switch button {
-      min-width: 42px;
-      min-height: 34px;
-      padding: 0 9px;
-      border: 0;
-      border-radius: 4px;
-      background: transparent;
-      color: var(--muted);
-      font-size: 12px;
-      font-weight: 650;
-    }
-
-    .language-switch button.active {
-      background: var(--accent);
-      color: #fff;
-    }
-
-    .language-switch button:focus-visible {
-      outline: 2px solid var(--accent);
-      outline-offset: 1px;
-    }
-
     .refresh {
       min-width: 108px;
       border-color: var(--accent);
@@ -372,11 +340,6 @@
         grid-column: 1 / -1;
       }
 
-      .language-switch {
-        grid-column: 1 / -1;
-        justify-self: end;
-      }
-
       .filters button {
         min-width: 0;
       }
@@ -459,10 +422,6 @@
         <p data-i18n="pageSubtitle">Uzlāžu pašizmaksa, baterijas enerģijas atlikums un braucienu izmaksas.</p>
       </div>
       <div class="filters">
-        <div class="language-switch" role="group" aria-label="Valoda" data-i18n-aria="language">
-          <button id="langLv" type="button" data-language="lv" aria-pressed="true">LV</button>
-          <button id="langEn" type="button" data-language="en" aria-pressed="false">EN</button>
-        </div>
         <select id="period" aria-label="Periods" data-i18n-aria="period">
           <option value="current_month" data-i18n="currentMonth">Tekošais mēnesis</option>
           <option value="7" data-i18n="days7">7 dienas</option>
@@ -568,6 +527,6 @@
     </aside>
   </main>
 
-  <script src="./costs.js?v=1.2.0"></script>
+  <script src="./costs.js?v=1.3.1"></script>
 </body>
 </html>

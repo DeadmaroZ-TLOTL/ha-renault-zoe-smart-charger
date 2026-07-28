@@ -454,29 +454,30 @@
   <main class="shell mileage-app">
     <section class="panel mileage-overview overview-block">
       <div class="header">
-        <h1>Nobraukuma statistika</h1>
+        <h1 data-i18n="pageTitle">Nobraukuma statistika</h1>
         <div class="toolbar">
           <select id="days" title="Periods līdz šodienai">
-            <option value="1">1 diena</option>
-            <option value="3">3 dienas</option>
-            <option value="7" selected>7 dienas</option>
-            <option value="14">14 dienas</option>
-            <option value="30">30 dienas</option>
+            <option value="1" data-i18n="day1">1 diena</option>
+            <option value="3" data-i18n="days3">3 dienas</option>
+            <option value="7" selected data-i18n="days7">7 dienas</option>
+            <option value="14" data-i18n="days14">14 dienas</option>
+            <option value="30" data-i18n="days30">30 dienas</option>
           </select>
           <input id="dayDate" type="date" title="Konkrēts datums" aria-label="Konkrēts datums">
           <button class="clear-date" id="clearDate" type="button" title="Atgriezties pie perioda" aria-label="Atgriezties pie perioda" hidden>×</button>
-          <button class="primary" id="reload" type="button">Atjaunot</button>
+          <button id="settings" type="button" data-i18n="settings">Iestatījumi</button>
+          <button class="primary" id="reload" type="button" data-i18n="refresh">Atjaunot</button>
         </div>
       </div>
       <div id="status" class="status">Ielādēju HA vēsturi...</div>
       <div class="summary">
-        <div class="metric"><span>Odometra rādījums</span><strong id="mOdometer">-</strong></div>
-        <div class="metric"><span>Braucieni</span><strong id="mTrips">-</strong></div>
-        <div class="metric"><span>Kopā</span><strong id="mTotal">-</strong></div>
-        <div class="metric"><span>Vid. ātrums (apt.)</span><strong id="mAvgSpeed">-</strong></div>
-        <div class="metric"><span>Asfalts / cietais</span><strong id="mHard">-</strong></div>
-        <div class="metric"><span>Grants / neklātais</span><strong id="mLoose">-</strong></div>
-        <div class="metric"><span>Nezināms segums</span><strong id="mUnknown">-</strong></div>
+        <div class="metric"><span data-i18n="odometer">Odometra rādījums</span><strong id="mOdometer">-</strong></div>
+        <div class="metric"><span data-i18n="trips">Braucieni</span><strong id="mTrips">-</strong></div>
+        <div class="metric"><span data-i18n="total">Kopā</span><strong id="mTotal">-</strong></div>
+        <div class="metric"><span data-i18n="averageSpeed">Vid. ātrums (apt.)</span><strong id="mAvgSpeed">-</strong></div>
+        <div class="metric"><span data-i18n="hardSurface">Asfalts / cietais</span><strong id="mHard">-</strong></div>
+        <div class="metric"><span data-i18n="looseSurface">Grants / neklātais</span><strong id="mLoose">-</strong></div>
+        <div class="metric"><span data-i18n="unknownSurface">Nezināms segums</span><strong id="mUnknown">-</strong></div>
       </div>
       <div class="surface-overview">
         <div class="surface-bar" aria-label="Nobraukuma sadalījums pēc ceļa seguma">
@@ -485,9 +486,9 @@
           <span id="unknownBar" class="unknown"></span>
         </div>
         <div class="legend">
-          <span><i class="hard"></i>Asfalts / cietais</span>
-          <span><i class="loose"></i>Grants / neklātais</span>
-          <span><i class="unknown"></i>Nezināms</span>
+          <span><i class="hard"></i><span data-i18n="hardSurface">Asfalts / cietais</span></span>
+          <span><i class="loose"></i><span data-i18n="looseSurface">Grants / neklātais</span></span>
+          <span><i class="unknown"></i><span data-i18n="unknown">Nezināms</span></span>
         </div>
       </div>
     </section>
@@ -495,35 +496,35 @@
     <div class="content-grid">
       <section class="panel content-panel">
         <div class="header">
-          <h2>Nobraukums pa dienām</h2>
+          <h2 data-i18n="dailyMileage">Nobraukums pa dienām</h2>
         </div>
         <div id="daily" class="daily-list"></div>
-        <div id="dailyEmpty" class="empty" hidden>Šajā periodā nobraukums nav atrasts.</div>
+        <div id="dailyEmpty" class="empty" hidden data-i18n="noMileage">Šajā periodā nobraukums nav atrasts.</div>
       </section>
 
       <section class="panel content-panel">
         <div class="header">
-          <h2>Braucieni un ceļa segums</h2>
+          <h2 data-i18n="tripsAndSurface">Braucieni un ceļa segums</h2>
         </div>
         <div class="table-wrap">
           <table>
             <thead>
               <tr>
-                <th>Sākums (apt.)</th>
-                <th>Beigas (apt.)</th>
-                <th class="number">Kopā</th>
-                <th class="number">Vid. ātrums (apt.)</th>
-                <th class="number">Asfalts / cietais</th>
-                <th class="number">Grants / neklātais</th>
-                <th class="number">Nezināms</th>
-                <th class="number">Seguma dati</th>
+                <th data-i18n="startApprox">Sākums (apt.)</th>
+                <th data-i18n="endApprox">Beigas (apt.)</th>
+                <th class="number" data-i18n="total">Kopā</th>
+                <th class="number" data-i18n="averageSpeed">Vid. ātrums (apt.)</th>
+                <th class="number" data-i18n="hardSurface">Asfalts / cietais</th>
+                <th class="number" data-i18n="looseSurface">Grants / neklātais</th>
+                <th class="number" data-i18n="unknown">Nezināms</th>
+                <th class="number" data-i18n="surfaceData">Seguma dati</th>
               </tr>
             </thead>
             <tbody id="trips"></tbody>
           </table>
         </div>
-        <div id="empty" class="empty" hidden>Šajā periodā nav atrasts neviens brauciens.</div>
-        <div class="note">Ceļa segums tiek noteikts no OpenStreetMap ceļu datiem. Posmi bez drošas seguma informācijas paliek kategorijā “Nezināms” un netiek minēti kā asfalts vai grants. Ātrumi ir aptuvena OSRM maršruta aplēse, nevis automašīnas tieši mērīta telemetrija.</div>
+        <div id="empty" class="empty" hidden data-i18n="noTrips">Šajā periodā nav atrasts neviens brauciens.</div>
+        <div class="note" data-i18n="methodNote">Ceļa segums tiek noteikts no OpenStreetMap ceļu datiem. Posmi bez drošas seguma informācijas paliek kategorijā “Nezināms” un netiek minēti kā asfalts vai grants. Ātrumi ir aptuvena OSRM maršruta aplēse, nevis automašīnas tieši mērīta telemetrija.</div>
       </section>
     </div>
   </main>
@@ -532,7 +533,84 @@
     const ENTITY = {
       location: "device_tracker.location",
       mileage: "sensor.mileage",
+      settings: "sensor.renault_zoe_new_cost_settings",
     };
+    const I18N = {
+      lv: {
+        pageTitle: "Nobraukuma statistika", day1: "1 diena", days3: "3 dienas",
+        days7: "7 dienas", days14: "14 dienas", days30: "30 dienas",
+        periodToToday: "Periods līdz šodienai", specificDate: "Konkrēts datums",
+        returnToPeriod: "Atgriezties pie perioda",
+        settings: "Iestatījumi", refresh: "Atjaunot", odometer: "Odometra rādījums",
+        trips: "Braucieni", total: "Kopā", averageSpeed: "Vid. ātrums (apt.)",
+        hardSurface: "Asfalts / cietais", looseSurface: "Grants / neklātais",
+        unknownSurface: "Nezināms segums", unknown: "Nezināms",
+        surfaceBreakdown: "Nobraukuma sadalījums pēc ceļa seguma",
+        dailyMileage: "Nobraukums pa dienām", noMileage: "Šajā periodā nobraukums nav atrasts.",
+        tripsAndSurface: "Braucieni un ceļa segums", startApprox: "Sākums (apt.)",
+        endApprox: "Beigas (apt.)", surfaceData: "Seguma dati",
+        noTrips: "Šajā periodā nav atrasts neviens brauciens.",
+        methodNote: "Ceļa segums tiek noteikts no OpenStreetMap ceļu datiem. Posmi bez drošas seguma informācijas paliek kategorijā “Nezināms” un netiek minēti kā asfalts vai grants. Ātrumi ir aptuvena OSRM maršruta aplēse, nevis automašīnas tieši mērīta telemetrija.",
+        routeNotFound: "Maršruts nav atrasts", showSurfaceKm: "Rādīt seguma kilometrus",
+        classifying: "Nosaku ceļa segumu: {done}/{total} braucieni...",
+        loading: "Ielādēju HA vēsturi...",
+        updatedNoTrips: "Atjaunots {time}. Šajā periodā braucienu nav.",
+        updatedFailures: "Atjaunots {time}. {count} braucieniem seguma dati nebija pieejami; kilometri atstāti kā nezināmi.",
+        updatedAll: "Atjaunots {time}. Ceļa segums noteikts visiem {count} braucieniem.",
+        loadError: "Nevaru ielādēt nobraukuma statistiku: {error}",
+      },
+      en: {
+        pageTitle: "Mileage statistics", day1: "1 day", days3: "3 days",
+        days7: "7 days", days14: "14 days", days30: "30 days",
+        periodToToday: "Period ending today", specificDate: "Specific date",
+        returnToPeriod: "Return to period",
+        settings: "Settings", refresh: "Refresh", odometer: "Odometer",
+        trips: "Trips", total: "Total", averageSpeed: "Average speed (approx.)",
+        hardSurface: "Asphalt / paved", looseSurface: "Gravel / unpaved",
+        unknownSurface: "Unknown surface", unknown: "Unknown",
+        surfaceBreakdown: "Mileage breakdown by road surface",
+        dailyMileage: "Mileage by day", noMileage: "No mileage was found in this period.",
+        tripsAndSurface: "Trips and road surface", startApprox: "Start (approx.)",
+        endApprox: "End (approx.)", surfaceData: "Surface data",
+        noTrips: "No trips were found in this period.",
+        methodNote: "Road surface is determined from OpenStreetMap road data. Segments without reliable surface data remain in the Unknown category and are not guessed as asphalt or gravel. Speeds are approximate OSRM route estimates, not directly measured vehicle telemetry.",
+        routeNotFound: "Route not found", showSurfaceKm: "Show surface distance",
+        classifying: "Checking road surface: {done}/{total} trips...",
+        loading: "Loading HA history...",
+        updatedNoTrips: "Updated {time}. There are no trips in this period.",
+        updatedFailures: "Updated {time}. Surface data was unavailable for {count} trips; their distance remains unknown.",
+        updatedAll: "Updated {time}. Road surface was determined for all {count} trips.",
+        loadError: "Could not load mileage statistics: {error}",
+      },
+    };
+    let language = "lv";
+
+    function t(key, values = {}) {
+      let text = I18N[language][key] ?? I18N.lv[key] ?? key;
+      for (const [name, value] of Object.entries(values)) {
+        text = text.replaceAll(`{${name}}`, String(value));
+      }
+      return text;
+    }
+
+    function applyLanguage() {
+      document.documentElement.lang = language;
+      document.title = t("pageTitle");
+      for (const element of document.querySelectorAll("[data-i18n]")) {
+        element.textContent = t(element.dataset.i18n);
+      }
+      daysEl.title = t("periodToToday");
+      daysEl.setAttribute("aria-label", t("periodToToday"));
+      dayDateEl.title = t("specificDate");
+      dayDateEl.setAttribute("aria-label", t("specificDate"));
+      clearDateEl.title = t("returnToPeriod");
+      clearDateEl.setAttribute("aria-label", t("returnToPeriod"));
+      document.querySelector(".surface-bar").setAttribute(
+        "aria-label",
+        t("surfaceBreakdown"),
+      );
+    }
+
     const MOVE_THRESHOLD_KM = 0.25;
     const MIN_TRIP_KM = 0.75;
     const STOP_AFTER_MIN = 20;
@@ -654,6 +732,42 @@
       return response.json();
     }
 
+    async function loadDashboardLanguage() {
+      try {
+        const state = await haFetch(`/api/states/${encodeURIComponent(ENTITY.settings)}`);
+        const nextLanguage = state.attributes?.dashboard_language === "en" ? "en" : "lv";
+        if (nextLanguage !== language) {
+          language = nextLanguage;
+          applyLanguage();
+        }
+      } catch (error) {
+        console.debug("Dashboard language is unavailable", error);
+      }
+    }
+
+    async function openIntegrationOptions(stepId) {
+      try {
+        const entries = await haFetch("/api/config/config_entries/entry");
+        const entry = entries.find((item) => item.domain === "zoe_new_extended");
+        if (!entry) throw new Error("Integration entry not found");
+        let flow = await haFetch("/api/config/config_entries/options/flow", {
+          method: "POST",
+          body: { handler: entry.entry_id, show_advanced_options: false },
+        });
+        if (flow?.type === "menu") {
+          flow = await haFetch(`/api/config/config_entries/options/flow/${flow.flow_id}`, {
+            method: "POST",
+            body: { next_step_id: stepId },
+          });
+        }
+        if (!flow?.flow_id) throw new Error("Options flow did not start");
+        window.parent.location.assign(`/config/integrations/options/flow/${flow.flow_id}`);
+      } catch (error) {
+        console.debug("Could not open the requested options step", error);
+        window.parent.location.assign("/config/integrations/integration/zoe_new_extended");
+      }
+    }
+
     function toTime(state) {
       return new Date(state.last_updated || state.last_changed || state.last_reported).getTime();
     }
@@ -685,7 +799,7 @@
     }
 
     function fmtDate(time) {
-      return new Intl.DateTimeFormat("lv-LV", {
+      return new Intl.DateTimeFormat(language === "lv" ? "lv-LV" : "en-GB", {
         month: "2-digit",
         day: "2-digit",
         hour: "2-digit",
@@ -945,7 +1059,7 @@
         if (!response.ok) throw new Error(`OSRM HTTP ${response.status}`);
         const data = await response.json();
         const route = data.routes?.[0];
-        if (!route?.geometry?.coordinates?.length) throw new Error("Maršruts nav atrasts");
+        if (!route?.geometry?.coordinates?.length) throw new Error(t("routeNotFound"));
         const speeds = route.legs.flatMap((leg) => leg.annotation?.speed || []);
         const durations = route.legs.flatMap((leg) => leg.annotation?.duration || []);
         const routeData = addRouteSpeedStats({
@@ -1158,20 +1272,20 @@
         const row = document.createElement("div");
         row.className = "daily-row";
         row.innerHTML = `
-          <span class="daily-date">${new Intl.DateTimeFormat("lv-LV", {
+          <span class="daily-date">${new Intl.DateTimeFormat(language === "lv" ? "lv-LV" : "en-GB", {
             month: "2-digit",
             day: "2-digit",
           }).format(new Date(`${date}T12:00:00`))}</span>
-          <button class="daily-bar" type="button" aria-expanded="false" title="Rādīt seguma kilometrus">
+          <button class="daily-bar" type="button" aria-expanded="false" title="${t("showSurfaceKm")}">
             <span class="hard" style="width:${partWidth(day.hard)}%"></span>
             <span class="loose" style="width:${partWidth(day.loose)}%"></span>
             <span class="unknown" style="width:${partWidth(day.unknown)}%"></span>
           </button>
           <strong class="daily-value">${fmt(day.total, 1, " km")}</strong>
           <div class="daily-details" hidden>
-            <span><i class="hard"></i>Asfalts / cietais <strong>${fmt(day.hard, 1, " km")}</strong></span>
-            <span><i class="loose"></i>Grants / neklātais <strong>${fmt(day.loose, 1, " km")}</strong></span>
-            <span><i class="unknown"></i>Nezināms <strong>${fmt(day.unknown, 1, " km")}</strong></span>
+            <span><i class="hard"></i>${t("hardSurface")} <strong>${fmt(day.hard, 1, " km")}</strong></span>
+            <span><i class="loose"></i>${t("looseSurface")} <strong>${fmt(day.loose, 1, " km")}</strong></span>
+            <span><i class="unknown"></i>${t("unknown")} <strong>${fmt(day.unknown, 1, " km")}</strong></span>
           </div>
         `;
         const bar = row.querySelector(".daily-bar");
@@ -1229,7 +1343,7 @@
           }
           finished += 1;
           if (requestId !== loadRequestId) return;
-          setStatus(`Nosaku ceļa segumu: ${finished}/${currentTrips.length} braucieni...`);
+          setStatus(t("classifying", { done: finished, total: currentTrips.length }));
           render();
         }
       };
@@ -1241,7 +1355,8 @@
       const requestId = ++loadRequestId;
       const days = Number(daysEl.value);
       reloadEl.disabled = true;
-      setStatus("Ielādēju HA vēsturi...");
+      await loadDashboardLanguage();
+      setStatus(t("loading"));
       try {
         const now = new Date();
         let end = now;
@@ -1265,28 +1380,30 @@
         currentMileage = toNumber(mileageState.state);
         render();
         if (!trips.length) {
-          setStatus(`Atjaunots ${new Intl.DateTimeFormat("lv-LV", {
-            hour: "2-digit",
-            minute: "2-digit",
-          }).format(new Date())}. Šajā periodā braucienu nav.`);
+          setStatus(t("updatedNoTrips", {
+            time: new Intl.DateTimeFormat(language === "lv" ? "lv-LV" : "en-GB", {
+              hour: "2-digit",
+              minute: "2-digit",
+            }).format(new Date()),
+          }));
           return;
         }
         const failures = await classifyTrips(trips, requestId);
         if (requestId !== loadRequestId) return;
-        const updated = new Intl.DateTimeFormat("lv-LV", {
+        const updated = new Intl.DateTimeFormat(language === "lv" ? "lv-LV" : "en-GB", {
           hour: "2-digit",
           minute: "2-digit",
         }).format(new Date());
         setStatus(
           failures
-            ? `Atjaunots ${updated}. ${failures} braucieniem seguma dati nebija pieejami; kilometri atstāti kā nezināmi.`
-            : `Atjaunots ${updated}. Ceļa segums noteikts visiem ${trips.length} braucieniem.`,
+            ? t("updatedFailures", { time: updated, count: failures })
+            : t("updatedAll", { time: updated, count: trips.length }),
           failures > 0,
         );
       } catch (err) {
         if (requestId !== loadRequestId) return;
         console.error(err);
-        setStatus(`Nevaru ielādēt nobraukuma statistiku: ${err.message}`, true);
+        setStatus(t("loadError", { error: err.message }), true);
       } finally {
         if (requestId === loadRequestId) reloadEl.disabled = false;
       }
@@ -1294,6 +1411,10 @@
 
     dayDateEl.max = localDateValue(new Date());
     reloadEl.addEventListener("click", loadMileage);
+    document.getElementById("settings").addEventListener(
+      "click",
+      () => openIntegrationOptions("dashboard"),
+    );
     daysEl.addEventListener("change", () => {
       dayDateEl.value = "";
       updateCalendarMode();
@@ -1311,6 +1432,7 @@
     window.setInterval(() => {
       if (!document.hidden) loadMileage();
     }, AUTO_REFRESH_MS);
+    applyLanguage();
     loadMileage();
   </script>
 </body>

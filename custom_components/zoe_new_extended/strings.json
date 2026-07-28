@@ -16,10 +16,18 @@
       "init": {
         "title": "Settings",
         "menu_options": {
+          "dashboard": "Dashboard",
           "smart_charging": "Renault smart charging",
           "cost_model": "Energy cost model",
           "immax_setpoints": "IMMAX setpoints",
           "immax_entities": "IMMAX entity sources"
+        }
+      },
+      "dashboard": {
+        "title": "Dashboard",
+        "description": "Choose one language for all Renault ZOE dashboard pages.",
+        "data": {
+          "dashboard_language": "Dashboard language"
         }
       },
       "smart_charging": {
@@ -77,10 +85,11 @@
       },
       "immax_entities": {
         "title": "IMMAX entity sources",
-        "description": "Select the Home Assistant entities used by the IMMAX controller. Charger control and current are required; every measurement or status source may be left empty and is then excluded. Calculated values remain read-only.",
+        "description": "Select the Home Assistant entities used by the IMMAX controller. Charger control, current, and the site load meter are required; other measurement or status sources may be left empty and are then excluded. Calculated values remain read-only.",
         "data": {
           "immax_charger_switch_entity": "Charger switch",
           "immax_charger_current_entity": "Charger current control",
+          "immax_total_load_entity": "Site electricity meter power",
           "immax_charger_status_entity": "Charger status",
           "immax_charger_online_entity": "Charger online state",
           "immax_charger_problem_entity": "Charger problem state",

@@ -25,8 +25,6 @@ const BATTERY_SETTLE_MIN = 12;
 const MILEAGE_SETTLE_MIN = 15;
 const MILEAGE_COVER_MARGIN_MIN = 20;
 const AUTO_REFRESH_MS = 5 * 60 * 1000;
-const LANGUAGE_STORAGE_KEY = "renaultCostsLanguage";
-
 const TRANSLATIONS = {
   lv: {
     pageTitle: "Renault ZOE enerģijas izmaksas",
@@ -141,9 +139,7 @@ const TRANSLATIONS = {
 };
 
 const LOCALES = { lv: "lv-LV", en: "en-GB" };
-let currentLanguage = localStorage.getItem(LANGUAGE_STORAGE_KEY) === "en"
-  ? "en"
-  : "lv";
+let currentLanguage = "lv";
 let costSettings = {
   batteryCapacityKwh: 52,
   chargingEfficiencyPercent: 90,
@@ -166,8 +162,6 @@ const tableSummaryEl = document.getElementById("tableSummary");
 const dailyCanvas = document.getElementById("dailyChart");
 const batteryCanvas = document.getElementById("batteryChart");
 const methodEl = document.getElementById("method");
-const languageButtons = [...document.querySelectorAll("[data-language]")];
-
 let cachedParentHass = null;
 let lastModel = null;
 
@@ -199,11 +193,6 @@ function applyLanguage() {
   for (const element of document.querySelectorAll("[data-i18n-aria]")) {
     element.setAttribute("aria-label", t(element.dataset.i18nAria));
   }
-  for (const button of languageButtons) {
-    const active = button.dataset.language === currentLanguage;
-    button.classList.toggle("active", active);
-    button.setAttribute("aria-pressed", String(active));
-  }
   renderMethod();
   if (lastModel) render(lastModel);
 }
@@ -226,6 +215,11 @@ async function loadCostSettings() {
       `/api/states/${encodeURIComponent(ENTITY.costSettings)}`,
     );
     const attrs = settingsState.attributes || {};
+    const configuredLanguage = attrs.dashboard_language === "en" ? "en" : "lv";
+    if (configuredLanguage !== currentLanguage) {
+      currentLanguage = configuredLanguage;
+      applyLanguage();
+    }
     const batteryCapacity = toNumber(attrs.battery_capacity_kwh);
     const efficiency = toNumber(attrs.charging_efficiency_percent);
     const deliveryExcl = toNumber(
@@ -366,6 +360,32 @@ async function haFetch(path, options = {}) {
     throw new Error(`${response.status} ${response.statusText}`);
   }
   return response.json();
+}
+
+async function openIntegrationOptions(stepId) {
+  try {
+    const entries = await haFetch("/api/config/config_entries/entry");
+    const entry = entries.find((item) => item.domain === "zoe_new_extended");
+    if (!entry) throw new Error("Integration entry not found");
+    let flow = await haFetch("/api/config/config_entries/options/flow", {
+      method: "POST",
+      body: {
+        handler: entry.entry_id,
+        show_advanced_options: false,
+      },
+    });
+    if (flow?.type === "menu") {
+      flow = await haFetch(`/api/config/config_entries/options/flow/${flow.flow_id}`, {
+        method: "POST",
+        body: { next_step_id: stepId },
+      });
+    }
+    if (!flow?.flow_id) throw new Error("Options flow did not start");
+    window.parent.location.assign(`/config/integrations/options/flow/${flow.flow_id}`);
+  } catch (error) {
+    console.debug("Could not open the requested options step", error);
+    window.parent.location.assign("/config/integrations/integration/zoe_new_extended");
+  }
 }
 
 function toNumber(value) {
@@ -1450,21 +1470,8 @@ clearDateEl.addEventListener("click", () => {
   if (lastModel) render(lastModel);
 });
 settingsEl.addEventListener("click", () => {
-  const target = "/config/integrations/integration/zoe_new_extended";
-  try {
-    window.parent.location.assign(target);
-  } catch {
-    window.location.assign(target);
-  }
+  openIntegrationOptions("cost_model");
 });
-for (const button of languageButtons) {
-  button.addEventListener("click", () => {
-    currentLanguage = button.dataset.language;
-    localStorage.setItem(LANGUAGE_STORAGE_KEY, currentLanguage);
-    applyLanguage();
-    loadModel();
-  });
-}
 reloadEl.addEventListener("click", loadModel);
 window.addEventListener("resize", () => {
   if (lastModel) render(lastModel);

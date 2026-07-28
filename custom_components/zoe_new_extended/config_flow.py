@@ -21,6 +21,7 @@ from .const import (
     CONF_ALLOWED_ZONES,
     CONF_BATTERY_CAPACITY_KWH,
     CONF_CHARGING_EFFICIENCY_PERCENT,
+    CONF_DASHBOARD_LANGUAGE,
     CONF_DEFAULT_CHARGING_POWER_KW,
     CONF_DELIVERY_PRICE_EXCL_VAT,
     CONF_ENERGY_VAT_PERCENT,
@@ -64,6 +65,7 @@ from .const import (
     CONF_IMMAX_SOLAR_MIN_POWER,
     CONF_IMMAX_SOLAR_PHASE_MODE,
     CONF_IMMAX_SOLAR_RESERVE_POWER,
+    CONF_IMMAX_TOTAL_LOAD_ENTITY,
     CONF_IMMAX_TOTAL_POWER_LIMIT,
     CONF_LOCATION_CONTROL_ENABLED,
     CONF_NORDPOOL_AREA,
@@ -112,9 +114,11 @@ from .const import (
     DEFAULT_IMMAX_SOLAR_MIN_POWER,
     DEFAULT_IMMAX_SOLAR_PHASE_MODE,
     DEFAULT_IMMAX_SOLAR_RESERVE_POWER,
+    DEFAULT_IMMAX_TOTAL_LOAD_ENTITY,
     DEFAULT_IMMAX_TOTAL_POWER_LIMIT,
     DEFAULT_BATTERY_CAPACITY_KWH,
     DEFAULT_CHARGING_EFFICIENCY_PERCENT,
+    DEFAULT_DASHBOARD_LANGUAGE,
     DEFAULT_DEFAULT_CHARGING_POWER_KW,
     DEFAULT_DELIVERY_PRICE_EXCL_VAT,
     DEFAULT_ENERGY_VAT_PERCENT,
@@ -133,6 +137,7 @@ from .const import (
 IMMAX_REQUIRED_ENTITY_FIELDS = (
     (CONF_IMMAX_CHARGER_SWITCH_ENTITY, DEFAULT_IMMAX_CHARGER_SWITCH_ENTITY, "switch"),
     (CONF_IMMAX_CHARGER_CURRENT_ENTITY, DEFAULT_IMMAX_CHARGER_CURRENT_ENTITY, "number"),
+    (CONF_IMMAX_TOTAL_LOAD_ENTITY, DEFAULT_IMMAX_TOTAL_LOAD_ENTITY, "sensor"),
 )
 
 IMMAX_OPTIONAL_ENTITY_FIELDS = (
@@ -223,11 +228,41 @@ class ZoeNewExtendedOptionsFlow(config_entries.OptionsFlow):
         return self.async_show_menu(
             step_id="init",
             menu_options=[
+                "dashboard",
                 "smart_charging",
                 "cost_model",
                 "immax_setpoints",
                 "immax_entities",
             ],
+        )
+
+    async def async_step_dashboard(self, user_input=None):
+        """Configure the shared dashboard language."""
+        if user_input is not None:
+            return self._create_merged_entry(user_input)
+
+        language = self.config_entry.options.get(
+            CONF_DASHBOARD_LANGUAGE,
+            DEFAULT_DASHBOARD_LANGUAGE,
+        )
+        return self.async_show_form(
+            step_id="dashboard",
+            data_schema=vol.Schema(
+                {
+                    vol.Required(
+                        CONF_DASHBOARD_LANGUAGE,
+                        default=language,
+                    ): SelectSelector(
+                        SelectSelectorConfig(
+                            options=[
+                                {"value": "lv", "label": "Latviešu"},
+                                {"value": "en", "label": "English"},
+                            ],
+                            mode=SelectSelectorMode.DROPDOWN,
+                        )
+                    ),
+                }
+            ),
         )
 
     def _create_merged_entry(self, user_input, *, clear_missing=()):

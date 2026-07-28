@@ -200,6 +200,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     entity_registry = er.async_get(hass)
     device_registry = dr.async_get(hass)
     retry_cancel: Callable[[], None] | None = None
+    reconcile_cancel: Callable[[], None] | None = None
     reconciling = False
     entry.async_on_unload(entry.add_update_listener(_async_options_updated))
 
@@ -276,10 +277,25 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             reconciling = False
 
     @callback
+    def schedule_reconcile() -> None:
+        """Coalesce registry bursts caused by platform setup and device moves."""
+        nonlocal reconcile_cancel
+        if reconcile_cancel is not None:
+            return
+
+        @callback
+        def run_reconcile(_now: datetime) -> None:
+            nonlocal reconcile_cancel
+            reconcile_cancel = None
+            reconcile()
+
+        reconcile_cancel = async_call_later(hass, 0.25, run_reconcile)
+
+    @callback
     def registry_updated(event: Event) -> None:
         entity_id = event.data.get("entity_id", "")
         if entity_id == TARGET_ENTITY_ID or entity_id.startswith(ZOE_ENTITY_PREFIX):
-            reconcile()
+            schedule_reconcile()
 
     unsubscribe_registry = hass.bus.async_listen(
         er.EVENT_ENTITY_REGISTRY_UPDATED, registry_updated
@@ -294,6 +310,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = {
         "unsubscribe_registry": unsubscribe_registry,
         "cancel_retry": lambda: retry_cancel() if retry_cancel else None,
+        "cancel_reconcile": (
+            lambda: reconcile_cancel() if reconcile_cancel else None
+        ),
         "charge_control": charge_control,
         "nordpool_coordinator": nordpool_coordinator,
         "extras_coordinator": extras_coordinator,
@@ -313,6 +332,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             runtime["charge_control"].restore()
         runtime["unsubscribe_registry"]()
         runtime["cancel_retry"]()
+        runtime["cancel_reconcile"]()
     return True
 
 

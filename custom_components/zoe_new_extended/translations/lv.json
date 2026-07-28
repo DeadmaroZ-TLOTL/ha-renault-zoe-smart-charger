@@ -16,10 +16,18 @@
       "init": {
         "title": "Iestatījumi",
         "menu_options": {
+          "dashboard": "Informācijas panelis",
           "smart_charging": "Renault viedā uzlāde",
           "cost_model": "Enerģijas izmaksu modelis",
           "immax_setpoints": "IMMAX setpointi",
           "immax_entities": "IMMAX entītiju avoti"
+        }
+      },
+      "dashboard": {
+        "title": "Informācijas panelis",
+        "description": "Izvēlieties vienu valodu visām Renault ZOE informācijas paneļa lapām.",
+        "data": {
+          "dashboard_language": "Informācijas paneļa valoda"
         }
       },
       "smart_charging": {
@@ -77,10 +85,11 @@
       },
       "immax_entities": {
         "title": "IMMAX entītiju avoti",
-        "description": "Izvēlieties Home Assistant entītijas, kuras izmanto IMMAX regulators. Lādētāja vadība un strāva ir obligāta; jebkuru mērījumu vai statusa avotu var atstāt tukšu, un tad tas netiek izmantots. Aprēķinātās vērtības paliek tikai lasāmas.",
+        "description": "Izvēlieties Home Assistant entītijas, kuras izmanto IMMAX regulators. Lādētāja vadība, strāva un objekta kopējās jaudas skaitītājs ir obligāti; citus mērījumu vai statusa avotus var atstāt tukšus, un tad tie netiek izmantoti. Aprēķinātās vērtības paliek tikai lasāmas.",
         "data": {
           "immax_charger_switch_entity": "Lādētāja slēdzis",
           "immax_charger_current_entity": "Lādētāja strāvas vadība",
+          "immax_total_load_entity": "Objekta elektroenerģijas skaitītāja jauda",
           "immax_charger_status_entity": "Lādētāja statuss",
           "immax_charger_online_entity": "Lādētāja tiešsaistes statuss",
           "immax_charger_problem_entity": "Lādētāja kļūdas statuss",

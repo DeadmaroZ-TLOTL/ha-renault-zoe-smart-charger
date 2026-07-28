@@ -550,7 +550,7 @@ automation:
           - input_boolean.immax_battery_soc_hold
           - input_number.immax_total_power_limit
           - sensor.unibms_soc
-          - sensor.ac_tuya_meter_power
+          - sensor.renault_zoe_new_immax_total_site_load
           - sensor.renault_zoe_new_immax_nord_pool_price
     conditions:
       - condition: state
@@ -586,7 +586,7 @@ automation:
             charger status={{ states('sensor.immax_ev_charger_status') }};
             commanded current={{ states('number.immax_ev_charger_current') }} A;
             measured charger power={{ states('sensor.immax_ev_charger_power_a') }} W;
-            total AC load={{ states('sensor.ac_tuya_meter_power') }} W;
+            total AC load={{ states('sensor.renault_zoe_new_immax_total_site_load') }} W;
             total AC limit={{ states('input_number.immax_total_power_limit') }} kW;
             battery SOC={{ states('sensor.unibms_soc') }}%;
             SOC pause={{ states('input_number.immax_battery_soc_stop_limit') }}%;
@@ -703,7 +703,7 @@ automation:
           - sensor.immax_ev_charger_voltage_a
           - sensor.immax_ev_charger_voltage_b
           - sensor.immax_ev_charger_voltage_c
-          - sensor.ac_tuya_meter_power
+          - sensor.renault_zoe_new_immax_total_site_load
           - sensor.unibms_soc
           - sensor.renault_zoe_new_immax_solar_production
           - sensor.renault_zoe_new_immax_grid_export
@@ -785,11 +785,11 @@ automation:
             {% endfor %}
             {{ ns.total }}
           site_power_meter_available: >-
-            {{ states('sensor.ac_tuya_meter_power') | is_number }}
+            {{ states('sensor.renault_zoe_new_immax_total_site_load') | is_number }}
           site_power_w: >-
-            {% set value = states('sensor.ac_tuya_meter_power') | float(0) %}
+            {% set value = states('sensor.renault_zoe_new_immax_total_site_load') | float(0) %}
             {{ value * 1000
-               if state_attr('sensor.ac_tuya_meter_power',
+               if state_attr('sensor.renault_zoe_new_immax_total_site_load',
                              'unit_of_measurement') == 'kW'
                else value }}
       - variables:
@@ -933,7 +933,7 @@ automation:
             {{ states('input_number.immax_total_power_limit') | float(3.5) *
                1000 }}
           site_power_updated: >-
-            {{ as_timestamp(states.sensor.ac_tuya_meter_power.last_updated, 0)
+            {{ as_timestamp(states.sensor.renault_zoe_new_immax_total_site_load.last_updated, 0)
                if site_power_meter_available else 0 }}
           charger_command_changed: >-
             {{ as_timestamp(

@@ -79,7 +79,9 @@ charge schedule with a start time twelve hours ahead before selecting
 Transient `unknown` or `unavailable` charger states do not trigger commands.
 
 Both smart modes also enforce the editable total AC power limit, which defaults
-to 3.5 kW, using `sensor.ac_tuya_meter_power`. The controller adjusts its
+to 3.5 kW, using `sensor.renault_zoe_new_immax_total_site_load`. Select the real
+site electricity meter in the integration's **IMMAX entity mapping** options.
+The controller adjusts its
 current from the measured total-load headroom. Current is reduced immediately,
 while increases happen one ampere at a time and wait for a new total-load
 measurement after every charger mode or current change. If even 6 A would
@@ -87,10 +89,10 @@ exceed the limit, or if the total-load meter is unavailable, automatic charging
 selects the twelve-hour Delay mode. `Off` continues to mean fully manual
 control.
 
-`sensor.ac_tuya_meter_power` is expected to be a W-normalized template over the
-local `sensor.circuit_breaker_energy_meter_power` entity. The source entity must
-belong to the Tuya Local config entry; a similarly named Tuya cloud entity is
-not used for the safety limit.
+The configured meter source is exposed through
+`sensor.renault_zoe_new_immax_total_site_load` and is expected to report power. In
+this installation it points to the Tuya Local meter source. A similarly named
+Tuya cloud entity is not used for the safety limit.
 
 The stationary battery guard reads `sensor.unibms_soc`. Its editable defaults
 pause smart charging at 50% and keep it in the twelve-hour Delay mode until the

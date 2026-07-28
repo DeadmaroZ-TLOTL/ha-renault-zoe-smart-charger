@@ -32,6 +32,7 @@ from .charge_control import ZoeNewChargeControl
 from .const import (
     CONF_BATTERY_CAPACITY_KWH,
     CONF_CHARGING_EFFICIENCY_PERCENT,
+    CONF_DASHBOARD_LANGUAGE,
     CONF_DEFAULT_CHARGING_POWER_KW,
     CONF_DELIVERY_PRICE_EXCL_VAT,
     CONF_ENERGY_VAT_PERCENT,
@@ -49,12 +50,14 @@ from .const import (
     CONF_IMMAX_POWER_B_ENTITY,
     CONF_IMMAX_POWER_C_ENTITY,
     CONF_IMMAX_SOLAR_POWER_ENTITY,
+    CONF_IMMAX_TOTAL_LOAD_ENTITY,
     CONF_IMMAX_VEHICLE_SOC_ENTITY,
     CONF_IMMAX_VOLTAGE_A_ENTITY,
     CONF_IMMAX_VOLTAGE_B_ENTITY,
     CONF_IMMAX_VOLTAGE_C_ENTITY,
     DEFAULT_BATTERY_CAPACITY_KWH,
     DEFAULT_CHARGING_EFFICIENCY_PERCENT,
+    DEFAULT_DASHBOARD_LANGUAGE,
     DEFAULT_DEFAULT_CHARGING_POWER_KW,
     DEFAULT_DELIVERY_PRICE_EXCL_VAT,
     DEFAULT_ENERGY_VAT_PERCENT,
@@ -72,6 +75,7 @@ from .const import (
     DEFAULT_IMMAX_POWER_B_ENTITY,
     DEFAULT_IMMAX_POWER_C_ENTITY,
     DEFAULT_IMMAX_SOLAR_POWER_ENTITY,
+    DEFAULT_IMMAX_TOTAL_LOAD_ENTITY,
     DEFAULT_IMMAX_VEHICLE_SOC_ENTITY,
     DEFAULT_IMMAX_VOLTAGE_A_ENTITY,
     DEFAULT_IMMAX_VOLTAGE_B_ENTITY,
@@ -101,6 +105,15 @@ IMMAX_PROXY_SENSOR_DESCRIPTIONS = (
         icon="mdi:ev-station",
         option_key=CONF_IMMAX_CHARGER_STATUS_ENTITY,
         default_entity_id=DEFAULT_IMMAX_CHARGER_STATUS_ENTITY,
+    ),
+    ImmaxProxySensorEntityDescription(
+        key="renault_zoe_new_immax_total_load",
+        name="IMMAX total site load",
+        icon="mdi:meter-electric-outline",
+        device_class=SensorDeviceClass.POWER,
+        state_class=SensorStateClass.MEASUREMENT,
+        option_key=CONF_IMMAX_TOTAL_LOAD_ENTITY,
+        default_entity_id=DEFAULT_IMMAX_TOTAL_LOAD_ENTITY,
     ),
     ImmaxProxySensorEntityDescription(
         key="renault_zoe_new_immax_power_a",
@@ -242,7 +255,6 @@ IMMAX_PROXY_SENSOR_DESCRIPTIONS = (
         name="IMMAX Nord Pool price",
         icon="mdi:transmission-tower",
         device_class=SensorDeviceClass.MONETARY,
-        state_class=SensorStateClass.MEASUREMENT,
         option_key=CONF_IMMAX_NORDPOOL_PRICE_ENTITY,
         default_entity_id=DEFAULT_IMMAX_NORDPOOL_PRICE_ENTITY,
     ),
@@ -272,7 +284,6 @@ IMMAX_PROXY_SENSOR_DESCRIPTIONS = (
         name="IMMAX planned energy",
         icon="mdi:battery-clock-outline",
         device_class=SensorDeviceClass.ENERGY,
-        state_class=SensorStateClass.MEASUREMENT,
         option_key=None,
         default_entity_id="input_number.immax_planned_energy",
     ),
@@ -281,7 +292,6 @@ IMMAX_PROXY_SENSOR_DESCRIPTIONS = (
         name="IMMAX estimated charge cost",
         icon="mdi:cash-clock",
         device_class=SensorDeviceClass.MONETARY,
-        state_class=SensorStateClass.MEASUREMENT,
         option_key=None,
         default_entity_id="input_number.immax_estimated_charge_cost",
     ),
@@ -474,11 +484,19 @@ class ZoeNewCostSettingsSensor(SensorEntity):
         )
 
     @property
-    def extra_state_attributes(self) -> dict[str, float]:
+    def extra_state_attributes(self) -> dict[str, Any]:
         """Expose every configurable cost-model value."""
-        settings = self.settings
+        settings: dict[str, Any] = dict(self.settings)
         settings["charging_efficiency"] = (
             settings["charging_efficiency_percent"] / 100
+        )
+        settings["dashboard_language"] = self.config_entry.options.get(
+            CONF_DASHBOARD_LANGUAGE,
+            DEFAULT_DASHBOARD_LANGUAGE,
+        )
+        settings["immax_total_load_entity"] = self.config_entry.options.get(
+            CONF_IMMAX_TOTAL_LOAD_ENTITY,
+            DEFAULT_IMMAX_TOTAL_LOAD_ENTITY,
         )
         return settings
 
@@ -609,7 +627,6 @@ class ZoeNordPoolPriceSensor(CoordinatorEntity, SensorEntity):
     _attr_icon = "mdi:transmission-tower"
     _attr_name = "Nord Pool price"
     _attr_native_unit_of_measurement = "c/kWh"
-    _attr_state_class = SensorStateClass.MEASUREMENT
     _attr_suggested_object_id = "renault_zoe_new_nord_pool_price"
     _unrecorded_attributes = frozenset(
         {"today", "tomorrow", "raw_today", "raw_tomorrow"}

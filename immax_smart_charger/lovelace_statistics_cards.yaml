@@ -14,7 +14,7 @@
       icon: mdi:flash
       tap_action:
         action: more-info
-    - entity: sensor.ac_tuya_meter_power
+    - entity: sensor.renault_zoe_new_immax_total_site_load
       name: Total AC load
       icon: mdi:home-lightning-bolt
       tap_action:
@@ -88,7 +88,7 @@
       group_by:
         duration: 5min
         func: avg
-    - entity: sensor.ac_tuya_meter_power
+    - entity: sensor.renault_zoe_new_immax_total_site_load
       name: Total AC load
       type: line
       yaxis_id: power

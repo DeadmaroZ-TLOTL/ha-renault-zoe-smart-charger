@@ -37,7 +37,7 @@
   entities:
     - entity: input_number.immax_total_power_limit
       name: Total AC power limit
-    - entity: sensor.ac_tuya_meter_power
+    - entity: sensor.renault_zoe_new_immax_total_site_load
       name: Total AC load
       tap_action:
         action: more-info
