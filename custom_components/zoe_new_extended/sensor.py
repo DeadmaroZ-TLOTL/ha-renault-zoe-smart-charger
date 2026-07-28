@@ -12,6 +12,7 @@ from homeassistant.components.sensor import (
     SensorDeviceClass,
     SensorEntity,
     SensorEntityDescription,
+    SensorStateClass,
 )
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import STATE_UNAVAILABLE, STATE_UNKNOWN
@@ -29,6 +30,12 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .charge_control import ZoeNewChargeControl
 from .const import (
+    CONF_BATTERY_CAPACITY_KWH,
+    CONF_CHARGING_EFFICIENCY_PERCENT,
+    CONF_DEFAULT_CHARGING_POWER_KW,
+    CONF_DELIVERY_PRICE_EXCL_VAT,
+    CONF_ENERGY_VAT_PERCENT,
+    CONF_FALLBACK_CONSUMPTION_KWH_100,
     CONF_IMMAX_BATTERY_CHARGE_ENTITY,
     CONF_IMMAX_BATTERY_DISCHARGE_ENTITY,
     CONF_IMMAX_CHARGER_ENERGY_ENTITY,
@@ -46,6 +53,12 @@ from .const import (
     CONF_IMMAX_VOLTAGE_A_ENTITY,
     CONF_IMMAX_VOLTAGE_B_ENTITY,
     CONF_IMMAX_VOLTAGE_C_ENTITY,
+    DEFAULT_BATTERY_CAPACITY_KWH,
+    DEFAULT_CHARGING_EFFICIENCY_PERCENT,
+    DEFAULT_DEFAULT_CHARGING_POWER_KW,
+    DEFAULT_DELIVERY_PRICE_EXCL_VAT,
+    DEFAULT_ENERGY_VAT_PERCENT,
+    DEFAULT_FALLBACK_CONSUMPTION_KWH_100,
     DEFAULT_IMMAX_BATTERY_CHARGE_ENTITY,
     DEFAULT_IMMAX_BATTERY_DISCHARGE_ENTITY,
     DEFAULT_IMMAX_CHARGER_ENERGY_ENTITY,
@@ -94,6 +107,7 @@ IMMAX_PROXY_SENSOR_DESCRIPTIONS = (
         name="IMMAX power A",
         icon="mdi:flash",
         device_class=SensorDeviceClass.POWER,
+        state_class=SensorStateClass.MEASUREMENT,
         option_key=CONF_IMMAX_POWER_A_ENTITY,
         default_entity_id=DEFAULT_IMMAX_POWER_A_ENTITY,
     ),
@@ -102,6 +116,7 @@ IMMAX_PROXY_SENSOR_DESCRIPTIONS = (
         name="IMMAX power B",
         icon="mdi:flash",
         device_class=SensorDeviceClass.POWER,
+        state_class=SensorStateClass.MEASUREMENT,
         option_key=CONF_IMMAX_POWER_B_ENTITY,
         default_entity_id=DEFAULT_IMMAX_POWER_B_ENTITY,
     ),
@@ -110,6 +125,7 @@ IMMAX_PROXY_SENSOR_DESCRIPTIONS = (
         name="IMMAX power C",
         icon="mdi:flash",
         device_class=SensorDeviceClass.POWER,
+        state_class=SensorStateClass.MEASUREMENT,
         option_key=CONF_IMMAX_POWER_C_ENTITY,
         default_entity_id=DEFAULT_IMMAX_POWER_C_ENTITY,
     ),
@@ -118,6 +134,7 @@ IMMAX_PROXY_SENSOR_DESCRIPTIONS = (
         name="IMMAX current A",
         icon="mdi:current-ac",
         device_class=SensorDeviceClass.CURRENT,
+        state_class=SensorStateClass.MEASUREMENT,
         option_key=CONF_IMMAX_CURRENT_A_ENTITY,
         default_entity_id=DEFAULT_IMMAX_CURRENT_A_ENTITY,
     ),
@@ -126,6 +143,7 @@ IMMAX_PROXY_SENSOR_DESCRIPTIONS = (
         name="IMMAX current B",
         icon="mdi:current-ac",
         device_class=SensorDeviceClass.CURRENT,
+        state_class=SensorStateClass.MEASUREMENT,
         option_key=CONF_IMMAX_CURRENT_B_ENTITY,
         default_entity_id=DEFAULT_IMMAX_CURRENT_B_ENTITY,
     ),
@@ -134,6 +152,7 @@ IMMAX_PROXY_SENSOR_DESCRIPTIONS = (
         name="IMMAX current C",
         icon="mdi:current-ac",
         device_class=SensorDeviceClass.CURRENT,
+        state_class=SensorStateClass.MEASUREMENT,
         option_key=CONF_IMMAX_CURRENT_C_ENTITY,
         default_entity_id=DEFAULT_IMMAX_CURRENT_C_ENTITY,
     ),
@@ -142,6 +161,7 @@ IMMAX_PROXY_SENSOR_DESCRIPTIONS = (
         name="IMMAX voltage A",
         icon="mdi:sine-wave",
         device_class=SensorDeviceClass.VOLTAGE,
+        state_class=SensorStateClass.MEASUREMENT,
         option_key=CONF_IMMAX_VOLTAGE_A_ENTITY,
         default_entity_id=DEFAULT_IMMAX_VOLTAGE_A_ENTITY,
     ),
@@ -150,6 +170,7 @@ IMMAX_PROXY_SENSOR_DESCRIPTIONS = (
         name="IMMAX voltage B",
         icon="mdi:sine-wave",
         device_class=SensorDeviceClass.VOLTAGE,
+        state_class=SensorStateClass.MEASUREMENT,
         option_key=CONF_IMMAX_VOLTAGE_B_ENTITY,
         default_entity_id=DEFAULT_IMMAX_VOLTAGE_B_ENTITY,
     ),
@@ -158,6 +179,7 @@ IMMAX_PROXY_SENSOR_DESCRIPTIONS = (
         name="IMMAX voltage C",
         icon="mdi:sine-wave",
         device_class=SensorDeviceClass.VOLTAGE,
+        state_class=SensorStateClass.MEASUREMENT,
         option_key=CONF_IMMAX_VOLTAGE_C_ENTITY,
         default_entity_id=DEFAULT_IMMAX_VOLTAGE_C_ENTITY,
     ),
@@ -166,6 +188,7 @@ IMMAX_PROXY_SENSOR_DESCRIPTIONS = (
         name="IMMAX energy",
         icon="mdi:counter",
         device_class=SensorDeviceClass.ENERGY,
+        state_class=SensorStateClass.TOTAL_INCREASING,
         option_key=CONF_IMMAX_CHARGER_ENERGY_ENTITY,
         default_entity_id=DEFAULT_IMMAX_CHARGER_ENERGY_ENTITY,
     ),
@@ -174,6 +197,7 @@ IMMAX_PROXY_SENSOR_DESCRIPTIONS = (
         name="IMMAX solar production",
         icon="mdi:solar-power",
         device_class=SensorDeviceClass.POWER,
+        state_class=SensorStateClass.MEASUREMENT,
         option_key=CONF_IMMAX_SOLAR_POWER_ENTITY,
         default_entity_id=DEFAULT_IMMAX_SOLAR_POWER_ENTITY,
     ),
@@ -182,6 +206,7 @@ IMMAX_PROXY_SENSOR_DESCRIPTIONS = (
         name="IMMAX grid export",
         icon="mdi:transmission-tower-export",
         device_class=SensorDeviceClass.POWER,
+        state_class=SensorStateClass.MEASUREMENT,
         option_key=CONF_IMMAX_GRID_EXPORT_ENTITY,
         default_entity_id=DEFAULT_IMMAX_GRID_EXPORT_ENTITY,
     ),
@@ -190,6 +215,7 @@ IMMAX_PROXY_SENSOR_DESCRIPTIONS = (
         name="IMMAX battery charging",
         icon="mdi:battery-arrow-up",
         device_class=SensorDeviceClass.POWER,
+        state_class=SensorStateClass.MEASUREMENT,
         option_key=CONF_IMMAX_BATTERY_CHARGE_ENTITY,
         default_entity_id=DEFAULT_IMMAX_BATTERY_CHARGE_ENTITY,
     ),
@@ -198,6 +224,7 @@ IMMAX_PROXY_SENSOR_DESCRIPTIONS = (
         name="IMMAX battery discharging",
         icon="mdi:battery-arrow-down",
         device_class=SensorDeviceClass.POWER,
+        state_class=SensorStateClass.MEASUREMENT,
         option_key=CONF_IMMAX_BATTERY_DISCHARGE_ENTITY,
         default_entity_id=DEFAULT_IMMAX_BATTERY_DISCHARGE_ENTITY,
     ),
@@ -206,6 +233,7 @@ IMMAX_PROXY_SENSOR_DESCRIPTIONS = (
         name="IMMAX vehicle SOC",
         icon="mdi:battery",
         device_class=SensorDeviceClass.BATTERY,
+        state_class=SensorStateClass.MEASUREMENT,
         option_key=CONF_IMMAX_VEHICLE_SOC_ENTITY,
         default_entity_id=DEFAULT_IMMAX_VEHICLE_SOC_ENTITY,
     ),
@@ -214,6 +242,7 @@ IMMAX_PROXY_SENSOR_DESCRIPTIONS = (
         name="IMMAX Nord Pool price",
         icon="mdi:transmission-tower",
         device_class=SensorDeviceClass.MONETARY,
+        state_class=SensorStateClass.MEASUREMENT,
         option_key=CONF_IMMAX_NORDPOOL_PRICE_ENTITY,
         default_entity_id=DEFAULT_IMMAX_NORDPOOL_PRICE_ENTITY,
     ),
@@ -243,6 +272,7 @@ IMMAX_PROXY_SENSOR_DESCRIPTIONS = (
         name="IMMAX planned energy",
         icon="mdi:battery-clock-outline",
         device_class=SensorDeviceClass.ENERGY,
+        state_class=SensorStateClass.MEASUREMENT,
         option_key=None,
         default_entity_id="input_number.immax_planned_energy",
     ),
@@ -251,6 +281,7 @@ IMMAX_PROXY_SENSOR_DESCRIPTIONS = (
         name="IMMAX estimated charge cost",
         icon="mdi:cash-clock",
         device_class=SensorDeviceClass.MONETARY,
+        state_class=SensorStateClass.MEASUREMENT,
         option_key=None,
         default_entity_id="input_number.immax_estimated_charge_cost",
     ),
@@ -259,6 +290,7 @@ IMMAX_PROXY_SENSOR_DESCRIPTIONS = (
         name="IMMAX solar available power",
         icon="mdi:solar-power",
         device_class=SensorDeviceClass.POWER,
+        state_class=SensorStateClass.MEASUREMENT,
         option_key=None,
         default_entity_id="input_number.immax_solar_available_power",
     ),
@@ -267,6 +299,7 @@ IMMAX_PROXY_SENSOR_DESCRIPTIONS = (
         name="IMMAX solar target power",
         icon="mdi:ev-station",
         device_class=SensorDeviceClass.POWER,
+        state_class=SensorStateClass.MEASUREMENT,
         option_key=None,
         default_entity_id="input_number.immax_solar_target_power",
     ),
@@ -275,6 +308,7 @@ IMMAX_PROXY_SENSOR_DESCRIPTIONS = (
         name="IMMAX solar charger power",
         icon="mdi:ev-plug-type2",
         device_class=SensorDeviceClass.POWER,
+        state_class=SensorStateClass.MEASUREMENT,
         option_key=None,
         default_entity_id="input_number.immax_solar_charger_power",
     ),
@@ -283,6 +317,7 @@ IMMAX_PROXY_SENSOR_DESCRIPTIONS = (
         name="IMMAX solar grid export",
         icon="mdi:transmission-tower-export",
         device_class=SensorDeviceClass.POWER,
+        state_class=SensorStateClass.MEASUREMENT,
         option_key=None,
         default_entity_id="input_number.immax_solar_grid_export",
     ),
@@ -291,6 +326,7 @@ IMMAX_PROXY_SENSOR_DESCRIPTIONS = (
         name="IMMAX solar battery charge",
         icon="mdi:battery-arrow-up",
         device_class=SensorDeviceClass.POWER,
+        state_class=SensorStateClass.MEASUREMENT,
         option_key=None,
         default_entity_id="input_number.immax_solar_battery_charge",
     ),
@@ -299,6 +335,7 @@ IMMAX_PROXY_SENSOR_DESCRIPTIONS = (
         name="IMMAX solar battery discharge",
         icon="mdi:battery-arrow-down",
         device_class=SensorDeviceClass.POWER,
+        state_class=SensorStateClass.MEASUREMENT,
         option_key=None,
         default_entity_id="input_number.immax_solar_battery_discharge",
     ),
@@ -326,6 +363,7 @@ async def async_setup_entry(
                 ZoeNewApiLastUpdatedSensor(control),
                 ZoeNewRawChargeStatusSensor(control),
                 ZoeNewRawPlugStatusSensor(control),
+                ZoeNewCostSettingsSensor(config_entry, control),
             )
         )
         entities.extend(
@@ -357,6 +395,92 @@ async def async_setup_entry(
                 )
             )
     async_add_entities(entities)
+
+
+class ZoeNewCostSettingsSensor(SensorEntity):
+    """Expose the configured cost model to dashboards and Pyscript."""
+
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_has_entity_name = True
+    _attr_icon = "mdi:cash-cog"
+    _attr_name = "Cost settings"
+    _attr_native_unit_of_measurement = "EUR/kWh"
+    _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_suggested_object_id = "renault_zoe_new_cost_settings"
+
+    def __init__(
+        self,
+        config_entry: ConfigEntry,
+        control: ZoeNewChargeControl,
+    ) -> None:
+        """Initialize the cost settings sensor."""
+        self.config_entry = config_entry
+        self._attr_device_info = control.vehicle.device_info
+        self._attr_unique_id = (
+            f"{control.vehicle.details.vin}_cost_settings".lower()
+        )
+
+    @property
+    def settings(self) -> dict[str, float]:
+        """Return normalized cost model options."""
+        options = self.config_entry.options
+        delivery_excl_vat = float(
+            options.get(
+                CONF_DELIVERY_PRICE_EXCL_VAT,
+                DEFAULT_DELIVERY_PRICE_EXCL_VAT,
+            )
+        )
+        vat_percent = float(
+            options.get(CONF_ENERGY_VAT_PERCENT, DEFAULT_ENERGY_VAT_PERCENT)
+        )
+        return {
+            "delivery_price_excl_vat_eur_per_kwh": delivery_excl_vat,
+            "vat_percent": vat_percent,
+            "delivery_price_incl_vat_eur_per_kwh": (
+                delivery_excl_vat * (1 + vat_percent / 100)
+            ),
+            "battery_capacity_kwh": float(
+                options.get(
+                    CONF_BATTERY_CAPACITY_KWH,
+                    DEFAULT_BATTERY_CAPACITY_KWH,
+                )
+            ),
+            "charging_efficiency_percent": float(
+                options.get(
+                    CONF_CHARGING_EFFICIENCY_PERCENT,
+                    DEFAULT_CHARGING_EFFICIENCY_PERCENT,
+                )
+            ),
+            "default_charging_power_kw": float(
+                options.get(
+                    CONF_DEFAULT_CHARGING_POWER_KW,
+                    DEFAULT_DEFAULT_CHARGING_POWER_KW,
+                )
+            ),
+            "fallback_consumption_kwh_per_100km": float(
+                options.get(
+                    CONF_FALLBACK_CONSUMPTION_KWH_100,
+                    DEFAULT_FALLBACK_CONSUMPTION_KWH_100,
+                )
+            ),
+        }
+
+    @property
+    def native_value(self) -> float:
+        """Return the delivery price including VAT."""
+        return round(
+            self.settings["delivery_price_incl_vat_eur_per_kwh"],
+            7,
+        )
+
+    @property
+    def extra_state_attributes(self) -> dict[str, float]:
+        """Expose every configurable cost-model value."""
+        settings = self.settings
+        settings["charging_efficiency"] = (
+            settings["charging_efficiency_percent"] / 100
+        )
+        return settings
 
 
 class ZoeNewImmaxProxySensor(SensorEntity):
@@ -485,6 +609,7 @@ class ZoeNordPoolPriceSensor(CoordinatorEntity, SensorEntity):
     _attr_icon = "mdi:transmission-tower"
     _attr_name = "Nord Pool price"
     _attr_native_unit_of_measurement = "c/kWh"
+    _attr_state_class = SensorStateClass.MEASUREMENT
     _attr_suggested_object_id = "renault_zoe_new_nord_pool_price"
     _unrecorded_attributes = frozenset(
         {"today", "tomorrow", "raw_today", "raw_tomorrow"}

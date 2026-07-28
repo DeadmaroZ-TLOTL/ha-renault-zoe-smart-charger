@@ -25,8 +25,10 @@ Renault entity IDs differ.
 
 ## Install
 
-1. Copy `www/renault_trips/index.html` and
-   `www/renault_trips/mileage.html` to `/config/www/renault_trips/`.
+1. Copy the contents of `www/renault_trips/` to
+   `/config/www/renault_trips/`. `control.html`, `control-pages.css`, and
+   `control-pages.js` provide the matching full-screen Charging and IMMAX
+   views.
 2. Install ApexCharts Card 2.2.3 or newer through HACS. The complete dashboard
    plots every known Nord Pool interval from today and tomorrow together with
    the price-cap line.
@@ -39,6 +41,29 @@ Renault entity IDs differ.
 project. It also expects the Zoe New Extended integration and the smart charger
 package from the repository root. `charge_sessions_card.md.jinja` is the full
 existing charge-session card used by that dashboard.
+
+## Dashboard views
+
+Charging, Trips, Nobraukums, Cenas, and IMMAX share one responsive visual
+system. Charging and IMMAX include full-width history charts, current-value
+controls, Latvian/English labels, and 24-hour, 48-hour, 7-day, 30-day, or
+calendar-date history selection. Chart lines stop across missing Recorder
+samples instead of drawing misleading connections. On narrow screens each
+panel uses the full viewport width and the control columns stack vertically.
+
+## Energy cost model
+
+The `Cenas` view has a persistent Latvian/English language selector and
+maintains a chronological weighted-average battery cost model.
+Each Renault charge session adds its SOC-derived battery energy and calculated
+grid cost including delivery. Each detected trip removes its battery energy at
+the weighted unit cost that applied before the trip, producing trip cost and
+EUR/100 km statistics. The current battery energy and value are reconciled to
+the latest reported SOC. Usable capacity, charging efficiency, delivery price,
+VAT, and fallback consumption come from the Zoe New Extended integration
+options. Sessions with incomplete price coverage and trips with missing or
+implausible SOC movement are shown as estimates rather than being treated as
+free energy.
 
 ## How trips are calculated
 
@@ -60,6 +85,7 @@ surface. The page map-matches cached OSRM routes with the public Valhalla
 service and uses OpenStreetMap surface tags. Surface distances are scaled to
 the odometer-based trip distance. Missing or ambiguous map data stays unknown
 instead of being guessed, and results are cached in the browser. The summary
-and trip table also show approximate average and maximum speeds derived from
-OSRM route annotations; these are route estimates rather than vehicle
-telemetry.
+and trip table also show approximate average speed derived from OSRM route
+annotations; it is a route estimate rather than vehicle telemetry. Selecting
+a colored bar under **Nobraukums pa dienām** expands that day's exact paved,
+gravel/unpaved, and unknown-surface kilometer totals.

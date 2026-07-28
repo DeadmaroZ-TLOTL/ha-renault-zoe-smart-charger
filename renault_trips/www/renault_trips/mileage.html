@@ -257,7 +257,65 @@
       grid-template-columns: 84px minmax(0, 1fr) 72px;
       gap: 10px;
       align-items: center;
+      width: 100%;
+      min-height: 34px;
       font-size: 13px;
+    }
+
+    .daily-bar {
+      min-height: 28px;
+      padding: 4px;
+      border: 1px solid var(--line);
+      border-radius: 4px;
+      background: transparent;
+      cursor: pointer;
+    }
+
+    .daily-bar:hover {
+      background: var(--accent-soft);
+    }
+
+    .daily-bar:focus-visible {
+      outline: 2px solid var(--accent);
+      outline-offset: 1px;
+    }
+
+    .daily-bar span {
+      height: 18px;
+    }
+
+    .daily-details {
+      grid-column: 1 / -1;
+      display: flex;
+      gap: 12px;
+      padding: 7px 8px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: var(--accent-soft);
+      color: var(--muted);
+      font-size: 12px;
+      flex-wrap: wrap;
+    }
+
+    .daily-details[hidden] {
+      display: none;
+    }
+
+    .daily-details span {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+    }
+
+    .daily-details i {
+      width: 9px;
+      height: 9px;
+      border-radius: 2px;
+    }
+
+    .daily-details strong {
+      color: var(--text);
+      font-variant-numeric: tabular-nums;
     }
 
     .daily-date {
@@ -390,10 +448,11 @@
       }
     }
   </style>
+  <link rel="stylesheet" href="./shared-theme.css?v=1.1.0" />
 </head>
 <body>
-  <main class="shell">
-    <section class="panel">
+  <main class="shell mileage-app">
+    <section class="panel mileage-overview overview-block">
       <div class="header">
         <h1>Nobraukuma statistika</h1>
         <div class="toolbar">
@@ -415,7 +474,6 @@
         <div class="metric"><span>Braucieni</span><strong id="mTrips">-</strong></div>
         <div class="metric"><span>Kopā</span><strong id="mTotal">-</strong></div>
         <div class="metric"><span>Vid. ātrums (apt.)</span><strong id="mAvgSpeed">-</strong></div>
-        <div class="metric"><span>Maks. ātrums (apt.)</span><strong id="mMaxSpeed">-</strong></div>
         <div class="metric"><span>Asfalts / cietais</span><strong id="mHard">-</strong></div>
         <div class="metric"><span>Grants / neklātais</span><strong id="mLoose">-</strong></div>
         <div class="metric"><span>Nezināms segums</span><strong id="mUnknown">-</strong></div>
@@ -435,7 +493,7 @@
     </section>
 
     <div class="content-grid">
-      <section class="panel">
+      <section class="panel content-panel">
         <div class="header">
           <h2>Nobraukums pa dienām</h2>
         </div>
@@ -443,7 +501,7 @@
         <div id="dailyEmpty" class="empty" hidden>Šajā periodā nobraukums nav atrasts.</div>
       </section>
 
-      <section class="panel">
+      <section class="panel content-panel">
         <div class="header">
           <h2>Braucieni un ceļa segums</h2>
         </div>
@@ -455,7 +513,6 @@
                 <th>Beigas (apt.)</th>
                 <th class="number">Kopā</th>
                 <th class="number">Vid. ātrums (apt.)</th>
-                <th class="number">Maks. ātrums (apt.)</th>
                 <th class="number">Asfalts / cietais</th>
                 <th class="number">Grants / neklātais</th>
                 <th class="number">Nezināms</th>
@@ -1055,14 +1112,10 @@
         0,
       );
       const averageSpeed = speedHours > 0 ? speedDistance / speedHours : null;
-      const maxSpeed = speedTrips.length
-        ? Math.max(...speedTrips.map((trip) => trip.speed.max || 0))
-        : null;
       document.getElementById("mOdometer").textContent = fmt(currentMileage, 0, " km");
       document.getElementById("mTrips").textContent = String(trips.length);
       document.getElementById("mTotal").textContent = fmt(totalKm, 1, " km");
       document.getElementById("mAvgSpeed").textContent = fmt(averageSpeed, 0, " km/h");
-      document.getElementById("mMaxSpeed").textContent = fmt(maxSpeed, 0, " km/h");
       document.getElementById("mHard").textContent = surface.processed
         ? fmt(surface.hard, 1, " km")
         : "-";
@@ -1109,13 +1162,25 @@
             month: "2-digit",
             day: "2-digit",
           }).format(new Date(`${date}T12:00:00`))}</span>
-          <span class="daily-bar" title="Asfalts ${fmt(day.hard, 1, " km")}; grants ${fmt(day.loose, 1, " km")}; nezināms ${fmt(day.unknown, 1, " km")}">
+          <button class="daily-bar" type="button" aria-expanded="false" title="Rādīt seguma kilometrus">
             <span class="hard" style="width:${partWidth(day.hard)}%"></span>
             <span class="loose" style="width:${partWidth(day.loose)}%"></span>
             <span class="unknown" style="width:${partWidth(day.unknown)}%"></span>
-          </span>
+          </button>
           <strong class="daily-value">${fmt(day.total, 1, " km")}</strong>
+          <div class="daily-details" hidden>
+            <span><i class="hard"></i>Asfalts / cietais <strong>${fmt(day.hard, 1, " km")}</strong></span>
+            <span><i class="loose"></i>Grants / neklātais <strong>${fmt(day.loose, 1, " km")}</strong></span>
+            <span><i class="unknown"></i>Nezināms <strong>${fmt(day.unknown, 1, " km")}</strong></span>
+          </div>
         `;
+        const bar = row.querySelector(".daily-bar");
+        const details = row.querySelector(".daily-details");
+        bar.addEventListener("click", () => {
+          const expanded = bar.getAttribute("aria-expanded") === "true";
+          bar.setAttribute("aria-expanded", String(!expanded));
+          details.hidden = expanded;
+        });
         dailyEl.appendChild(row);
       }
     }
@@ -1131,7 +1196,6 @@
           <td>~${fmtDate(trip.end)}</td>
           <td class="number">${fmt(trip.km, 1, " km")}</td>
           <td class="number">${trip.speed ? fmt(trip.speed.average, 0, " km/h") : "..."}</td>
-          <td class="number">${trip.speed ? fmt(trip.speed.max, 0, " km/h") : "..."}</td>
           <td class="number">${surface ? fmt(surface.hard, 1, " km") : "..."}</td>
           <td class="number">${surface ? fmt(surface.loose, 1, " km") : "..."}</td>
           <td class="number">${surface ? fmt(surface.unknown, 1, " km") : "..."}</td>

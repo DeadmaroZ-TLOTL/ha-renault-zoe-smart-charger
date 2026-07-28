@@ -1,0 +1,137 @@
+- type: glance
+  title: IMMAX charging statistics
+  show_name: true
+  show_state: true
+  columns: 3
+  entities:
+    - entity: sensor.immax_ev_charger_status
+      name: Status
+      icon: mdi:ev-station
+      tap_action:
+        action: more-info
+    - entity: sensor.renault_zoe_new_immax_solar_charger_power
+      name: Charging power
+      icon: mdi:flash
+      tap_action:
+        action: more-info
+    - entity: sensor.ac_tuya_meter_power
+      name: Total AC load
+      icon: mdi:home-lightning-bolt
+      tap_action:
+        action: more-info
+    - entity: number.immax_ev_charger_current
+      name: Current limit
+      icon: mdi:current-ac
+      tap_action:
+        action: more-info
+    - entity: sensor.immax_ev_charger_energy
+      name: Charger energy
+      icon: mdi:counter
+      tap_action:
+        action: more-info
+    - entity: sensor.unibms_soc
+      name: Site battery SOC
+      icon: mdi:battery
+      tap_action:
+        action: more-info
+
+- type: custom:apexcharts-card
+  header:
+    show: true
+    title: IMMAX power and battery - last 24 hours
+    show_states: true
+    colorize_states: true
+  graph_span: 24h
+  span:
+    end: hour
+  yaxis:
+    - id: power
+      min: 0
+      decimals: 1
+    - id: soc
+      opposite: true
+      min: 0
+      max: 100
+      decimals: 0
+  apex_config:
+    chart:
+      height: 300
+    legend:
+      show: true
+    tooltip:
+      x:
+        format: dd.MM HH:mm
+  series:
+    - entity: sensor.renault_zoe_new_immax_solar_production
+      name: Solar power
+      type: area
+      yaxis_id: power
+      color: "#f9a825"
+      curve: smooth
+      stroke_width: 2
+      opacity: 0.16
+      float_precision: 2
+      unit: kW
+      transform: return x / 1000;
+      group_by:
+        duration: 5min
+        func: avg
+    - entity: sensor.renault_zoe_new_immax_solar_charger_power
+      name: IMMAX power
+      type: line
+      yaxis_id: power
+      color: "#ef6c00"
+      curve: smooth
+      stroke_width: 2
+      float_precision: 2
+      unit: kW
+      group_by:
+        duration: 5min
+        func: avg
+    - entity: sensor.ac_tuya_meter_power
+      name: Total AC load
+      type: line
+      yaxis_id: power
+      color: "#1976d2"
+      curve: smooth
+      stroke_width: 2
+      float_precision: 2
+      unit: kW
+      transform: return x / 1000;
+      group_by:
+        duration: 5min
+        func: avg
+    - entity: sensor.unibms_soc
+      name: Site battery SOC
+      type: line
+      yaxis_id: soc
+      color: "#2e7d32"
+      curve: smooth
+      stroke_width: 2
+      float_precision: 0
+      unit: "%"
+      group_by:
+        duration: 5min
+        func: avg
+
+- type: statistics-graph
+  title: IMMAX charged energy - last 14 days
+  chart_type: bar
+  days_to_show: 14
+  period: day
+  stat_types:
+    - change
+  entities:
+    - entity: sensor.immax_ev_charger_energy
+      name: Charged energy
+
+- type: history-graph
+  title: IMMAX phase currents - last 24 hours
+  hours_to_show: 24
+  entities:
+    - entity: sensor.immax_ev_charger_current_a
+      name: Phase A
+    - entity: sensor.immax_ev_charger_current_b
+      name: Phase B
+    - entity: sensor.immax_ev_charger_current_c
+      name: Phase C

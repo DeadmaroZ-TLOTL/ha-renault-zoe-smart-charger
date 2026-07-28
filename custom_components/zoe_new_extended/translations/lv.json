@@ -17,6 +17,8 @@
         "title": "Iestatījumi",
         "menu_options": {
           "smart_charging": "Renault viedā uzlāde",
+          "cost_model": "Enerģijas izmaksu modelis",
+          "immax_setpoints": "IMMAX setpointi",
           "immax_entities": "IMMAX entītiju avoti"
         }
       },
@@ -27,7 +29,50 @@
           "location_control_enabled": "Viedā uzlāde atļauta pēc atrašanās vietas",
           "allow_any_location": "Atļaut jebkurā vietā",
           "allowed_zones": "Atļautās zonas",
-          "nordpool_area": "Nord Pool valsts / cenu apgabals"
+          "nordpool_area": "Nord Pool valsts / cenu apgabals",
+          "zoe_smart_charging_enabled": "Viedā uzlāde ieslēgta",
+          "zoe_max_price_enabled": "Maksimālās cenas limits ieslēgts",
+          "zoe_max_energy_price": "Maksimālā Nord Pool cena",
+          "zoe_charge_target_mode": "Mērķa režīms",
+          "zoe_charge_target_percent": "Mērķa SOC",
+          "zoe_charge_range_target_km": "Mērķa nobraukums"
+        }
+      },
+      "cost_model": {
+        "title": "Enerģijas izmaksu modelis",
+        "description": "Iestatiet vērtības, kuras izmanto uzlāžu sesiju izmaksām, baterijas enerģijas vērtībai un braucienu rezerves aprēķiniem.",
+        "data": {
+          "delivery_price_excl_vat": "Pārvades cena bez PVN",
+          "energy_vat_percent": "Enerģijas PVN",
+          "battery_capacity_kwh": "Baterijas izmantojamā ietilpība",
+          "charging_efficiency_percent": "Uzlādes efektivitāte",
+          "default_charging_power_kw": "Noklusējuma uzlādes jauda",
+          "fallback_consumption_kwh_100": "Rezerves patēriņš"
+        }
+      },
+      "immax_setpoints": {
+        "title": "IMMAX setpointi",
+        "description": "Iestatiet IMMAX uzlādes regulatoru. Pēc saglabāšanas šīs vērtības tiek sinhronizētas ar esošajiem Home Assistant palīgiem.",
+        "data": {
+          "immax_smart_charging_mode": "Viedās uzlādes režīms",
+          "immax_solar_phase_mode": "Saules fāžu režīms",
+          "immax_max_price_enabled": "Maksimālās cenas limits ieslēgts",
+          "immax_charge_to_percentage_enabled": "Uzlāde līdz procentiem ieslēgta",
+          "immax_ai_advisor_enabled": "AI padomdevējs ieslēgts",
+          "immax_delay_period": "Atliktās uzlādes periods",
+          "immax_total_power_limit": "Maksimālā kopējā objekta slodze",
+          "immax_battery_soc_stop_limit": "Baterijas SOC apturēšanas slieksnis",
+          "immax_battery_soc_resume_limit": "Baterijas SOC atsākšanas slieksnis",
+          "immax_ai_advisor_interval": "Vadības analīzes intervāls",
+          "immax_ai_current_cap": "Maksimālā ieteiktā strāva",
+          "immax_max_energy_price": "Maksimālā Nord Pool cena",
+          "immax_energy_to_add": "Pievienojamā enerģija",
+          "immax_charge_target_percentage": "Auto mērķa SOC",
+          "immax_nordpool_current": "Nord Pool uzlādes strāva",
+          "immax_planning_power": "Plānošanas jauda",
+          "immax_solar_reserve_power": "Saules rezerves jauda",
+          "immax_solar_min_power": "Minimālā saules uzlādes jauda",
+          "immax_solar_max_power": "Maksimālā saules uzlādes jauda"
         }
       },
       "immax_entities": {
@@ -57,6 +102,10 @@
           "immax_nordpool_price_entity": "Nord Pool cena"
         }
       }
+    },
+    "error": {
+      "soc_resume_must_exceed_stop": "Baterijas SOC atsākšanas slieksnim jābūt lielākam par apturēšanas slieksni.",
+      "solar_max_must_reach_min": "Maksimālajai saules uzlādes jaudai jābūt vismaz tikpat lielai kā minimālajai."
     }
   },
   "entity": {

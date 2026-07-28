@@ -1,0 +1,573 @@
+<!doctype html>
+<html lang="lv">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>Renault ZOE izmaksas</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --page: #f5f7f8;
+      --surface: #ffffff;
+      --surface-muted: #f7f9fa;
+      --line: #d9dee3;
+      --line-strong: #c4cbd2;
+      --text: #182026;
+      --muted: #60717d;
+      --accent: #087f8c;
+      --accent-soft: #dff3f4;
+      --orange: #c96b16;
+      --green: #26834a;
+      --red: #c33c3c;
+      --blue: #2878b5;
+      --shadow: 0 1px 3px rgba(16, 31, 43, 0.08);
+      font-family: Roboto, "Segoe UI", Arial, sans-serif;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html,
+    body {
+      min-height: 100%;
+      margin: 0;
+      background: var(--page);
+      color: var(--text);
+    }
+
+    button,
+    select,
+    input {
+      font: inherit;
+      letter-spacing: 0;
+    }
+
+    button,
+    select,
+    input[type="date"] {
+      min-height: 40px;
+      border: 1px solid var(--line-strong);
+      border-radius: 6px;
+      background: var(--surface);
+      color: var(--text);
+    }
+
+    button {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 7px;
+      padding: 0 14px;
+      cursor: pointer;
+    }
+
+    button:hover {
+      border-color: var(--accent);
+    }
+
+    button:disabled {
+      cursor: wait;
+      opacity: 0.6;
+    }
+
+    select,
+    input[type="date"] {
+      padding: 0 10px;
+    }
+
+    .app {
+      width: min(1600px, 100%);
+      margin: 0 auto;
+      padding: 14px;
+    }
+
+    .topbar {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 16px;
+      margin-bottom: 12px;
+    }
+
+    .title-wrap h1 {
+      margin: 0;
+      font-size: 24px;
+      line-height: 1.25;
+      font-weight: 600;
+      letter-spacing: 0;
+    }
+
+    .title-wrap p {
+      margin: 5px 0 0;
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.4;
+    }
+
+    .filters {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .language-switch {
+      display: inline-grid;
+      grid-template-columns: repeat(2, minmax(42px, 1fr));
+      gap: 2px;
+      padding: 2px;
+      border: 1px solid var(--line-strong);
+      border-radius: 6px;
+      background: var(--surface-muted);
+    }
+
+    .language-switch button {
+      min-width: 42px;
+      min-height: 34px;
+      padding: 0 9px;
+      border: 0;
+      border-radius: 4px;
+      background: transparent;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 650;
+    }
+
+    .language-switch button.active {
+      background: var(--accent);
+      color: #fff;
+    }
+
+    .language-switch button:focus-visible {
+      outline: 2px solid var(--accent);
+      outline-offset: 1px;
+    }
+
+    .refresh {
+      min-width: 108px;
+      border-color: var(--accent);
+      background: var(--accent);
+      color: #fff;
+      font-weight: 600;
+    }
+
+    .status {
+      min-height: 38px;
+      margin-bottom: 12px;
+      padding: 9px 12px;
+      border: 1px solid #b9d9dc;
+      border-radius: 6px;
+      background: var(--accent-soft);
+      color: #245a60;
+      font-size: 13px;
+      line-height: 1.4;
+    }
+
+    .status.warn {
+      border-color: #e2b2ad;
+      background: #fff0ef;
+      color: #8d2f28;
+    }
+
+    .metrics {
+      display: grid;
+      grid-template-columns: repeat(6, minmax(0, 1fr));
+      gap: 10px;
+      margin-bottom: 12px;
+    }
+
+    .metric {
+      min-width: 0;
+      padding: 13px 14px;
+      border: 1px solid var(--line);
+      border-radius: 7px;
+      background: var(--surface);
+      box-shadow: var(--shadow);
+    }
+
+    .metric-label {
+      display: block;
+      min-height: 34px;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.35;
+    }
+
+    .metric-value {
+      display: block;
+      margin-top: 4px;
+      overflow-wrap: anywhere;
+      font-size: 22px;
+      line-height: 1.15;
+      font-weight: 650;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .metric-note {
+      display: block;
+      min-height: 17px;
+      margin-top: 5px;
+      color: var(--muted);
+      font-size: 11px;
+      line-height: 1.3;
+    }
+
+    .charts {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr);
+      gap: 12px;
+      margin-bottom: 12px;
+    }
+
+    .panel {
+      min-width: 0;
+      border: 1px solid var(--line);
+      border-radius: 7px;
+      background: var(--surface);
+      box-shadow: var(--shadow);
+    }
+
+    .panel-header {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 13px 14px 8px;
+    }
+
+    .panel-header h2 {
+      margin: 0;
+      font-size: 16px;
+      line-height: 1.3;
+      font-weight: 600;
+      letter-spacing: 0;
+    }
+
+    .panel-header span {
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.35;
+      text-align: right;
+    }
+
+    .chart-wrap {
+      position: relative;
+      height: 420px;
+      padding: 0 8px 8px;
+    }
+
+    canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+    }
+
+    .table-panel {
+      overflow: hidden;
+    }
+
+    .table-scroll {
+      width: 100%;
+      overflow-x: auto;
+      border-top: 1px solid var(--line);
+    }
+
+    table {
+      width: 100%;
+      min-width: 930px;
+      border-collapse: collapse;
+      font-size: 13px;
+      font-variant-numeric: tabular-nums;
+    }
+
+    th,
+    td {
+      padding: 9px 10px;
+      border-bottom: 1px solid var(--line);
+      text-align: right;
+      vertical-align: middle;
+      white-space: nowrap;
+    }
+
+    th {
+      position: sticky;
+      top: 0;
+      z-index: 1;
+      background: var(--surface-muted);
+      color: #43515a;
+      font-size: 12px;
+      font-weight: 600;
+    }
+
+    th:first-child,
+    td:first-child {
+      text-align: left;
+    }
+
+    tbody tr:hover {
+      background: #f5fafb;
+    }
+
+    tfoot td {
+      border-top: 2px solid var(--line-strong);
+      border-bottom: 0;
+      background: var(--surface-muted);
+      font-weight: 650;
+    }
+
+    .estimated {
+      color: var(--orange);
+    }
+
+    .empty {
+      padding: 28px 16px;
+      color: var(--muted);
+      text-align: center;
+      line-height: 1.5;
+    }
+
+    .method {
+      margin-top: 12px;
+      padding: 12px 14px;
+      border-left: 4px solid var(--accent);
+      background: var(--surface);
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.5;
+    }
+
+    .method strong {
+      color: var(--text);
+    }
+
+    @media (max-width: 1180px) {
+      .metrics {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+      }
+    }
+
+    @media (max-width: 760px) {
+      .app {
+        padding: 8px;
+      }
+
+      .topbar {
+        display: block;
+      }
+
+      .title-wrap h1 {
+        font-size: 20px;
+      }
+
+      .filters {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        margin-top: 10px;
+      }
+
+      .filters select {
+        grid-column: 1 / -1;
+      }
+
+      .language-switch {
+        grid-column: 1 / -1;
+        justify-self: end;
+      }
+
+      .filters button {
+        min-width: 0;
+      }
+
+      .metrics {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 8px;
+      }
+
+      .metric {
+        padding: 11px;
+      }
+
+      .metric-label {
+        min-height: 32px;
+      }
+
+      .metric-value {
+        font-size: 19px;
+      }
+
+      .charts {
+        grid-template-columns: minmax(0, 1fr);
+        gap: 8px;
+      }
+
+      .chart-wrap {
+        height: 320px;
+      }
+
+      .panel-header {
+        padding: 11px 12px 7px;
+      }
+
+      .panel-header span {
+        max-width: 45%;
+      }
+
+      table {
+        min-width: 820px;
+      }
+    }
+
+    @media (prefers-color-scheme: dark) {
+      :root {
+        color-scheme: dark;
+        --page: #111417;
+        --surface: #1c2024;
+        --surface-muted: #24292e;
+        --line: #394047;
+        --line-strong: #505961;
+        --text: #edf1f4;
+        --muted: #a9b4bc;
+        --accent: #43a9b5;
+        --accent-soft: #17383d;
+        --shadow: none;
+      }
+
+      .status {
+        color: #b9e4e7;
+      }
+
+      .status.warn {
+        border-color: #7c4a45;
+        background: #3b2524;
+        color: #f1bbb5;
+      }
+
+      tbody tr:hover {
+        background: #202a2d;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="app">
+    <header class="topbar">
+      <div class="title-wrap">
+        <h1 data-i18n="pageTitle">Renault ZOE enerģijas izmaksas</h1>
+        <p data-i18n="pageSubtitle">Uzlāžu pašizmaksa, baterijas enerģijas atlikums un braucienu izmaksas.</p>
+      </div>
+      <div class="filters">
+        <div class="language-switch" role="group" aria-label="Valoda" data-i18n-aria="language">
+          <button id="langLv" type="button" data-language="lv" aria-pressed="true">LV</button>
+          <button id="langEn" type="button" data-language="en" aria-pressed="false">EN</button>
+        </div>
+        <select id="period" aria-label="Periods" data-i18n-aria="period">
+          <option value="current_month" data-i18n="currentMonth">Tekošais mēnesis</option>
+          <option value="7" data-i18n="days7">7 dienas</option>
+          <option value="30" data-i18n="days30">30 dienas</option>
+          <option value="90" data-i18n="days90">90 dienas</option>
+          <option value="all" data-i18n="allHistory">Visa pieejamā vēsture</option>
+        </select>
+        <input id="dayDate" type="date" aria-label="Konkrēts datums" data-i18n-aria="specificDate">
+        <button id="clearDate" type="button" hidden data-i18n="clear">Notīrīt</button>
+        <button id="settings" type="button" data-i18n="settings">Iestatījumi</button>
+        <button id="reload" class="refresh" type="button" data-i18n="refresh">Atjaunot</button>
+      </div>
+    </header>
+
+    <div id="status" class="status">Ielādēju Renault datus...</div>
+
+    <section class="metrics" aria-label="Izmaksu kopsavilkums" data-i18n-aria="costSummary">
+      <article class="metric">
+        <span class="metric-label" data-i18n="averageBatteryPrice">Vidējā cena baterijā</span>
+        <strong id="mBatteryRate" class="metric-value">-</strong>
+        <span id="mBatteryRateNote" class="metric-note"></span>
+      </article>
+      <article class="metric">
+        <span class="metric-label" data-i18n="batteryEnergy">Enerģija baterijā</span>
+        <strong id="mBatteryEnergy" class="metric-value">-</strong>
+        <span id="mBatteryValue" class="metric-note"></span>
+      </article>
+      <article class="metric">
+        <span class="metric-label" data-i18n="averageCost">Vidējās izmaksas</span>
+        <strong id="mCost100" class="metric-value">-</strong>
+        <span id="mCost100Note" class="metric-note"></span>
+      </article>
+      <article class="metric">
+        <span class="metric-label" data-i18n="averageConsumption">Vidējais patēriņš</span>
+        <strong id="mConsumption" class="metric-value">-</strong>
+        <span id="mConsumptionNote" class="metric-note"></span>
+      </article>
+      <article class="metric">
+        <span class="metric-label" data-i18n="distanceInPeriod">Nobraukums periodā</span>
+        <strong id="mDistance" class="metric-value">-</strong>
+        <span id="mTrips" class="metric-note"></span>
+      </article>
+      <article class="metric">
+        <span class="metric-label" data-i18n="spentOnTrips">Braucienos iztērēts</span>
+        <strong id="mDriveCost" class="metric-value">-</strong>
+        <span id="mDriveEnergy" class="metric-note"></span>
+      </article>
+    </section>
+
+    <section class="charts">
+      <article class="panel">
+        <div class="panel-header">
+          <h2 data-i18n="dailyCosts">Izmaksas pa dienām</h2>
+          <span>EUR/100 km</span>
+        </div>
+        <div class="chart-wrap">
+          <canvas id="dailyChart" role="img" aria-label="Braucienu izmaksas pa dienām" data-i18n-aria="dailyCostsAria"></canvas>
+        </div>
+      </article>
+      <article class="panel">
+        <div class="panel-header">
+          <h2 data-i18n="batteryUnitCost">Baterijas kWh pašizmaksa</h2>
+          <span data-i18n="afterEachCharge">c/kWh pēc katras uzlādes</span>
+        </div>
+        <div class="chart-wrap">
+          <canvas id="batteryChart" role="img" aria-label="Vidējā baterijas enerģijas cena" data-i18n-aria="batteryPriceAria"></canvas>
+        </div>
+      </article>
+    </section>
+
+    <section class="panel table-panel">
+      <div class="panel-header">
+        <h2 data-i18n="tripCosts">Braucienu izmaksas</h2>
+        <span id="tableSummary">-</span>
+      </div>
+      <div class="table-scroll">
+        <table>
+          <thead>
+            <tr>
+              <th data-i18n="startEnd">Sākums / beigas</th>
+              <th data-i18n="minutes">Min</th>
+              <th>SOC</th>
+              <th>km</th>
+              <th>kWh</th>
+              <th>kWh/100</th>
+              <th data-i18n="batteryCents">Baterijas c/kWh</th>
+              <th data-i18n="costEur">Izmaksas EUR</th>
+              <th>EUR/100 km</th>
+            </tr>
+          </thead>
+          <tbody id="tripRows"></tbody>
+          <tfoot id="tripTotals" hidden></tfoot>
+        </table>
+        <div id="empty" class="empty" hidden data-i18n="noTrips">Izvēlētajā periodā braucienu nav.</div>
+      </div>
+    </section>
+
+    <aside id="method" class="method">
+      <strong>Aprēķina princips.</strong>
+      Renault uzlāde pievieno baterijai SOC pieaugumam atbilstošās kWh un sesijas faktiskās izmaksas ar pārvadi.
+      Brauciens patērē kWh par pirms brauciena esošo svērto baterijas cenu. Baterijas izmantojamā ietilpība ir 52 kWh.
+      Simbols <span class="estimated">~</span> norāda vērtību, kas SOC datu trūkuma vai neiespējamas nobīdes dēļ novērtēta pēc uzkrātā patēriņa.
+    </aside>
+  </main>
+
+  <script src="./costs.js?v=1.2.0"></script>
+</body>
+</html>

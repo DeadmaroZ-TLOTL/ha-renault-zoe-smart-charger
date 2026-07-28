@@ -11,16 +11,19 @@ from homeassistant.components.recorder.history import get_significant_states
 
 
 MODEL_CODE = "X102VE"
-BATTERY_CAPACITY_KWH = 52.0
-CHARGING_EFFICIENCY = 0.9
+DEFAULT_BATTERY_CAPACITY_KWH = 52.0
+DEFAULT_CHARGING_EFFICIENCY = 0.9
 DEFAULT_CHARGING_POWER_KW = 11.0
+DEFAULT_DELIVERY_PRICE_EXCL_VAT_EUR_PER_KWH = 0.03962
+DEFAULT_ENERGY_VAT_PERCENT = 21.0
+DEFAULT_FALLBACK_CONSUMPTION_KWH_PER_100KM = 17.5
 VISIBLE_HISTORY_DAYS = 31
 LEARNING_HISTORY_DAYS = 180
 MAX_EXPOSED_HISTORY_SESSIONS = 50
 UPDATE_INTERVAL_MINUTES = 15
 DYNAMIC_PRICE_ENTITY = "sensor.renault_zoe_new_nord_pool_price"
 LEGACY_PRICE_ENTITY = "sensor.nordpool_kwh_lv_eur_3_10_021"
-DELIVERY_WITH_VAT_EUR_PER_KWH = 0.03962 * 1.21
+COST_SETTINGS_ENTITY = "sensor.renault_zoe_new_cost_settings"
 
 _refresh_in_progress = False
 
@@ -43,7 +46,68 @@ def _number(value, default=0.0):
         return default
 
 
-def _normalise_session(raw):
+def _cost_settings():
+    """Read the integration options through its stable settings sensor."""
+    state_value = Function.hass.states.get(COST_SETTINGS_ENTITY)
+    attrs = state_value.attributes if state_value is not None else {}
+    capacity = max(
+        1.0,
+        _number(
+            attrs.get("battery_capacity_kwh"),
+            DEFAULT_BATTERY_CAPACITY_KWH,
+        ),
+    )
+    efficiency = _number(
+        attrs.get("charging_efficiency"),
+        _number(
+            attrs.get("charging_efficiency_percent"),
+            DEFAULT_CHARGING_EFFICIENCY * 100,
+        )
+        / 100.0,
+    )
+    efficiency = min(1.0, max(0.01, efficiency))
+    delivery_excl_vat = max(
+        0.0,
+        _number(
+            attrs.get("delivery_price_excl_vat_eur_per_kwh"),
+            DEFAULT_DELIVERY_PRICE_EXCL_VAT_EUR_PER_KWH,
+        ),
+    )
+    vat_percent = max(
+        0.0,
+        _number(
+            attrs.get("vat_percent"),
+            DEFAULT_ENERGY_VAT_PERCENT,
+        ),
+    )
+    delivery_incl_vat = _number(
+        attrs.get("delivery_price_incl_vat_eur_per_kwh"),
+        delivery_excl_vat * (1 + vat_percent / 100.0),
+    )
+    return {
+        "battery_capacity_kwh": capacity,
+        "charging_efficiency": efficiency,
+        "default_charging_power_kw": max(
+            0.1,
+            _number(
+                attrs.get("default_charging_power_kw"),
+                DEFAULT_CHARGING_POWER_KW,
+            ),
+        ),
+        "delivery_price_excl_vat_eur_per_kwh": delivery_excl_vat,
+        "vat_percent": vat_percent,
+        "delivery_price_incl_vat_eur_per_kwh": max(0.0, delivery_incl_vat),
+        "fallback_consumption_kwh_per_100km": max(
+            0.1,
+            _number(
+                attrs.get("fallback_consumption_kwh_per_100km"),
+                DEFAULT_FALLBACK_CONSUMPTION_KWH_PER_100KM,
+            ),
+        ),
+    }
+
+
+def _normalise_session(raw, settings):
     start_soc = _number(raw.get("chargeStartBatteryLevel"))
     end_soc = _number(raw.get("chargeEndBatteryLevel"))
     soc_gained = max(0.0, end_soc - start_soc)
@@ -60,7 +124,7 @@ def _normalise_session(raw):
         "soc_gained": round(soc_gained, 1),
         "energy_recovered_kwh": energy_recovered,
         "estimated_battery_energy_kwh": round(
-            BATTERY_CAPACITY_KWH * soc_gained / 100.0, 2
+            settings["battery_capacity_kwh"] * soc_gained / 100.0, 2
         ),
         "charge_type": raw.get("chargePower"),
         "status": raw.get("chargeEndStatus"),
@@ -131,7 +195,7 @@ async def _get_price_history(start, end, price_entity):
     return sorted(prices, key=lambda item: item["time"])
 
 
-def _add_session_cost(session, prices):
+def _add_session_cost(session, prices, settings):
     start = _parse_datetime(session.get("start"))
     end = _parse_datetime(session.get("end"))
     result = dict(session)
@@ -175,17 +239,18 @@ def _add_session_cost(session, prices):
     if battery_energy <= 0:
         return result
 
-    grid_energy = battery_energy / CHARGING_EFFICIENCY
+    grid_energy = battery_energy / settings["charging_efficiency"]
     spot_rate = weighted_price / covered_seconds
     spot_cost = grid_energy * spot_rate / 100.0
-    delivery_cost = grid_energy * DELIVERY_WITH_VAT_EUR_PER_KWH
+    delivery_rate = settings["delivery_price_incl_vat_eur_per_kwh"]
+    delivery_cost = grid_energy * delivery_rate
     total_cost = spot_cost + delivery_cost
     result.update(
         {
             "grid_energy_kwh": round(grid_energy, 2),
             "spot_rate_c_per_kwh": round(spot_rate, 3),
             "total_rate_c_per_kwh": round(
-                spot_rate + DELIVERY_WITH_VAT_EUR_PER_KWH * 100.0, 3
+                spot_rate + delivery_rate * 100.0, 3
             ),
             "spot_cost_eur": round(spot_cost, 4),
             "delivery_cost_eur": round(delivery_cost, 4),
@@ -220,7 +285,7 @@ def _is_meaningful_session(session):
     )
 
 
-def _build_history_model(sessions):
+def _build_history_model(sessions, settings):
     observations = []
     ignored_taper_sessions = 0
     ignored_invalid_sessions = 0
@@ -242,9 +307,9 @@ def _build_history_model(sessions):
         rate_percent_per_hour = soc_gained / duration_hours
         observed_power_kw = (
             soc_gained
-            * BATTERY_CAPACITY_KWH
+            * settings["battery_capacity_kwh"]
             / 100.0
-            / CHARGING_EFFICIENCY
+            / settings["charging_efficiency"]
             / duration_hours
         )
         if not (1 <= rate_percent_per_hour <= 35 and 2 <= observed_power_kw <= 22):
@@ -270,8 +335,8 @@ def _build_history_model(sessions):
         )
 
     if not observations:
-        adaptive_power_kw = DEFAULT_CHARGING_POWER_KW
-        observed_power_kw = DEFAULT_CHARGING_POWER_KW
+        adaptive_power_kw = settings["default_charging_power_kw"]
+        observed_power_kw = settings["default_charging_power_kw"]
         confidence = 0.0
         standard_deviation_kw = 0.0
         total_weight = 0.0
@@ -302,12 +367,15 @@ def _build_history_model(sessions):
             (0.25 * count_confidence + 0.75 * volume_confidence) * consistency,
         )
         adaptive_power_kw = (
-            DEFAULT_CHARGING_POWER_KW * (1.0 - confidence)
+            settings["default_charging_power_kw"] * (1.0 - confidence)
             + observed_power_kw * confidence
         )
 
     adaptive_rate = (
-        adaptive_power_kw * CHARGING_EFFICIENCY / BATTERY_CAPACITY_KWH * 100.0
+        adaptive_power_kw
+        * settings["charging_efficiency"]
+        / settings["battery_capacity_kwh"]
+        * 100.0
     )
     return {
         "adaptive_power_kw": round(adaptive_power_kw, 2),
@@ -397,6 +465,7 @@ async def zoe_charge_sessions_update():
             raise last_error or RuntimeError("Active Zoe was not found")
 
         now = datetime.now(timezone.utc)
+        settings = _cost_settings()
         result = await _get_charges_with_auth_retry(
             proxy, now - timedelta(days=LEARNING_HISTORY_DAYS), now
         )
@@ -410,7 +479,7 @@ async def zoe_charge_sessions_update():
         raw_sessions = _attributes(result).get("charges") or []
         history_sessions = _deduplicate_sessions(
             [
-                _normalise_session(item)
+                _normalise_session(item, settings)
                 for item in raw_sessions
                 if isinstance(item, dict)
             ]
@@ -429,7 +498,8 @@ async def zoe_charge_sessions_update():
         except Exception as exc:
             log.warning("Zoe Nord Pool price history update failed: " + str(exc)[:240])
         meaningful_sessions = [
-            _add_session_cost(item, price_history) for item in meaningful_sessions
+            _add_session_cost(item, price_history, settings)
+            for item in meaningful_sessions
         ]
         visible_sessions = [
             item
@@ -437,21 +507,35 @@ async def zoe_charge_sessions_update():
             if (_parse_datetime(item.get("end") or item.get("start")) or now)
             >= visible_cutoff
         ]
-        model = _build_history_model(history_sessions)
+        model = _build_history_model(history_sessions, settings)
         updated = now.isoformat()
         common = {
             "source": "Renault API charges endpoint",
             "last_api_update": updated,
             "period_days": VISIBLE_HISTORY_DAYS,
             "period_start": visible_cutoff.isoformat(),
-            "battery_capacity_kwh": BATTERY_CAPACITY_KWH,
-            "charging_efficiency": CHARGING_EFFICIENCY,
+            "battery_capacity_kwh": settings["battery_capacity_kwh"],
+            "charging_efficiency": settings["charging_efficiency"],
             "grid_kwh_per_soc_percent": round(
-                BATTERY_CAPACITY_KWH / 100.0 / CHARGING_EFFICIENCY, 4
+                settings["battery_capacity_kwh"]
+                / 100.0
+                / settings["charging_efficiency"],
+                4,
             ),
             "energy_note": "Renault recovered energy is battery energy, not metered grid input energy",
             "price_entity": price_entity,
-            "delivery_with_vat_eur_per_kwh": round(DELIVERY_WITH_VAT_EUR_PER_KWH, 7),
+            "delivery_excl_vat_eur_per_kwh": round(
+                settings["delivery_price_excl_vat_eur_per_kwh"],
+                7,
+            ),
+            "energy_vat_percent": settings["vat_percent"],
+            "delivery_with_vat_eur_per_kwh": round(
+                settings["delivery_price_incl_vat_eur_per_kwh"],
+                7,
+            ),
+            "fallback_consumption_kwh_per_100km": settings[
+                "fallback_consumption_kwh_per_100km"
+            ],
             "cost_note": "Grid energy divides Renault battery-side energy by charging efficiency before applying Nord Pool and delivery prices",
         }
 
@@ -499,7 +583,7 @@ async def zoe_charge_sessions_update():
                 **common,
                 **model,
                 "period_days": LEARNING_HISTORY_DAYS,
-                "default_power_kw": DEFAULT_CHARGING_POWER_KW,
+                "default_power_kw": settings["default_charging_power_kw"],
                 "unit_of_measurement": "kW",
                 "device_class": "power",
                 "state_class": "measurement",

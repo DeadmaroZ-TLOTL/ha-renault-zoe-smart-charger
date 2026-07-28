@@ -16,6 +16,31 @@ from homeassistant.helpers.event import async_call_later
 from .charge_control import ZoeNewChargeControl, find_zoe_new
 from .const import (
     API_ENTITY_IDS,
+    CONF_IMMAX_AI_ADVISOR_ENABLED,
+    CONF_IMMAX_AI_ADVISOR_INTERVAL,
+    CONF_IMMAX_AI_CURRENT_CAP,
+    CONF_IMMAX_BATTERY_SOC_RESUME_LIMIT,
+    CONF_IMMAX_BATTERY_SOC_STOP_LIMIT,
+    CONF_IMMAX_CHARGE_TARGET_PERCENTAGE,
+    CONF_IMMAX_CHARGE_TO_PERCENTAGE_ENABLED,
+    CONF_IMMAX_DELAY_PERIOD,
+    CONF_IMMAX_ENERGY_TO_ADD,
+    CONF_IMMAX_MAX_ENERGY_PRICE,
+    CONF_IMMAX_MAX_PRICE_ENABLED,
+    CONF_IMMAX_NORDPOOL_CURRENT,
+    CONF_IMMAX_PLANNING_POWER,
+    CONF_IMMAX_SMART_CHARGING_MODE,
+    CONF_IMMAX_SOLAR_MAX_POWER,
+    CONF_IMMAX_SOLAR_MIN_POWER,
+    CONF_IMMAX_SOLAR_PHASE_MODE,
+    CONF_IMMAX_SOLAR_RESERVE_POWER,
+    CONF_IMMAX_TOTAL_POWER_LIMIT,
+    CONF_ZOE_CHARGE_RANGE_TARGET_KM,
+    CONF_ZOE_CHARGE_TARGET_MODE,
+    CONF_ZOE_CHARGE_TARGET_PERCENT,
+    CONF_ZOE_MAX_ENERGY_PRICE,
+    CONF_ZOE_MAX_PRICE_ENABLED,
+    CONF_ZOE_SMART_CHARGING_ENABLED,
     DOMAIN,
     TARGET_ENTITY_ID,
     ZOE_ENTITY_PREFIX,
@@ -38,10 +63,128 @@ PRESERVED_SWITCH_UNIQUE_ID_SUFFIXES = (
     "_smart_charging_location_control",
 )
 
+IMMAX_SELECT_OPTION_ENTITIES = {
+    CONF_IMMAX_SMART_CHARGING_MODE: "input_select.immax_smart_charging_mode",
+    CONF_IMMAX_SOLAR_PHASE_MODE: "input_select.immax_solar_phase_mode",
+}
+
+ZOE_SELECT_OPTION_ENTITIES = {
+    CONF_ZOE_CHARGE_TARGET_MODE: "input_select.zoe_charge_target_mode",
+}
+
+IMMAX_BOOLEAN_OPTION_ENTITIES = {
+    CONF_IMMAX_MAX_PRICE_ENABLED: "input_boolean.immax_max_price_enabled",
+    CONF_IMMAX_CHARGE_TO_PERCENTAGE_ENABLED: (
+        "input_boolean.immax_charge_to_percentage_enabled"
+    ),
+    CONF_IMMAX_AI_ADVISOR_ENABLED: "input_boolean.immax_ai_advisor_enabled",
+}
+
+ZOE_BOOLEAN_OPTION_ENTITIES = {
+    CONF_ZOE_SMART_CHARGING_ENABLED: "input_boolean.zoe_smart_charging",
+    CONF_ZOE_MAX_PRICE_ENABLED: "input_boolean.zoe_max_price_enabled",
+}
+
+IMMAX_NUMBER_OPTION_ENTITIES = {
+    CONF_IMMAX_DELAY_PERIOD: "input_number.immax_delay_period",
+    CONF_IMMAX_TOTAL_POWER_LIMIT: "input_number.immax_total_power_limit",
+    CONF_IMMAX_BATTERY_SOC_STOP_LIMIT: (
+        "input_number.immax_battery_soc_stop_limit"
+    ),
+    CONF_IMMAX_BATTERY_SOC_RESUME_LIMIT: (
+        "input_number.immax_battery_soc_resume_limit"
+    ),
+    CONF_IMMAX_AI_ADVISOR_INTERVAL: "input_number.immax_ai_advisor_interval",
+    CONF_IMMAX_AI_CURRENT_CAP: "input_number.immax_ai_current_cap",
+    CONF_IMMAX_MAX_ENERGY_PRICE: "input_number.immax_max_energy_price",
+    CONF_IMMAX_ENERGY_TO_ADD: "input_number.immax_energy_to_add",
+    CONF_IMMAX_CHARGE_TARGET_PERCENTAGE: (
+        "input_number.immax_charge_target_percentage"
+    ),
+    CONF_IMMAX_NORDPOOL_CURRENT: "input_number.immax_nordpool_current",
+    CONF_IMMAX_PLANNING_POWER: "input_number.immax_planning_power",
+    CONF_IMMAX_SOLAR_RESERVE_POWER: "input_number.immax_solar_reserve_power",
+    CONF_IMMAX_SOLAR_MIN_POWER: "input_number.immax_solar_min_power",
+    CONF_IMMAX_SOLAR_MAX_POWER: "input_number.immax_solar_max_power",
+}
+
+ZOE_NUMBER_OPTION_ENTITIES = {
+    CONF_ZOE_CHARGE_TARGET_PERCENT: "input_number.zoe_charge_target",
+    CONF_ZOE_CHARGE_RANGE_TARGET_KM: "input_number.zoe_charge_range_target",
+    CONF_ZOE_MAX_ENERGY_PRICE: "input_number.zoe_max_energy_price",
+}
+
+
+async def _async_sync_charging_setpoints(
+    hass: HomeAssistant,
+    entry: ConfigEntry,
+) -> None:
+    """Apply saved integration options to existing charging helpers."""
+    options = entry.options
+    for key, entity_id in (
+        IMMAX_SELECT_OPTION_ENTITIES | ZOE_SELECT_OPTION_ENTITIES
+    ).items():
+        current_state = hass.states.get(entity_id)
+        if key not in options or current_state is None:
+            continue
+        option = str(options[key])
+        if current_state.state == option:
+            continue
+        await hass.services.async_call(
+            "input_select",
+            "select_option",
+            {"entity_id": entity_id, "option": option},
+            blocking=True,
+        )
+
+    for key, entity_id in (
+        IMMAX_BOOLEAN_OPTION_ENTITIES | ZOE_BOOLEAN_OPTION_ENTITIES
+    ).items():
+        current_state = hass.states.get(entity_id)
+        if key not in options or current_state is None:
+            continue
+        turn_on = bool(options[key])
+        if (current_state.state == "on") == turn_on:
+            continue
+        await hass.services.async_call(
+            "input_boolean",
+            "turn_on" if turn_on else "turn_off",
+            {"entity_id": entity_id},
+            blocking=True,
+        )
+
+    for key, entity_id in (
+        IMMAX_NUMBER_OPTION_ENTITIES | ZOE_NUMBER_OPTION_ENTITIES
+    ).items():
+        current_state = hass.states.get(entity_id)
+        if key not in options or current_state is None:
+            continue
+        value = float(options[key])
+        try:
+            current_value = float(current_state.state)
+        except (TypeError, ValueError):
+            current_value = None
+        if current_value is not None and abs(current_value - value) < 0.0001:
+            continue
+        await hass.services.async_call(
+            "input_number",
+            "set_value",
+            {"entity_id": entity_id, "value": value},
+            blocking=True,
+        )
+
 
 async def _async_options_updated(hass: HomeAssistant, entry: ConfigEntry) -> None:
-    """Reload location settings after options are changed."""
+    """Reload options and refresh the derived charging-cost history."""
     await hass.config_entries.async_reload(entry.entry_id)
+    if hass.services.has_service("pyscript", "zoe_charge_sessions_update"):
+        hass.async_create_task(
+            hass.services.async_call(
+                "pyscript",
+                "zoe_charge_sessions_update",
+                blocking=False,
+            )
+        )
 
 
 def _is_managed_entity(entity_id: str) -> bool:
@@ -156,6 +299,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         "extras_coordinator": extras_coordinator,
     }
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+    await _async_sync_charging_setpoints(hass, entry)
     return True
 
 

@@ -1,0 +1,368 @@
+:root {
+  color-scheme: light;
+  --bg: #f5f7f8;
+  --page: #f5f7f8;
+  --panel: #ffffff;
+  --surface: #ffffff;
+  --surface-muted: #f7f9fa;
+  --text: #182026;
+  --muted: #60717d;
+  --line: #d9dee3;
+  --line-strong: #c4cbd2;
+  --accent: #087f8c;
+  --accent-soft: #dff3f4;
+  --warn: #c96b16;
+  --shadow: 0 1px 3px rgba(16, 31, 43, 0.08);
+}
+
+body {
+  background: var(--bg);
+  font-family: Roboto, "Segoe UI", Arial, sans-serif;
+}
+
+.shell {
+  width: min(1600px, 100%);
+  margin: 0 auto;
+  gap: 12px;
+  padding: 14px;
+}
+
+.panel {
+  min-width: 0;
+  background: var(--surface);
+  border-color: var(--line);
+  border-radius: 7px;
+  box-shadow: var(--shadow);
+}
+
+.overview-block {
+  overflow: visible;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.overview-block > .header {
+  min-height: 0;
+  margin-bottom: 12px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+
+.header {
+  min-height: 58px;
+  padding: 13px 14px;
+}
+
+h1 {
+  font-size: 24px;
+  line-height: 1.25;
+  font-weight: 600;
+}
+
+h2 {
+  font-size: 16px;
+  line-height: 1.3;
+  font-weight: 600;
+}
+
+button,
+select,
+input[type="date"] {
+  min-height: 40px;
+  border-color: var(--line-strong);
+  border-radius: 6px;
+  letter-spacing: 0;
+}
+
+button.primary {
+  border-color: var(--accent);
+  background: var(--accent);
+}
+
+.status {
+  min-height: 38px;
+  padding: 9px 14px;
+  line-height: 1.4;
+}
+
+.overview-block > .status {
+  margin-bottom: 12px;
+  border: 1px solid #b9d9dc;
+  border-radius: 6px;
+  background: var(--accent-soft);
+  color: #245a60;
+}
+
+.overview-block > .status.warn {
+  border-color: #e2b2ad;
+  background: #fff0ef;
+  color: #8d2f28;
+}
+
+.summary {
+  gap: 10px;
+  padding: 0;
+  border: 0;
+}
+
+.metric {
+  min-height: 78px;
+  padding: 11px 12px;
+  border-color: var(--line);
+  border-radius: 7px;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+
+.metric span {
+  min-height: 30px;
+  line-height: 1.3;
+}
+
+.metric strong {
+  margin-top: 4px;
+  font-size: 20px;
+  line-height: 1.15;
+}
+
+.content-panel {
+  overflow: hidden;
+}
+
+.content-panel > .header,
+.content-panel > .map-title {
+  min-height: 52px;
+  padding: 13px 14px 8px;
+  border-bottom: 0;
+}
+
+.content-panel > .header h1 {
+  font-size: 16px;
+}
+
+.content-panel > .status {
+  min-height: 38px;
+  margin: 0 14px 12px;
+  padding: 9px 12px;
+  border: 1px solid #b9d9dc;
+  border-radius: 6px;
+  background: var(--accent-soft);
+  color: #245a60;
+}
+
+.content-panel > .status.warn {
+  border-color: #e2b2ad;
+  background: #fff0ef;
+  color: #8d2f28;
+}
+
+.trips-app .vehicle-grid {
+  grid-template-columns: repeat(8, minmax(0, 1fr));
+  gap: 10px;
+  border: 0;
+}
+
+.trips-app {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.trips-app button.vehicle-stat {
+  min-height: 86px;
+  padding: 13px 14px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+
+.trips-app button.vehicle-stat:hover,
+.trips-app button.vehicle-stat:focus-visible {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  outline: 0;
+}
+
+.trips-app .vehicle-stat span {
+  min-height: 32px;
+  font-size: 12px;
+  line-height: 1.35;
+  white-space: normal;
+}
+
+.trips-app .vehicle-stat strong {
+  margin-top: 4px;
+  font-size: 19px;
+  line-height: 1.15;
+}
+
+.trips-app .vehicle-actions {
+  gap: 8px;
+  padding: 10px 0 0;
+}
+
+.trips-app .trips-list-panel .summary {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin-bottom: 12px;
+}
+
+.trips-app .trip-list {
+  overflow: auto;
+  max-height: 520px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--surface);
+}
+
+.trips-app .trips-list-panel {
+  overflow: visible;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.trips-app .trips-list-panel > .header {
+  padding-right: 0;
+  padding-left: 0;
+}
+
+.trips-app .trips-list-panel > .status {
+  margin-right: 0;
+  margin-left: 0;
+}
+
+.trips-app th,
+.mileage-app th {
+  background: var(--surface-muted);
+  color: #43515a;
+  font-weight: 600;
+}
+
+.mileage-app .summary {
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  margin-bottom: 12px;
+}
+
+.mileage-app .surface-overview {
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+
+.mileage-app .content-grid {
+  grid-template-columns: minmax(0, 1fr);
+  align-items: stretch;
+}
+
+@media (max-width: 760px) {
+  .shell {
+    width: 100%;
+    gap: 8px;
+    padding: 8px;
+  }
+
+  .header {
+    min-height: 0;
+    padding: 11px 12px;
+  }
+
+  .panel {
+    border: 1px solid var(--line);
+    border-radius: 7px;
+  }
+
+  .overview-block > .header {
+    margin-bottom: 10px;
+    padding: 0;
+  }
+
+  h1 {
+    font-size: 20px;
+  }
+
+  .summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 7px;
+    padding: 8px;
+  }
+
+  .metric {
+    min-height: 72px;
+    padding: 9px 10px;
+  }
+
+  .metric strong {
+    font-size: 18px;
+  }
+
+  .trips-app .vehicle-grid,
+  .mileage-app .summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  .trips-app button.vehicle-stat {
+    min-height: 78px;
+    padding: 11px;
+  }
+
+  .trips-app .vehicle-stat span {
+    min-height: 30px;
+  }
+
+  .trips-app .trips-list-panel .summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .trips-app .trip-list {
+    max-height: none;
+  }
+
+  .content-panel > .header,
+  .content-panel > .map-title {
+    padding: 11px 12px 7px;
+  }
+
+  .content-panel > .status {
+    margin: 0 12px 10px;
+  }
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+    --bg: #151a1d;
+    --page: #151a1d;
+    --panel: #1b2226;
+    --surface: #1b2226;
+    --surface-muted: #20282c;
+    --line: #3a444a;
+    --line-strong: #505961;
+    --text: #edf1f4;
+    --muted: #a9b4bc;
+    --accent: #43a9b5;
+    --accent-soft: #17383d;
+    --shadow: none;
+  }
+
+  .overview-block > .status,
+  .content-panel > .status {
+    border-color: #29545a;
+    color: #b9e4e7;
+  }
+
+  .overview-block > .status.warn,
+  .content-panel > .status.warn {
+    border-color: #7c4a45;
+    background: #3b2524;
+    color: #f1bbb5;
+  }
+
+  .trips-app th,
+  .mileage-app th {
+    color: var(--muted);
+  }
+}

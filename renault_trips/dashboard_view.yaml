@@ -1,7 +1,9 @@
-title: Renault Trips
+title: Trips
 path: default
+icon: mdi:map-marker-path
+show_icon_and_title: true
 type: panel
 cards:
   - type: iframe
-    url: /local/renault_trips/index.html?v=1.8.2
-    aspect_ratio: 100%
+    url: /local/renault_trips/index.html?v=1.9.0
+    aspect_ratio: 72%

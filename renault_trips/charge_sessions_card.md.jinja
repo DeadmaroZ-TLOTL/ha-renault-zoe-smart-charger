@@ -38,7 +38,7 @@ Renault charge session data is temporarily unavailable.
 No completed Renault charge sessions found for this period.
 {% else %}
 {% set totals = namespace(battery=0, energy=0, cost=0, priced=0) %}
-{% set out = namespace(text='| Start / End | Duration | SOC | Battery energy (est.) | Grid energy | Price incl. delivery | Cost | Status |\n|:--|--:|--:|--:|--:|--:|--:|:--|\n') %}
+{% set out = namespace(text='| Start / End | Min | SOC | Battery kWh | Grid kWh | Price c/kWh | Cost EUR | Status |\n|:--|--:|--:|--:|--:|--:|--:|:--|\n') %}
 {% for session in filtered.items %}
   {% set session_start = as_local(as_datetime(session.start)) %}
   {% set session_end = as_local(as_datetime(session.end)) %}
@@ -49,10 +49,10 @@ No completed Renault charge sessions found for this period.
   {% set grid_energy = session.grid_energy_kwh | float(0) %}
   {% set total_cost = session.total_cost_eur | float(0) %}
   {% set coverage_mark = '~' if session.price_coverage_percent | float(0) < 99 else '' %}
-  {% set energy_text = ('%.2f' | format(grid_energy)) ~ ' kWh' if has_cost else '-' %}
-  {% set rate_text = coverage_mark ~ ('%.2f' | format(session.total_rate_c_per_kwh | float(0))) ~ ' c/kWh' if has_cost else '-' %}
-  {% set cost_text = coverage_mark ~ ('%.2f' | format(total_cost)) ~ ' EUR' if has_cost else '-' %}
-  {% set out.text = out.text ~ '| ' ~ session_start.strftime('%d.%m %H:%M') ~ '<br>' ~ end_text ~ ' | ' ~ (session.duration_min | int(0)) ~ ' min | ' ~ soc ~ ' | ~' ~ ('%.2f' | format(battery_energy)) ~ ' kWh | ' ~ energy_text ~ ' | ' ~ rate_text ~ ' | **' ~ cost_text ~ '** | ' ~ (session.status or '-') ~ ' |\n' %}
+  {% set energy_text = ('%.2f' | format(grid_energy)) if has_cost else '-' %}
+  {% set rate_text = coverage_mark ~ ('%.2f' | format(session.total_rate_c_per_kwh | float(0))) if has_cost else '-' %}
+  {% set cost_text = coverage_mark ~ ('%.2f' | format(total_cost)) if has_cost else '-' %}
+  {% set out.text = out.text ~ '| ' ~ session_start.strftime('%d.%m %H:%M') ~ '<br>' ~ end_text ~ ' | ' ~ (session.duration_min | int(0)) ~ ' | ' ~ soc ~ ' | ~' ~ ('%.2f' | format(battery_energy)) ~ ' | ' ~ energy_text ~ ' | ' ~ rate_text ~ ' | **' ~ cost_text ~ '** | ' ~ (session.status or '-') ~ ' |\n' %}
   {% set totals.battery = totals.battery + battery_energy %}
   {% if has_cost %}
     {% set totals.energy = totals.energy + grid_energy %}
@@ -61,8 +61,13 @@ No completed Renault charge sessions found for this period.
   {% endif %}
 {% endfor %}
 {% set total_rate = totals.cost / totals.energy * 100 if totals.energy > 0 else 0 %}
-{% set out.text = out.text ~ '| **Total** |  |  |  | **~' ~ ('%.2f' | format(totals.battery)) ~ ' kWh** | **' ~ ('%.2f' | format(totals.energy)) ~ ' kWh** | **' ~ ('%.2f' | format(total_rate)) ~ ' c/kWh** | **' ~ ('%.2f' | format(totals.cost)) ~ ' EUR** |  |\n' %}
+{% set out.text = out.text ~ '| **Total** |  |  | **~' ~ ('%.2f' | format(totals.battery)) ~ '** | **' ~ ('%.2f' | format(totals.energy)) ~ '** | **' ~ ('%.2f' | format(total_rate)) ~ '** | **' ~ ('%.2f' | format(totals.cost)) ~ '** |  |\n' %}
 {{ out.text }}
 
-Battery energy is estimated from Renault's reported SOC gain and 52 kWh usable capacity. Cost uses that value converted to estimated grid input with the learned 90% charging efficiency, interval-weighted Nord Pool history, and **0.0479402 EUR/kWh** delivery with VAT. A tilde before a price or cost marks incomplete price-history coverage.
+{% set capacity = state_attr('sensor.renault_zoe_new_cost_settings', 'battery_capacity_kwh') | float(52) %}
+{% set efficiency = state_attr('sensor.renault_zoe_new_cost_settings', 'charging_efficiency_percent') | float(90) %}
+{% set delivery_excl = state_attr('sensor.renault_zoe_new_cost_settings', 'delivery_price_excl_vat_eur_per_kwh') | float(0.03962) %}
+{% set delivery_incl = state_attr('sensor.renault_zoe_new_cost_settings', 'delivery_price_incl_vat_eur_per_kwh') | float(0.0479402) %}
+{% set vat = state_attr('sensor.renault_zoe_new_cost_settings', 'vat_percent') | float(21) %}
+Battery energy is estimated from Renault's reported SOC gain and **{{ capacity | round(1) }} kWh** usable capacity. Cost converts that value to estimated grid input with the configured **{{ efficiency | round(1) }}%** charging efficiency, interval-weighted Nord Pool history, and **{{ delivery_incl | round(5) }} EUR/kWh** delivery including VAT ({{ delivery_excl | round(5) }} EUR/kWh + {{ vat | round(1) }}% VAT). A tilde before a price or cost marks incomplete price-history coverage.
 {% endif %}

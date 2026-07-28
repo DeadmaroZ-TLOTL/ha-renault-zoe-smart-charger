@@ -34,29 +34,80 @@ stops the active smart session once and then restores manual operation.
 
 ## Solar control signal
 
-With grid export selected, the package calculates net available power as:
+When grid export or either battery-flow source is selected, the package
+calculates net available power as:
 
 ```text
 charger power + grid export + battery charging - battery discharging - reserve
 ```
 
-If solar production is also selected, it caps that result so the requested
-charging power cannot exceed current PV production plus any explicitly allowed
-battery support. A positive reserve leaves that much power available for the
-battery or grid; a negative reserve permits the charger to draw up to its
-absolute value beyond the available solar power. If grid export is empty, solar
-production becomes the direct fallback source. Every optional source may be
-left empty and then contributes nothing; charger control and current remain
-required. Power sources may report either W or kW.
+Each selected flow source contributes independently, so battery charging and
+discharging still control the available surplus when grid export is left
+empty. If solar production is also selected, it caps that result so the
+requested charging power cannot exceed current PV production plus any
+explicitly allowed battery support. A positive reserve leaves that much power
+available for the battery or grid; a negative reserve permits the charger to
+draw up to its absolute value beyond the available solar power. If every flow
+source is empty, solar production becomes the direct fallback source. Every
+optional source may be left empty and then contributes nothing; charger
+control and current remain required. Power sources may report either W or kW.
 
-All solar settings and reported values use kW. Charging starts only when the
-result can sustain the configured minimum power plus a 0.5 kW start margin.
+All solar settings and reported values use kW. Home Assistant requests fresh
+load, SOC, charger, solar, grid, and battery-flow states every 15 seconds. The
+controller evaluates them every 15 seconds and whenever a selected source
+changes.
+Charging starts when the result can sustain the configured minimum power or
+the electrical 6 A minimum, whichever is higher. Every new session explicitly
+sets the twelve-hour Delay mode, applies 6 A, and only then changes to Immediate.
+It holds 6 A for the first 30 seconds so the vehicle and power-flow sensors can
+settle. The charging switch is never used by smart control.
+
 Because the charger protocol accepts only whole-ampere commands, Home Assistant
-converts the requested kW internally using the measured three-phase voltage.
-In one-phase mode it uses the average measured phase voltage instead. The
-internal command is limited to 6-32 A and changes by at most 2 A per adjustment.
-Commands are spaced by at least 45 seconds, and low-surplus shutdown has a
-two-minute guard.
+converts the requested kW internally using the measured three-phase voltage. In
+one-phase mode it uses the average measured phase voltage instead. The internal
+command is limited to 6-32 A and then changes by one ampere at a time, no more
+often than every 15 seconds. If available power falls below the minimum, the
+controller first returns to 6 A and waits for 30 seconds. It pauses charging by
+selecting the maximum twelve-hour Delay only if power is still insufficient.
+The next start selects Immediate without toggling the charging
+switch, allowing a vehicle that ended the previous session to resume reliably.
+Some charger firmware takes about two minutes to stop after accepting Delay.
+The included enforcer repeats the local Delay command every 30 seconds while
+phase current still confirms that charging is active. Delay writes the local
+charge schedule with a start time twelve hours ahead before selecting
+`delayed_charge`; Immediate clears that schedule before selecting `immediate`.
+Transient `unknown` or `unavailable` charger states do not trigger commands.
+
+Both smart modes also enforce the editable total AC power limit, which defaults
+to 3.5 kW, using `sensor.ac_tuya_meter_power`. The controller adjusts its
+current from the measured total-load headroom. Current is reduced immediately,
+while increases happen one ampere at a time and wait for a new total-load
+measurement after every charger mode or current change. If even 6 A would
+exceed the limit, or if the total-load meter is unavailable, automatic charging
+selects the twelve-hour Delay mode. `Off` continues to mean fully manual
+control.
+
+`sensor.ac_tuya_meter_power` is expected to be a W-normalized template over the
+local `sensor.circuit_breaker_energy_meter_power` entity. The source entity must
+belong to the Tuya Local config entry; a similarly named Tuya cloud entity is
+not used for the safety limit.
+
+The stationary battery guard reads `sensor.unibms_soc`. Its editable defaults
+pause smart charging at 50% and keep it in the twelve-hour Delay mode until the
+battery reaches 60%. The separate stop and resume values provide hysteresis, so
+charging cannot repeatedly start and stop between the two thresholds. If the
+resume value is set at or below the stop value, the guard automatically moves
+it to one percentage point above the stop value. An unavailable SOC source
+retains the current hold state instead of unexpectedly resuming charging.
+
+The optional AI advisor uses the already configured
+`ai_task.google_ai_task_2` provider. It receives a compact snapshot at the
+editable interval, which defaults to 15 minutes, and must return structured
+`KEEP`, `LIMIT`, or `PAUSE` data. AI can only lower the current cap or request a
+pause; it cannot raise the deterministic result, bypass the total-power or SOC
+guards, or send charger commands directly. If the token-backed AI provider
+fails, its pause and cap are cleared and the local 15-second controller
+continues independently.
 
 ## Installation
 
@@ -68,6 +119,7 @@ two-minute guard.
    IMMAX entity sources** and select the entities used by the controller.
    Leave any unused measurement or status source empty.
 6. Add `lovelace_card.yaml` as a manual card or as its own dashboard view.
+   `lovelace_statistics_cards.yaml` adds the matching statistics cards.
 
 The integration publishes stable proxy entities, so changing a selected source
 does not require editing the package or card. The source values must use these
@@ -77,8 +129,16 @@ sign conventions:
 - Battery charging and discharging are separate positive values.
 - Phase power, current, and voltage entities report each charger phase.
 
-The card keeps target, deadline, smart mode, phase override, reserve, and limit
-settings editable. Detected phase mode, calculated status, planned energy,
-estimated cost, available solar power, target power, actual charger power, grid
-export, and battery flow are exposed as read-only sensors. Selecting a sensor
-row opens Home Assistant's standard more-info dialog with its recorded history.
+The card keeps target, deadline, smart mode, phase override, reserve, total AC
+power limit, battery SOC stop/resume thresholds, and charging limits editable.
+Detected phase mode, calculated status, planned energy, estimated cost,
+available solar power, target power, actual charger power, grid export, battery
+flow, battery SOC, and the compact AI recommendation are exposed as read-only
+values. Selecting a sensor row opens Home Assistant's standard more-info dialog
+with its recorded history.
+
+The supplied statistics cards add a live six-value charging summary, 24-hour
+charging and total-load power history, daily charged-energy bars for the last
+14 days, seven-day stationary-battery SOC history, and 24-hour phase-current
+history. They use Home Assistant recorder statistics and require no external
+chart card.

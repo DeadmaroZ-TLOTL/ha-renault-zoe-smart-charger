@@ -4,6 +4,27 @@
 # Source entities are selected under Zoe New Extended > Configure >
 # IMMAX entity sources. The automation uses the stable proxy entities below.
 
+template:
+  - sensor:
+      - name: Zoe active charging power
+        unique_id: zoe_active_charging_power
+        icon: mdi:ev-station
+        unit_of_measurement: "kW"
+        device_class: power
+        state_class: measurement
+        availability: >-
+          {{ states('sensor.zoe_adaptive_charging_power') | is_number }}
+        state: >-
+          {% set charging = is_state('binary_sensor.charging', 'on') or
+                            is_state('sensor.charge_state', 'charge_in_progress') %}
+          {{ states('sensor.zoe_adaptive_charging_power') | float(0) | round(2)
+             if charging else 0 }}
+        attributes:
+          source_entity_id: sensor.zoe_adaptive_charging_power
+          charge_state_entity_id: sensor.charge_state
+          calculation: >-
+            SOC and Renault charge-session model while charging; zero otherwise
+
 input_select:
   immax_smart_charging_mode:
     name: IMMAX smart charging mode
@@ -37,7 +58,87 @@ input_boolean:
     initial: false
     icon: mdi:cash-lock
 
+  immax_charger_stop_pending:
+    name: IMMAX charger stop pending
+    initial: false
+    icon: mdi:timer-pause-outline
+
+  immax_battery_soc_hold:
+    name: IMMAX battery SOC hold
+    initial: false
+    icon: mdi:battery-lock
+
+  immax_ai_advisor_enabled:
+    name: IMMAX AI advisor enabled
+    initial: true
+    icon: mdi:head-cog
+
+  immax_ai_pause:
+    name: IMMAX AI pause
+    initial: false
+    icon: mdi:head-snowflake-outline
+
 input_number:
+  immax_delay_period:
+    name: IMMAX delay period
+    min: 1
+    max: 12
+    step: 1
+    initial: 12
+    mode: box
+    unit_of_measurement: "h"
+    icon: mdi:timer-pause-outline
+
+  immax_total_power_limit:
+    name: IMMAX total power limit
+    min: 1.4
+    max: 30
+    step: 0.1
+    initial: 3.5
+    mode: box
+    unit_of_measurement: "kW"
+    icon: mdi:transmission-tower
+
+  immax_battery_soc_stop_limit:
+    name: IMMAX battery SOC stop limit
+    min: 0
+    max: 99
+    step: 1
+    initial: 50
+    mode: box
+    unit_of_measurement: "%"
+    icon: mdi:battery-arrow-down-outline
+
+  immax_battery_soc_resume_limit:
+    name: IMMAX battery SOC resume limit
+    min: 1
+    max: 100
+    step: 1
+    initial: 60
+    mode: box
+    unit_of_measurement: "%"
+    icon: mdi:battery-arrow-up-outline
+
+  immax_ai_advisor_interval:
+    name: IMMAX AI advisor interval
+    min: 5
+    max: 120
+    step: 5
+    initial: 15
+    mode: box
+    unit_of_measurement: "min"
+    icon: mdi:timer-cog-outline
+
+  immax_ai_current_cap:
+    name: IMMAX AI current cap
+    min: 6
+    max: 32
+    step: 1
+    initial: 32
+    mode: box
+    unit_of_measurement: "A"
+    icon: mdi:current-ac
+
   immax_max_energy_price:
     name: IMMAX max energy price
     min: -20
@@ -211,6 +312,12 @@ input_datetime:
     has_time: true
     icon: mdi:clock-check-outline
 
+  immax_ai_last_analysis:
+    name: IMMAX AI last analysis
+    has_date: true
+    has_time: true
+    icon: mdi:clock-check
+
 input_text:
   immax_smart_charge_status:
     name: IMMAX smart charge status
@@ -223,6 +330,12 @@ input_text:
     initial: Planner disabled
     max: 255
     icon: mdi:calendar-clock
+
+  immax_ai_advice:
+    name: IMMAX AI advice
+    initial: Waiting for AI analysis
+    max: 255
+    icon: mdi:head-lightbulb-outline
 
 automation:
   - id: immax_smart_session_reset_package
@@ -245,17 +358,37 @@ automation:
           entity_id: input_datetime.immax_energy_counter_last_update
         data:
           datetime: "{{ now().strftime('%Y-%m-%d %H:%M:%S') }}"
+      - action: text.set_value
+        target:
+          entity_id: text.immax_ev_charger_charge_mode
+        data:
+          value: >-
+            {% set target = now() + timedelta(
+              hours=states('input_number.immax_delay_period') | int(12)) %}
+            {{ {'pt': 1, 'dt': 24, 'ss': target.strftime('%H:%M'),
+                'se': '00:00'} | to_json }}
+      - action: number.set_value
+        target:
+          entity_id: number.immax_ev_charger_delay_timer
+        data:
+          value: "{{ states('input_number.immax_delay_period') | int(12) }}"
+      - action: number.set_value
+        target:
+          entity_id: number.immax_ev_charger_current
+        data:
+          value: 6
+      - action: select.select_option
+        target:
+          entity_id: select.immax_ev_charger_charging_mode
+        data:
+          option: delayed_charge
       - if: "{{ trigger.to_state.state == 'Off' }}"
         then:
-          - if: >-
-              {{ is_state('switch.renault_zoe_new_immax_charging', 'on') }}
-            then:
-              - action: switch.turn_off
-                target:
-                  entity_id: switch.renault_zoe_new_immax_charging
           - action: input_boolean.turn_off
             target:
-              entity_id: input_boolean.immax_charge_to_percentage_active
+              entity_id:
+                - input_boolean.immax_charge_to_percentage_active
+                - input_boolean.immax_charger_stop_pending
           - action: input_text.set_value
             target:
               entity_id: input_text.immax_smart_charge_status
@@ -277,9 +410,9 @@ automation:
         value_template: >-
           {% set ns = namespace(active=0) %}
           {% for entity in [
-            'sensor.renault_zoe_new_immax_voltage_a',
-            'sensor.renault_zoe_new_immax_voltage_b',
-            'sensor.renault_zoe_new_immax_voltage_c'
+            'sensor.immax_ev_charger_voltage_a',
+            'sensor.immax_ev_charger_voltage_b',
+            'sensor.immax_ev_charger_voltage_c'
           ] %}
             {% set volts = states(entity) | float(0) %}
             {% if 180 <= volts <= 260 %}
@@ -293,9 +426,9 @@ automation:
         value_template: >-
           {% set ns = namespace(active=0) %}
           {% for entity in [
-            'sensor.renault_zoe_new_immax_voltage_a',
-            'sensor.renault_zoe_new_immax_voltage_b',
-            'sensor.renault_zoe_new_immax_voltage_c'
+            'sensor.immax_ev_charger_voltage_a',
+            'sensor.immax_ev_charger_voltage_b',
+            'sensor.immax_ev_charger_voltage_c'
           ] %}
             {% set volts = states(entity) | float(0) %}
             {% if 180 <= volts <= 260 %}
@@ -309,9 +442,9 @@ automation:
           active_phase_count: >-
             {% set ns = namespace(active=0) %}
             {% for entity in [
-              'sensor.renault_zoe_new_immax_voltage_a',
-              'sensor.renault_zoe_new_immax_voltage_b',
-              'sensor.renault_zoe_new_immax_voltage_c'
+              'sensor.immax_ev_charger_voltage_a',
+              'sensor.immax_ev_charger_voltage_b',
+              'sensor.immax_ev_charger_voltage_c'
             ] %}
               {% set volts = states(entity) | float(0) %}
               {% if 180 <= volts <= 260 %}
@@ -333,8 +466,195 @@ automation:
                 target:
                   entity_id: input_select.immax_detected_solar_phase_mode
                 data:
-                  option: "3 phases"
+                    option: "3 phases"
     mode: restart
+
+  - id: immax_battery_soc_guard_package
+    alias: IMMAX battery SOC guard
+    description: >-
+      Pause smart charging at the configured stationary-battery SOC and keep
+      it paused until the independently configured resume SOC is reached.
+    triggers:
+      - trigger: homeassistant
+        event: start
+      - trigger: state
+        entity_id:
+          - sensor.unibms_soc
+          - input_number.immax_battery_soc_stop_limit
+          - input_number.immax_battery_soc_resume_limit
+    actions:
+      - variables:
+          battery_soc_valid: "{{ states('sensor.unibms_soc') | is_number }}"
+          battery_soc: "{{ states('sensor.unibms_soc') | float(0) }}"
+          stop_soc: >-
+            {{ states('input_number.immax_battery_soc_stop_limit') | float(50) }}
+          configured_resume_soc: >-
+            {{ states('input_number.immax_battery_soc_resume_limit') | float(60) }}
+      - variables:
+          resume_soc: >-
+            {{ [[configured_resume_soc | float(60),
+                 stop_soc | float(50) + 1] | max, 100] | min }}
+      - if: >-
+          {{ configured_resume_soc | float(60) != resume_soc | float(60) }}
+        then:
+          - action: input_number.set_value
+            target:
+              entity_id: input_number.immax_battery_soc_resume_limit
+            data:
+              value: "{{ resume_soc | float(60) }}"
+      - choose:
+          - conditions: >-
+              {{ battery_soc_valid and
+                 battery_soc | float(0) <= stop_soc | float(50) }}
+            sequence:
+              - action: input_boolean.turn_on
+                target:
+                  entity_id: input_boolean.immax_battery_soc_hold
+          - conditions: >-
+              {{ battery_soc_valid and
+                 battery_soc | float(0) >= resume_soc | float(60) }}
+            sequence:
+              - action: input_boolean.turn_off
+                target:
+                  entity_id: input_boolean.immax_battery_soc_hold
+    mode: restart
+
+  - id: immax_input_refresh_package
+    alias: IMMAX 15 second input refresh
+    description: Request fresh local measurements before each control decision.
+    triggers:
+      - trigger: time_pattern
+        seconds: /15
+    actions:
+      - action: homeassistant.update_entity
+        target:
+          entity_id:
+            - sensor.circuit_breaker_energy_meter_power
+            - sensor.unibms_soc
+            - sensor.immax_ev_charger_status
+    mode: single
+    max_exceeded: silent
+
+  - id: immax_ai_advisor_package
+    alias: IMMAX AI advisor
+    description: >-
+      Ask Google Conversation for a compact conservative recommendation without
+      blocking Home Assistant. The result can only pause charging or lower the
+      deterministic current cap.
+    triggers:
+      - trigger: time_pattern
+        minutes: /1
+      - trigger: state
+        entity_id:
+          - input_select.immax_smart_charging_mode
+          - input_boolean.immax_battery_soc_hold
+          - input_number.immax_total_power_limit
+          - sensor.unibms_soc
+          - sensor.ac_tuya_meter_power
+          - sensor.renault_zoe_new_immax_nord_pool_price
+    conditions:
+      - condition: state
+        entity_id: input_boolean.immax_ai_advisor_enabled
+        state: "on"
+      - condition: template
+        value_template: >-
+          {{ as_timestamp(now()) -
+             as_timestamp(states('input_datetime.immax_ai_last_analysis'), 0) >=
+             states('input_number.immax_ai_advisor_interval') | float(15) * 60 }}
+    actions:
+      - action: input_datetime.set_datetime
+        target:
+          entity_id: input_datetime.immax_ai_last_analysis
+        data:
+          datetime: "{{ now().strftime('%Y-%m-%d %H:%M:%S') }}"
+      - action: conversation.process
+        continue_on_error: true
+        data:
+          agent_id: conversation.google_generative_ai
+          text: >-
+            You are a conservative advisory layer for an EV charger. Home
+            Assistant already enforces the hard total-power and battery-SOC
+            limits. You may never relax those limits. Return KEEP normally,
+            LIMIT only to recommend a lower 6-32 A cap, or PAUSE only when the
+            supplied values show a sensible reason to postpone charging. Reply
+            with exactly one line: ACTION|CURRENT_CAP|SUMMARY. ACTION must be
+            KEEP, LIMIT, or PAUSE. CURRENT_CAP must be an integer from 6 to 32.
+            Keep SUMMARY under 120 characters and do not use another pipe.
+
+            Smart mode={{ states('input_select.immax_smart_charging_mode') }};
+            charger mode={{ states('select.immax_ev_charger_charging_mode') }};
+            charger status={{ states('sensor.immax_ev_charger_status') }};
+            commanded current={{ states('number.immax_ev_charger_current') }} A;
+            measured charger power={{ states('sensor.immax_ev_charger_power_a') }} W;
+            total AC load={{ states('sensor.ac_tuya_meter_power') }} W;
+            total AC limit={{ states('input_number.immax_total_power_limit') }} kW;
+            battery SOC={{ states('sensor.unibms_soc') }}%;
+            SOC pause={{ states('input_number.immax_battery_soc_stop_limit') }}%;
+            SOC resume={{ states('input_number.immax_battery_soc_resume_limit') }}%;
+            SOC hold={{ states('input_boolean.immax_battery_soc_hold') }};
+            solar={{ states('sensor.renault_zoe_new_immax_solar_production') }};
+            grid export={{ states('sensor.renault_zoe_new_immax_grid_export') }};
+            battery charging={{ states('sensor.renault_zoe_new_immax_battery_charging') }};
+            battery discharging={{ states('sensor.renault_zoe_new_immax_battery_discharging') }};
+            Nord Pool price={{ states('sensor.renault_zoe_new_immax_nord_pool_price') }};
+            local controller status={{ states('input_text.immax_smart_charge_status') }}.
+        response_variable: ai_result
+      - variables:
+          ai_text: >-
+            {{ ai_result.response.speech.plain.speech
+               | default('', true) | trim }}
+      - variables:
+          ai_parts: "{{ ai_text.split('|', 2) }}"
+          ai_action: >-
+            {{ ai_text.split('|', 2)[0] | default('', true) | upper | trim }}
+          ai_cap: >-
+            {% set parts = ai_text.split('|', 2) %}
+            {{ [[parts[1] | int(32), 6] | max, 32] | min
+               if parts | count == 3 else 32 }}
+          ai_summary: >-
+            {% set parts = ai_text.split('|', 2) %}
+            {{ parts[2] | trim if parts | count == 3
+               else 'Invalid AI response' }}
+      - if: >-
+          {{ ai_parts | count == 3 and
+             ai_action in ['KEEP', 'LIMIT', 'PAUSE'] }}
+        then:
+          - choose:
+              - conditions: "{{ ai_action == 'PAUSE' }}"
+                sequence:
+                  - action: input_boolean.turn_on
+                    target:
+                      entity_id: input_boolean.immax_ai_pause
+            default:
+              - action: input_boolean.turn_off
+                target:
+                  entity_id: input_boolean.immax_ai_pause
+          - action: input_number.set_value
+            target:
+              entity_id: input_number.immax_ai_current_cap
+            data:
+              value: "{{ ai_cap if ai_action == 'LIMIT' else 32 }}"
+          - action: input_text.set_value
+            target:
+              entity_id: input_text.immax_ai_advice
+            data:
+              value: "{{ (ai_action ~ ': ' ~ ai_summary)[:255] }}"
+        else:
+          - action: input_boolean.turn_off
+            target:
+              entity_id: input_boolean.immax_ai_pause
+          - action: input_number.set_value
+            target:
+              entity_id: input_number.immax_ai_current_cap
+            data:
+              value: 32
+          - action: input_text.set_value
+            target:
+              entity_id: input_text.immax_ai_advice
+            data:
+              value: AI unavailable; local 15 second control remains active
+    mode: single
+    max_exceeded: silent
 
   - id: immax_smart_charger_package
     alias: IMMAX smart charging
@@ -345,17 +665,25 @@ automation:
       control signal.
     triggers:
       - trigger: time_pattern
-        seconds: /30
+        seconds: /15
       - trigger: state
         entity_id:
           - input_select.immax_smart_charging_mode
           - input_boolean.immax_max_price_enabled
           - input_boolean.immax_charge_to_percentage_enabled
+          - input_boolean.immax_charger_stop_pending
+          - input_boolean.immax_battery_soc_hold
+          - input_boolean.immax_ai_advisor_enabled
+          - input_boolean.immax_ai_pause
           - input_number.immax_max_energy_price
           - input_number.immax_energy_to_add
           - input_number.immax_charge_target_percentage
           - input_number.immax_nordpool_current
           - input_number.immax_planning_power
+          - input_number.immax_total_power_limit
+          - input_number.immax_battery_soc_stop_limit
+          - input_number.immax_battery_soc_resume_limit
+          - input_number.immax_ai_current_cap
           - input_number.immax_solar_reserve_power
           - input_number.immax_solar_min_power
           - input_number.immax_solar_max_power
@@ -364,16 +692,19 @@ automation:
           - input_datetime.immax_ready_by
           - sensor.renault_zoe_new_immax_nord_pool_price
           - sensor.renault_zoe_new_immax_vehicle_soc
-          - sensor.renault_zoe_new_immax_status
-          - binary_sensor.renault_zoe_new_immax_problem
-          - binary_sensor.renault_zoe_new_immax_online
-          - switch.renault_zoe_new_immax_charging
-          - sensor.renault_zoe_new_immax_power_a
-          - sensor.renault_zoe_new_immax_power_b
-          - sensor.renault_zoe_new_immax_power_c
-          - sensor.renault_zoe_new_immax_voltage_a
-          - sensor.renault_zoe_new_immax_voltage_b
-          - sensor.renault_zoe_new_immax_voltage_c
+          - sensor.immax_ev_charger_status
+          - binary_sensor.immax_ev_charger_problem
+          - switch.immax_ev_charger_online_state
+          - select.immax_ev_charger_charging_mode
+          - number.immax_ev_charger_current
+          - sensor.immax_ev_charger_power_a
+          - sensor.immax_ev_charger_power_b
+          - sensor.immax_ev_charger_power_c
+          - sensor.immax_ev_charger_voltage_a
+          - sensor.immax_ev_charger_voltage_b
+          - sensor.immax_ev_charger_voltage_c
+          - sensor.ac_tuya_meter_power
+          - sensor.unibms_soc
           - sensor.renault_zoe_new_immax_solar_production
           - sensor.renault_zoe_new_immax_grid_export
           - sensor.renault_zoe_new_immax_battery_charging
@@ -381,25 +712,50 @@ automation:
     actions:
       - variables:
           mode: "{{ states('input_select.immax_smart_charging_mode') }}"
+          charger_state: >-
+            {{ states('select.immax_ev_charger_charging_mode') }}
           charger_on: >-
-            {{ is_state('switch.renault_zoe_new_immax_charging', 'on') }}
-          status_configured: >-
-            {{ is_state_attr('sensor.renault_zoe_new_immax_status',
-                             'configured', true) }}
+            {{ charger_state == 'immediate' }}
+          charger_off: >-
+            {{ charger_state == 'delayed_charge' }}
+          charger_control_available: >-
+            {{ charger_state in ['immediate', 'delayed_charge'] }}
+          current_control_available: >-
+            {{ states('number.immax_ev_charger_current') | is_number }}
+          stop_pending: >-
+            {{ is_state('input_boolean.immax_charger_stop_pending', 'on') }}
+          stop_pending_seconds: >-
+            {{ as_timestamp(now()) -
+               as_timestamp(
+                 states.input_boolean.immax_charger_stop_pending.last_changed
+               ) if stop_pending else 0 }}
+          charger_state_seconds: >-
+            {{ as_timestamp(now()) -
+               as_timestamp(
+                 states.select.immax_ev_charger_charging_mode.last_changed
+               ) if charger_control_available else 0 }}
           charger_status: >-
-            {{ states('sensor.renault_zoe_new_immax_status') }}
-          online_configured: >-
-            {{ is_state_attr('binary_sensor.renault_zoe_new_immax_online',
-                             'configured', true) }}
+            {{ states('sensor.immax_ev_charger_status') }}
           online: >-
-            {{ not online_configured or
-               is_state('binary_sensor.renault_zoe_new_immax_online', 'on') }}
-          fault_configured: >-
-            {{ is_state_attr('binary_sensor.renault_zoe_new_immax_problem',
-                             'configured', true) }}
+            {{ is_state('switch.immax_ev_charger_online_state', 'on') }}
           fault: >-
-            {{ fault_configured and
-               is_state('binary_sensor.renault_zoe_new_immax_problem', 'on') }}
+            {{ is_state('binary_sensor.immax_ev_charger_problem', 'on') }}
+          battery_soc_hold: >-
+            {{ is_state('input_boolean.immax_battery_soc_hold', 'on') }}
+          battery_soc_valid: "{{ states('sensor.unibms_soc') | is_number }}"
+          battery_soc: "{{ states('sensor.unibms_soc') | float(0) }}"
+          battery_soc_stop: >-
+            {{ states('input_number.immax_battery_soc_stop_limit') | float(50) }}
+          configured_battery_soc_resume: >-
+            {{ states('input_number.immax_battery_soc_resume_limit') | float(60) }}
+          ai_enabled: >-
+            {{ is_state('input_boolean.immax_ai_advisor_enabled', 'on') }}
+          ai_pause_requested: >-
+            {{ is_state('input_boolean.immax_ai_pause', 'on') }}
+          ai_advisor_interval: >-
+            {{ states('input_number.immax_ai_advisor_interval') | float(15) }}
+          ai_last_analysis: >-
+            {{ as_timestamp(states('input_datetime.immax_ai_last_analysis'), 0) }}
           percentage_enabled: >-
             {{ is_state('input_boolean.immax_charge_to_percentage_enabled', 'on') }}
           soc_valid: >-
@@ -416,9 +772,9 @@ automation:
           phase_power: >-
             {% set ns = namespace(total=0) %}
             {% for entity in [
-              'sensor.renault_zoe_new_immax_power_a',
-              'sensor.renault_zoe_new_immax_power_b',
-              'sensor.renault_zoe_new_immax_power_c'
+              'sensor.immax_ev_charger_power_a',
+              'sensor.immax_ev_charger_power_b',
+              'sensor.immax_ev_charger_power_c'
             ] %}
               {% set value = states(entity) | float(0) %}
               {% set watts =
@@ -428,14 +784,39 @@ automation:
               {% set ns.total = ns.total + [watts, 0] | max %}
             {% endfor %}
             {{ ns.total }}
+          site_power_meter_available: >-
+            {{ states('sensor.ac_tuya_meter_power') | is_number }}
+          site_power_w: >-
+            {% set value = states('sensor.ac_tuya_meter_power') | float(0) %}
+            {{ value * 1000
+               if state_attr('sensor.ac_tuya_meter_power',
+                             'unit_of_measurement') == 'kW'
+               else value }}
       - variables:
+          battery_soc_resume: >-
+            {{ [[configured_battery_soc_resume | float(60),
+                 battery_soc_stop | float(50) + 1] | max, 100] | min }}
+          battery_soc_blocked: >-
+            {{ battery_soc_hold or
+               (battery_soc_valid and
+                battery_soc | float(0) <= battery_soc_stop | float(50)) }}
+          ai_advice_fresh: >-
+            {{ ai_enabled and
+               as_timestamp(now()) - ai_last_analysis | float(0) <=
+               ai_advisor_interval | float(15) * 120 + 60 }}
           elapsed_seconds: >-
             {{ [[as_timestamp(now()) - last_counter_update | float(0), 0] | max, 120] | min }}
           energy_increment: >-
             {{ phase_power | float(0) / 1000 * elapsed_seconds | float(0) / 3600
                if charger_on and
                   (charger_status == 'charging' or phase_power | float(0) > 1000)
-               else 0 }}
+                else 0 }}
+      - variables:
+          ai_blocks_charge: >-
+            {{ ai_advice_fresh and ai_pause_requested }}
+          ai_effective_current_cap: >-
+            {{ [[states('input_number.immax_ai_current_cap') | int(32), 6] | max,
+                 32] | min if ai_advice_fresh else 32 }}
       - if: "{{ mode != 'Off' }}"
         then:
           - if: "{{ energy_increment | float(0) > 0 }}"
@@ -465,9 +846,8 @@ automation:
               {{ [energy_target | float - delivered_now | float, 0] | max }}
             {% endif %}
           plugged: >-
-            {{ not status_configured or
-               charger_status in
-                 ['plugged_in', 'waiting', 'charging', 'paused', 'charged'] }}
+            {{ charger_status in
+               ['plugged_in', 'waiting', 'charging', 'paused', 'charged'] }}
           planning_power: "{{ states('input_number.immax_planning_power') | float(12) }}"
           cap_on: "{{ is_state('input_boolean.immax_max_price_enabled', 'on') }}"
           cap: "{{ states('input_number.immax_max_energy_price') | float(100) }}"
@@ -528,31 +908,72 @@ automation:
                else phase_control }}
           voltage_sum: >-
             {% set value =
-              (states('sensor.renault_zoe_new_immax_voltage_a') | float(0)) +
-              (states('sensor.renault_zoe_new_immax_voltage_b') | float(0)) +
-              (states('sensor.renault_zoe_new_immax_voltage_c') | float(0)) %}
+              (states('sensor.immax_ev_charger_voltage_a') | float(0)) +
+              (states('sensor.immax_ev_charger_voltage_b') | float(0)) +
+              (states('sensor.immax_ev_charger_voltage_c') | float(0)) %}
             {{ value if value > 500 else 690 }}
           single_phase_voltage: >-
             {% set value =
-              (states('sensor.renault_zoe_new_immax_voltage_a') | float(0)) +
-              (states('sensor.renault_zoe_new_immax_voltage_b') | float(0)) +
-              (states('sensor.renault_zoe_new_immax_voltage_c') | float(0)) %}
+              (states('sensor.immax_ev_charger_voltage_a') | float(0)) +
+              (states('sensor.immax_ev_charger_voltage_b') | float(0)) +
+              (states('sensor.immax_ev_charger_voltage_c') | float(0)) %}
             {{ value / 3 if value > 500 else 230 }}
           configured_solar_min_power_kw: >-
             {{ states('input_number.immax_solar_min_power') | float(4.2) }}
           configured_solar_max_power_kw: >-
             {{ states('input_number.immax_solar_max_power') | float(22) }}
           current_limit: >-
-            {{ states('number.renault_zoe_new_immax_current') | int(6) }}
+            {{ states('number.immax_ev_charger_current') | int(6) }}
       - variables:
           control_voltage: >-
             {{ single_phase_voltage | float(230)
                if solar_phase_mode == '1 phase'
                else voltage_sum | float(690) }}
-          solar_start_margin_kw: >-
-            {{ 0.2 if solar_phase_mode == '1 phase' else 0.5 }}
-          solar_stop_margin_kw: >-
-            {{ 0.3 if solar_phase_mode == '1 phase' else 0.7 }}
+          site_power_limit_w: >-
+            {{ states('input_number.immax_total_power_limit') | float(3.5) *
+               1000 }}
+          site_power_updated: >-
+            {{ as_timestamp(states.sensor.ac_tuya_meter_power.last_updated, 0)
+               if site_power_meter_available else 0 }}
+          charger_command_changed: >-
+            {{ as_timestamp(
+                 states.number.immax_ev_charger_current.last_changed, 0) }}
+          charger_mode_changed: >-
+            {{ as_timestamp(
+                 states.select.immax_ev_charger_charging_mode.last_changed, 0) }}
+      - variables:
+          site_measurement_fresh: >-
+            {{ site_power_meter_available and
+               (not charger_on or
+                (site_power_updated | float(0) >=
+                   charger_command_changed | float(0) and
+                 site_power_updated | float(0) >=
+                   charger_mode_changed | float(0))) }}
+          site_headroom_current: >-
+            {{ ((site_power_limit_w | float(3500) -
+                 site_power_w | float(0)) /
+                control_voltage | float(230)) |
+               round(0, 'floor') | int
+               if site_power_meter_available else -32 }}
+      - variables:
+          site_limit_current: >-
+            {% set headroom = site_headroom_current | int(-32) %}
+            {% if not site_power_meter_available %}
+              0
+            {% elif charger_on and
+                    not site_measurement_fresh and
+                    site_power_w | float(0) <= site_power_limit_w | float(3500) %}
+              {{ current_limit | int(6) }}
+            {% elif charger_on %}
+              {{ [[current_limit | int(6) + headroom, 0] | max, 32] | min }}
+            {% else %}
+              {{ [[headroom, 0] | max, 32] | min }}
+            {% endif %}
+          site_over_limit: >-
+            {{ site_power_meter_available and
+               site_power_w | float(0) > site_power_limit_w | float(3500) }}
+          site_limit_allows_charge: >-
+            {{ site_power_meter_available and site_limit_current | int(0) >= 6 }}
       - variables:
           solar_min_power_kw: >-
             {{ [configured_solar_min_power_kw | float(4.2),
@@ -573,10 +994,14 @@ automation:
           available_solar_power_w: >-
             {% set reserve = reserve_power_kw | float(0.5) * 1000 %}
             {% set battery_allowance = [-reserve, 0] | max %}
-            {% if grid_configured %}
+            {% set flow_configured =
+              grid_configured or
+              battery_in_configured or
+              battery_out_configured %}
+            {% if flow_configured %}
               {% set net =
                 phase_power | float(0) +
-                grid_surplus | float(0) +
+                (grid_surplus | float(0) if grid_configured else 0) +
                 (battery_in | float(0) if battery_in_configured else 0) -
                 (battery_out | float(0) if battery_out_configured else 0) -
                 reserve %}
@@ -604,26 +1029,47 @@ automation:
             {% set raw = (target * 1000 / control_voltage | float(690)) |
                          round(0, 'floor') | int %}
             {{ 0 if target <= 0 else [[raw, 6] | max, 32] | min }}
+          site_limited_solar_current: >-
+            {{ [solar_recommended_current | int(0),
+                site_limit_current | int(0),
+                ai_effective_current_cap | int(32)] | min
+               if site_limit_allows_charge else 0 }}
           solar_target_power_kw: >-
-            {{ (solar_recommended_current | int(0) *
+            {{ (site_limited_solar_current | int(0) *
                 control_voltage | float(690) / 1000) | round(1) }}
           start_solar: >-
             {{ available_solar_power_kw | float(0) >=
-               solar_min_power_kw | float(4.2) +
-               solar_start_margin_kw | float(0.5) }}
-          stop_solar: >-
+               solar_min_power_kw | float(4.2) and
+               site_limited_solar_current | int(0) >= 6 }}
+          solar_insufficient: >-
             {{ available_solar_power_kw | float(0) <
-               [solar_min_power_kw | float(4.2) -
-                solar_stop_margin_kw | float(0.7), 0] | max }}
+               solar_min_power_kw | float(4.2) }}
           adjusted_solar_current: >-
             {% set difference =
-              solar_recommended_current | int(0) - current_limit | int(6) %}
-            {% if difference > 2 %}
-              {{ current_limit | int(6) + 2 }}
-            {% elif difference < -2 %}
-              {{ current_limit | int(6) - 2 }}
+              site_limited_solar_current | int(0) - current_limit | int(6) %}
+            {% if difference > 0 %}
+              {{ current_limit | int(6) + 1 }}
+            {% elif difference < 0 %}
+              {{ site_limited_solar_current | int(0) }}
             {% else %}
-              {{ solar_recommended_current | int(0) }}
+              {{ current_limit | int(6) }}
+            {% endif %}
+          nordpool_target_current: >-
+            {{ states('input_number.immax_nordpool_current') | int(32) }}
+          site_limited_nordpool_current: >-
+            {{ [nordpool_target_current | int(32),
+                site_limit_current | int(0),
+                ai_effective_current_cap | int(32)] | min
+               if site_limit_allows_charge else 0 }}
+          adjusted_nordpool_current: >-
+            {% set difference =
+              site_limited_nordpool_current | int(0) - current_limit | int(6) %}
+            {% if difference > 0 %}
+              {{ current_limit | int(6) + 1 }}
+            {% elif difference < 0 %}
+              {{ site_limited_nordpool_current | int(0) }}
+            {% else %}
+              {{ current_limit | int(6) }}
             {% endif %}
           selected_now: >-
             {% set slots =
@@ -661,6 +1107,8 @@ automation:
           price_should_charge: >-
             {{ mode == 'Nord Pool' and online and not fault and plugged and
                not target_reached and needed_energy | float > 0 and
+               not battery_soc_blocked and not ai_blocks_charge and
+               site_limit_allows_charge and
                (not cap_on or current_price | float <= cap | float) and
                (selected_now or must_charge) }}
           plan_text: >-
@@ -827,12 +1275,35 @@ automation:
             {% elif fault %}Charger fault
             {% elif not plugged %}Waiting for vehicle
             {% elif target_reached %}Target reached
+            {% elif mode != 'Off' and battery_soc_blocked %}
+              Battery SOC
+              {{ (battery_soc | round(0) | int ~ '%')
+                 if battery_soc_valid else 'unavailable' }};
+              waiting for {{ battery_soc_resume | round(0) | int }}%
+            {% elif mode != 'Off' and ai_blocks_charge %}
+              AI pause: {{ states('input_text.immax_ai_advice') }}
+            {% elif mode != 'Off' and not site_power_meter_available %}
+              AC load meter unavailable; charging paused
+            {% elif mode != 'Off' and not site_limit_allows_charge %}
+              Load limit: {{ site_power_w | float(0) / 1000 | round(2) }} kW
+              total, {{ site_power_limit_w | float(3500) / 1000 | round(1) }}
+              kW maximum
+            {% elif mode != 'Off' and charger_on and
+                    site_limit_current | int(0) < current_limit | int(6) %}
+              Load limit: reducing to {{ site_limit_current | int(0) }} A
+              ({{ site_power_w | float(0) / 1000 | round(2) }} /
+              {{ site_power_limit_w | float(3500) / 1000 | round(1) }} kW)
+            {% elif stop_pending and charger_on %}
+              Waiting {{ [30 - stop_pending_seconds | int(0), 0] | max }} s
+              at 6 A before stopping
+            {% elif charger_on and charger_state_seconds | float(0) < 30 %}
+              Immediate charge started at 6 A; checking available power
             {% elif mode == 'Nord Pool' and price_should_charge %}
               Nord Pool: charging in selected price window
             {% elif mode == 'Nord Pool' %}
               Nord Pool: waiting for selected price window
             {% elif mode == 'Solar surplus' and
-                    solar_recommended_current | int(0) >= 6 %}
+                    site_limited_solar_current | int(0) >= 6 %}
               Solar {{ ('auto ' if phase_control == 'Auto' else 'manual ') ~
                          ('1-phase' if solar_phase_mode == '1 phase'
                           else '3-phase') }}:
@@ -842,113 +1313,414 @@ automation:
               Solar {{ ('auto ' if phase_control == 'Auto' else 'manual ') ~
                          ('1-phase' if solar_phase_mode == '1 phase'
                           else '3-phase') }}: waiting for
-              {{ (solar_min_power_kw | float(4.2) +
-                  solar_start_margin_kw | float(0.5)) | round(1) }} kW surplus
+              {{ solar_min_power_kw | float(4.2) | round(1) }} kW surplus
             {% endif %}
       - choose:
+          - conditions: >-
+              {{ mode != 'Off' and charger_on and battery_soc_blocked }}
+            sequence:
+              - action: text.set_value
+                target:
+                  entity_id: text.immax_ev_charger_charge_mode
+                data:
+                  value: >-
+                    {% set target = now() + timedelta(
+                      hours=states('input_number.immax_delay_period') | int(12)) %}
+                    {{ {'pt': 1, 'dt': 24, 'ss': target.strftime('%H:%M'),
+                        'se': '00:00'} | to_json }}
+              - action: number.set_value
+                target:
+                  entity_id: number.immax_ev_charger_delay_timer
+                data:
+                  value: "{{ states('input_number.immax_delay_period') | int(12) }}"
+              - action: select.select_option
+                target:
+                  entity_id: select.immax_ev_charger_charging_mode
+                data:
+                  option: delayed_charge
+              - action: input_boolean.turn_off
+                target:
+                  entity_id:
+                    - input_boolean.immax_charger_stop_pending
+                    - input_boolean.immax_charge_to_percentage_active
+          - conditions: >-
+              {{ mode != 'Off' and charger_on and ai_blocks_charge }}
+            sequence:
+              - action: text.set_value
+                target:
+                  entity_id: text.immax_ev_charger_charge_mode
+                data:
+                  value: >-
+                    {% set target = now() + timedelta(
+                      hours=states('input_number.immax_delay_period') | int(12)) %}
+                    {{ {'pt': 1, 'dt': 24, 'ss': target.strftime('%H:%M'),
+                        'se': '00:00'} | to_json }}
+              - action: number.set_value
+                target:
+                  entity_id: number.immax_ev_charger_delay_timer
+                data:
+                  value: "{{ states('input_number.immax_delay_period') | int(12) }}"
+              - action: select.select_option
+                target:
+                  entity_id: select.immax_ev_charger_charging_mode
+                data:
+                  option: delayed_charge
+              - action: input_boolean.turn_off
+                target:
+                  entity_id:
+                    - input_boolean.immax_charger_stop_pending
+                    - input_boolean.immax_charge_to_percentage_active
+          - conditions: >-
+              {{ mode != 'Off' and charger_on and
+                 (not site_power_meter_available or
+                  not site_limit_allows_charge) }}
+            sequence:
+              - action: text.set_value
+                target:
+                  entity_id: text.immax_ev_charger_charge_mode
+                data:
+                  value: >-
+                    {% set target = now() + timedelta(
+                      hours=states('input_number.immax_delay_period') | int(12)) %}
+                    {{ {'pt': 1, 'dt': 24, 'ss': target.strftime('%H:%M'),
+                        'se': '00:00'} | to_json }}
+              - action: number.set_value
+                target:
+                  entity_id: number.immax_ev_charger_delay_timer
+                data:
+                  value: "{{ states('input_number.immax_delay_period') | int(12) }}"
+              - action: select.select_option
+                target:
+                  entity_id: select.immax_ev_charger_charging_mode
+                data:
+                  option: delayed_charge
+              - action: input_boolean.turn_off
+                target:
+                  entity_id:
+                    - input_boolean.immax_charger_stop_pending
+                    - input_boolean.immax_charge_to_percentage_active
+          - conditions: >-
+              {{ charger_on and
+                 (target_reached or not online or fault or not plugged) }}
+            sequence:
+              - action: text.set_value
+                target:
+                  entity_id: text.immax_ev_charger_charge_mode
+                data:
+                  value: >-
+                    {% set target = now() + timedelta(
+                      hours=states('input_number.immax_delay_period') | int(12)) %}
+                    {{ {'pt': 1, 'dt': 24, 'ss': target.strftime('%H:%M'),
+                        'se': '00:00'} | to_json }}
+              - action: number.set_value
+                target:
+                  entity_id: number.immax_ev_charger_delay_timer
+                data:
+                  value: "{{ states('input_number.immax_delay_period') | int(12) }}"
+              - action: select.select_option
+                target:
+                  entity_id: select.immax_ev_charger_charging_mode
+                data:
+                  option: delayed_charge
+              - action: input_boolean.turn_off
+                target:
+                  entity_id:
+                    - input_boolean.immax_charger_stop_pending
+                    - input_boolean.immax_charge_to_percentage_active
           - conditions: "{{ mode == 'Nord Pool' }}"
             sequence:
               - choose:
                   - conditions: "{{ price_should_charge }}"
                     sequence:
-                      - if: >-
-                          {{ (states('number.renault_zoe_new_immax_current') |
-                              float(0) -
-                              states('input_number.immax_nordpool_current') | float(32)) |
-                             abs >= 1 and
-                             as_timestamp(now()) -
-                             as_timestamp(
-                               states.number.renault_zoe_new_immax_current.last_changed
-                             ) >= 30 }}
+                      - if: "{{ stop_pending }}"
                         then:
-                          - action: number.set_value
+                          - action: input_boolean.turn_off
                             target:
-                              entity_id: number.renault_zoe_new_immax_current
+                              entity_id: input_boolean.immax_charger_stop_pending
+                      - if: >-
+                          {{ charger_off and charger_control_available and
+                             current_control_available and
+                             charger_state_seconds | float(0) >= 30 }}
+                        then:
+                          - action: text.set_value
+                            target:
+                              entity_id: text.immax_ev_charger_charge_mode
                             data:
                               value: >-
-                                {{ states('input_number.immax_nordpool_current') | int(32) }}
-                      - if: >-
-                          {{ not charger_on and
-                             as_timestamp(now()) -
-                             as_timestamp(
-                               states.switch.renault_zoe_new_immax_charging.last_changed
-                             ) >= 60 }}
-                        then:
+                                {% set target = now() + timedelta(
+                                  hours=states('input_number.immax_delay_period') |
+                                  int(12)) %}
+                                {{ {'pt': 1, 'dt': 24,
+                                    'ss': target.strftime('%H:%M'),
+                                    'se': '00:00'} | to_json }}
+                          - action: number.set_value
+                            target:
+                              entity_id: number.immax_ev_charger_delay_timer
+                            data:
+                              value: "{{ states('input_number.immax_delay_period') | int(12) }}"
+                          - action: select.select_option
+                            target:
+                              entity_id: select.immax_ev_charger_charging_mode
+                            data:
+                              option: delayed_charge
+                          - action: number.set_value
+                            target:
+                              entity_id: number.immax_ev_charger_current
+                            data:
+                              value: 6
+                          - delay:
+                              seconds: 3
                           - if: "{{ percentage_enabled }}"
                             then:
                               - action: input_boolean.turn_on
                                 target:
                                   entity_id: input_boolean.immax_charge_to_percentage_active
-                          - action: switch.turn_on
+                          - action: text.set_value
                             target:
-                              entity_id: switch.renault_zoe_new_immax_charging
-                  - conditions: >-
-                      {{ charger_on and
-                         as_timestamp(now()) -
-                         as_timestamp(
-                           states.switch.renault_zoe_new_immax_charging.last_changed
-                         ) >= 60 }}
+                              entity_id: text.immax_ev_charger_charge_mode
+                            data:
+                              value: >-
+                                {"pt":0,"dt":0,"ss":"00:00","se":"00:00"}
+                          - action: select.select_option
+                            target:
+                              entity_id: select.immax_ev_charger_charging_mode
+                            data:
+                              option: immediate
+                      - if: >-
+                          {{ charger_on and not stop_pending and
+                             charger_state_seconds | float(0) >= 30 and
+                             (current_limit | int(6) -
+                              adjusted_nordpool_current | int(6)) | abs >= 1 and
+                             as_timestamp(now()) -
+                             as_timestamp(
+                               states.number.immax_ev_charger_current.last_changed
+                             ) >= 15 }}
+                        then:
+                          - action: number.set_value
+                            target:
+                              entity_id: number.immax_ev_charger_current
+                            data:
+                              value: >-
+                                {{ [[adjusted_nordpool_current | int(6), 6] | max,
+                                     32] | min }}
+                  - conditions: "{{ charger_on }}"
                     sequence:
-                      - action: switch.turn_off
-                        target:
-                          entity_id: switch.renault_zoe_new_immax_charging
+                      - if: >-
+                          {{ current_control_available and
+                             current_limit | int(6) != 6 }}
+                        then:
+                          - action: number.set_value
+                            target:
+                              entity_id: number.immax_ev_charger_current
+                            data:
+                              value: 6
+                      - if: "{{ not stop_pending }}"
+                        then:
+                          - action: input_boolean.turn_on
+                            target:
+                              entity_id: input_boolean.immax_charger_stop_pending
+                      - if: >-
+                          {{ stop_pending and
+                             stop_pending_seconds | float(0) >= 30 }}
+                        then:
+                          - action: text.set_value
+                            target:
+                              entity_id: text.immax_ev_charger_charge_mode
+                            data:
+                              value: >-
+                                {% set target = now() + timedelta(
+                                  hours=states('input_number.immax_delay_period') |
+                                  int(12)) %}
+                                {{ {'pt': 1, 'dt': 24,
+                                    'ss': target.strftime('%H:%M'),
+                                    'se': '00:00'} | to_json }}
+                          - action: number.set_value
+                            target:
+                              entity_id: number.immax_ev_charger_delay_timer
+                            data:
+                              value: "{{ states('input_number.immax_delay_period') | int(12) }}"
+                          - action: select.select_option
+                            target:
+                              entity_id: select.immax_ev_charger_charging_mode
+                            data:
+                              option: delayed_charge
+                          - action: input_boolean.turn_off
+                            target:
+                              entity_id: input_boolean.immax_charger_stop_pending
           - conditions: "{{ mode == 'Solar surplus' }}"
             sequence:
               - choose:
                   - conditions: >-
                       {{ online and not fault and plugged and not target_reached and
-                         solar_recommended_current | int(0) >= 6 }}
+                         not battery_soc_blocked and not ai_blocks_charge and
+                         site_limited_solar_current | int(0) >= 6 }}
                     sequence:
-                      - if: >-
-                          {{ not charger_on and start_solar and
-                             as_timestamp(now()) -
-                             as_timestamp(
-                               states.switch.renault_zoe_new_immax_charging.last_changed
-                             ) >= 120 }}
+                      - if: "{{ stop_pending }}"
                         then:
+                          - action: input_boolean.turn_off
+                            target:
+                              entity_id: input_boolean.immax_charger_stop_pending
+                      - if: >-
+                          {{ charger_off and start_solar and
+                             charger_control_available and
+                             current_control_available and
+                             charger_state_seconds | float(0) >= 30 }}
+                        then:
+                          - action: text.set_value
+                            target:
+                              entity_id: text.immax_ev_charger_charge_mode
+                            data:
+                              value: >-
+                                {% set target = now() + timedelta(
+                                  hours=states('input_number.immax_delay_period') |
+                                  int(12)) %}
+                                {{ {'pt': 1, 'dt': 24,
+                                    'ss': target.strftime('%H:%M'),
+                                    'se': '00:00'} | to_json }}
                           - action: number.set_value
                             target:
-                              entity_id: number.renault_zoe_new_immax_current
+                              entity_id: number.immax_ev_charger_delay_timer
                             data:
-                              value: "{{ solar_recommended_current | int(6) }}"
+                              value: "{{ states('input_number.immax_delay_period') | int(12) }}"
+                          - action: select.select_option
+                            target:
+                              entity_id: select.immax_ev_charger_charging_mode
+                            data:
+                              option: delayed_charge
+                          - action: number.set_value
+                            target:
+                              entity_id: number.immax_ev_charger_current
+                            data:
+                              value: 6
                           - delay:
-                              seconds: 2
+                              seconds: 3
                           - if: "{{ percentage_enabled }}"
                             then:
                               - action: input_boolean.turn_on
                                 target:
                                   entity_id: input_boolean.immax_charge_to_percentage_active
-                          - action: switch.turn_on
+                          - action: text.set_value
                             target:
-                              entity_id: switch.renault_zoe_new_immax_charging
+                              entity_id: text.immax_ev_charger_charge_mode
+                            data:
+                              value: >-
+                                {"pt":0,"dt":0,"ss":"00:00","se":"00:00"}
+                          - action: select.select_option
+                            target:
+                              entity_id: select.immax_ev_charger_charging_mode
+                            data:
+                              option: immediate
                       - if: >-
-                          {{ charger_on and
+                          {{ charger_on and not stop_pending and
+                             charger_state_seconds | float(0) >= 30 and
                              (current_limit | int(6) -
                               adjusted_solar_current | int(6)) | abs >= 1 and
                              as_timestamp(now()) -
                              as_timestamp(
-                               states.number.renault_zoe_new_immax_current.last_changed
-                             ) >= 45 }}
+                               states.number.immax_ev_charger_current.last_changed
+                             ) >= 15 }}
                         then:
                           - action: number.set_value
                             target:
-                              entity_id: number.renault_zoe_new_immax_current
+                              entity_id: number.immax_ev_charger_current
                             data:
                               value: >-
                                 {{ [[adjusted_solar_current | int(6), 6] | max, 32] |
                                    min }}
-                  - conditions: >-
-                      {{ charger_on and
-                         (target_reached or not online or fault or not plugged or stop_solar) and
-                         as_timestamp(now()) -
-                         as_timestamp(
-                           states.switch.renault_zoe_new_immax_charging.last_changed
-                         ) >= 120 }}
+                  - conditions: "{{ charger_on and solar_insufficient }}"
                     sequence:
-                      - action: switch.turn_off
-                        target:
-                          entity_id: switch.renault_zoe_new_immax_charging
-    mode: restart
+                      - if: >-
+                          {{ current_control_available and
+                             current_limit | int(6) != 6 }}
+                        then:
+                          - action: number.set_value
+                            target:
+                              entity_id: number.immax_ev_charger_current
+                            data:
+                              value: 6
+                      - if: "{{ not stop_pending }}"
+                        then:
+                          - action: input_boolean.turn_on
+                            target:
+                              entity_id: input_boolean.immax_charger_stop_pending
+                      - if: >-
+                          {{ stop_pending and
+                             stop_pending_seconds | float(0) >= 30 }}
+                        then:
+                          - action: text.set_value
+                            target:
+                              entity_id: text.immax_ev_charger_charge_mode
+                            data:
+                              value: >-
+                                {% set target = now() + timedelta(
+                                  hours=states('input_number.immax_delay_period') |
+                                  int(12)) %}
+                                {{ {'pt': 1, 'dt': 24,
+                                    'ss': target.strftime('%H:%M'),
+                                    'se': '00:00'} | to_json }}
+                          - action: number.set_value
+                            target:
+                              entity_id: number.immax_ev_charger_delay_timer
+                            data:
+                              value: "{{ states('input_number.immax_delay_period') | int(12) }}"
+                          - action: select.select_option
+                            target:
+                              entity_id: select.immax_ev_charger_charging_mode
+                            data:
+                              option: delayed_charge
+                          - action: input_boolean.turn_off
+                            target:
+                              entity_id: input_boolean.immax_charger_stop_pending
+          - conditions: "{{ charger_off and stop_pending }}"
+            sequence:
+              - action: input_boolean.turn_off
+                target:
+                  entity_id: input_boolean.immax_charger_stop_pending
+    mode: single
+    max_exceeded: silent
+
+  - id: immax_delay_mode_enforcer_package
+    alias: IMMAX delay mode enforcer
+    description: >-
+      Repeat the local Delay command while the charger is still drawing power.
+      The charger can take about two minutes to finish the mode transition.
+    triggers:
+      - trigger: time_pattern
+        seconds: /30
+      - trigger: state
+        entity_id: select.immax_ev_charger_charging_mode
+        to: delayed_charge
+    conditions:
+      - condition: state
+        entity_id: select.immax_ev_charger_charging_mode
+        state: delayed_charge
+      - condition: template
+        value_template: >-
+          {{ is_state('sensor.immax_ev_charger_status', 'charging') or
+             states('sensor.immax_ev_charger_current_a') | float(0) > 0.5 or
+             states('sensor.immax_ev_charger_current_b') | float(0) > 0.5 or
+             states('sensor.immax_ev_charger_current_c') | float(0) > 0.5 }}
+    actions:
+      - action: text.set_value
+        target:
+          entity_id: text.immax_ev_charger_charge_mode
+        data:
+          value: >-
+            {% set target = now() + timedelta(
+              hours=states('input_number.immax_delay_period') | int(12)) %}
+            {{ {'pt': 1, 'dt': 24, 'ss': target.strftime('%H:%M'),
+                'se': '00:00'} | to_json }}
+      - action: number.set_value
+        target:
+          entity_id: number.immax_ev_charger_delay_timer
+        data:
+          value: "{{ states('input_number.immax_delay_period') | int(12) }}"
+      - action: select.select_option
+        target:
+          entity_id: select.immax_ev_charger_charging_mode
+        data:
+          option: delayed_charge
+    mode: single
     max_exceeded: silent
 
   - id: immax_ready_by_roll_forward_package

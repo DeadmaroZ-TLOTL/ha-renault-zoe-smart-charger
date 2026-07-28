@@ -1,233 +1,207 @@
-type: entities
-title: IMMAX EV smart charger
-state_color: true
-entities:
-  - entity: switch.renault_zoe_new_immax_charging
-    name: Charging
-  - entity: input_select.immax_smart_charging_mode
-    name: Smart mode
-  - entity: sensor.renault_zoe_new_immax_smart_charge_status
-    name: Smart status
-  - type: conditional
-    conditions:
-      - entity: input_select.immax_smart_charging_mode
-        state: "Off"
-    row:
-      entity: number.renault_zoe_new_immax_current
-      name: Current limit
-  - type: conditional
-    conditions:
-      - entity: input_select.immax_smart_charging_mode
-        state: "Nord Pool"
-    row:
-      entity: number.renault_zoe_new_immax_current
-      name: Current limit
-  - entity: sensor.renault_zoe_new_immax_status
-    name: Charger status
-  - type: divider
-  - entity: input_boolean.immax_charge_to_percentage_enabled
-    name: Use Zoe SOC target
-  - type: conditional
-    conditions:
-      - entity: input_boolean.immax_charge_to_percentage_enabled
-        state: "on"
-    row:
-      entity: input_number.immax_charge_target_percentage
-      name: Target SOC
-  - type: conditional
-    conditions:
-      - entity: input_boolean.immax_charge_to_percentage_enabled
-        state: "off"
-    row:
-      entity: input_number.immax_energy_to_add
-      name: Energy target
-  - type: conditional
-    conditions:
-      - entity: input_select.immax_smart_charging_mode
-        state: "Nord Pool"
-    row:
-      entity: input_datetime.immax_ready_by
-      name: Ready by
-  - type: conditional
-    conditions:
-      - entity: input_select.immax_smart_charging_mode
-        state: "Nord Pool"
-    row:
-      type: section
-      label: Nord Pool planner
-  - type: conditional
-    conditions:
-      - entity: input_select.immax_smart_charging_mode
-        state: "Nord Pool"
-    row:
-      entity: input_boolean.immax_max_price_enabled
-      name: Maximum price enabled
-  - type: conditional
-    conditions:
-      - entity: input_select.immax_smart_charging_mode
-        state: "Nord Pool"
-    row:
-      entity: input_number.immax_max_energy_price
-      name: Maximum spot price
-  - type: conditional
-    conditions:
-      - entity: input_select.immax_smart_charging_mode
-        state: "Nord Pool"
-    row:
-      entity: input_number.immax_nordpool_current
-      name: Nord Pool current
-  - type: conditional
-    conditions:
-      - entity: input_select.immax_smart_charging_mode
-        state: "Nord Pool"
-    row:
-      entity: sensor.renault_zoe_new_immax_planned_charging_times
-      name: Planned charging
-  - type: conditional
-    conditions:
-      - entity: input_select.immax_smart_charging_mode
-        state: "Nord Pool"
-    row:
-      entity: sensor.renault_zoe_new_immax_planned_energy
-      name: Planned energy
+- type: entities
+  title: IMMAX charger control
+  state_color: true
+  entities:
+    - entity: select.immax_ev_charger_charging_mode
+      name: Charging mode
+    - entity: input_number.immax_delay_period
+      name: Delay period
+    - entity: input_select.immax_smart_charging_mode
+      name: Smart mode
+    - entity: sensor.renault_zoe_new_immax_smart_charge_status
+      name: Smart status
       tap_action:
         action: more-info
-  - type: conditional
-    conditions:
-      - entity: input_select.immax_smart_charging_mode
-        state: "Nord Pool"
-    row:
-      entity: sensor.renault_zoe_new_immax_estimated_charge_cost
-      name: Estimated cost
+    - type: conditional
+      conditions:
+        - entity: input_select.immax_smart_charging_mode
+          state: "Off"
+      row:
+        entity: number.immax_ev_charger_current
+        name: Current limit
+    - type: conditional
+      conditions:
+        - entity: input_select.immax_smart_charging_mode
+          state: "Nord Pool"
+      row:
+        entity: number.immax_ev_charger_current
+        name: Current limit
+    - entity: sensor.immax_ev_charger_status
+      name: Charger status
       tap_action:
         action: more-info
-  - type: conditional
-    conditions:
-      - entity: input_select.immax_smart_charging_mode
-        state: "Solar surplus"
-    row:
-      type: section
-      label: Solar surplus control
-  - type: conditional
-    conditions:
-      - entity: input_select.immax_smart_charging_mode
-        state: "Solar surplus"
-    row:
-      entity: input_select.immax_solar_phase_mode
-      name: Phase mode
-  - type: conditional
-    conditions:
-      - entity: input_select.immax_smart_charging_mode
-        state: "Solar surplus"
-    row:
-      entity: sensor.renault_zoe_new_immax_detected_phase_mode
-      name: Detected phase mode
+
+- type: entities
+  title: Limits and charging target
+  state_color: true
+  entities:
+    - entity: input_number.immax_total_power_limit
+      name: Total AC power limit
+    - entity: sensor.ac_tuya_meter_power
+      name: Total AC load
       tap_action:
         action: more-info
-  - type: conditional
-    conditions:
-      - entity: input_select.immax_smart_charging_mode
-        state: "Solar surplus"
-    row:
-      entity: input_number.immax_solar_reserve_power
-      name: Reserve (+) / battery support (-)
-  - type: conditional
-    conditions:
-      - entity: input_select.immax_smart_charging_mode
-        state: "Solar surplus"
-    row:
-      entity: input_number.immax_solar_min_power
-      name: Minimum charging power
-  - type: conditional
-    conditions:
-      - entity: input_select.immax_smart_charging_mode
-        state: "Solar surplus"
-    row:
-      entity: input_number.immax_solar_max_power
-      name: Maximum charging power
-  - type: conditional
-    conditions:
-      - entity: input_select.immax_smart_charging_mode
-        state: "Solar surplus"
-    row:
-      entity: sensor.renault_zoe_new_immax_solar_production
-      name: Solar production
+    - entity: sensor.unibms_soc
+      name: Site battery SOC
       tap_action:
         action: more-info
-  - type: conditional
-    conditions:
-      - entity: input_select.immax_smart_charging_mode
-        state: "Solar surplus"
-    row:
-      entity: sensor.renault_zoe_new_immax_solar_available_power
-      name: Available solar surplus
-      tap_action:
-        action: more-info
-  - type: conditional
-    conditions:
-      - entity: input_select.immax_smart_charging_mode
-        state: "Solar surplus"
-    row:
-      entity: sensor.renault_zoe_new_immax_solar_target_power
-      name: Target charging power
-      tap_action:
-        action: more-info
-  - type: conditional
-    conditions:
-      - entity: input_select.immax_smart_charging_mode
-        state: "Solar surplus"
-    row:
-      entity: sensor.renault_zoe_new_immax_solar_charger_power
-      name: Actual charging power
-      tap_action:
-        action: more-info
-  - type: conditional
-    conditions:
-      - entity: input_select.immax_smart_charging_mode
-        state: "Solar surplus"
-    row:
-      entity: sensor.renault_zoe_new_immax_solar_grid_export
-      name: Grid export
-      tap_action:
-        action: more-info
-  - type: conditional
-    conditions:
-      - entity: input_select.immax_smart_charging_mode
-        state: "Solar surplus"
-    row:
-      entity: sensor.renault_zoe_new_immax_solar_battery_charge
-      name: Battery charging
-      tap_action:
-        action: more-info
-  - type: conditional
-    conditions:
-      - entity: input_select.immax_smart_charging_mode
-        state: "Solar surplus"
-    row:
-      entity: sensor.renault_zoe_new_immax_solar_battery_discharge
-      name: Battery discharging
-      tap_action:
-        action: more-info
-  - type: divider
-  - type: section
-    label: Phase measurements
-  - entity: sensor.renault_zoe_new_immax_voltage_a
-    name: Phase A voltage
-  - entity: sensor.renault_zoe_new_immax_current_a
-    name: Phase A current
-  - entity: sensor.renault_zoe_new_immax_power_a
-    name: Phase A power
-  - entity: sensor.renault_zoe_new_immax_voltage_b
-    name: Phase B voltage
-  - entity: sensor.renault_zoe_new_immax_current_b
-    name: Phase B current
-  - entity: sensor.renault_zoe_new_immax_power_b
-    name: Phase B power
-  - entity: sensor.renault_zoe_new_immax_voltage_c
-    name: Phase C voltage
-  - entity: sensor.renault_zoe_new_immax_current_c
-    name: Phase C current
-  - entity: sensor.renault_zoe_new_immax_power_c
-    name: Phase C power
-  - entity: sensor.renault_zoe_new_immax_energy
-    name: Energy
+    - entity: input_number.immax_battery_soc_stop_limit
+      name: Pause at battery SOC
+    - entity: input_number.immax_battery_soc_resume_limit
+      name: Resume at battery SOC
+    - entity: input_boolean.immax_charge_to_percentage_enabled
+      name: Use external EV SOC target
+    - type: conditional
+      conditions:
+        - entity: input_boolean.immax_charge_to_percentage_enabled
+          state: "on"
+      row:
+        entity: sensor.renault_zoe_new_immax_vehicle_soc
+        name: External EV SOC
+        tap_action:
+          action: more-info
+    - type: conditional
+      conditions:
+        - entity: input_boolean.immax_charge_to_percentage_enabled
+          state: "on"
+      row:
+        entity: input_number.immax_charge_target_percentage
+        name: Target SOC
+    - type: conditional
+      conditions:
+        - entity: input_boolean.immax_charge_to_percentage_enabled
+          state: "off"
+      row:
+        entity: input_number.immax_energy_to_add
+        name: Energy target
+    - type: conditional
+      conditions:
+        - entity: input_select.immax_smart_charging_mode
+          state: "Nord Pool"
+      row:
+        entity: input_datetime.immax_ready_by
+        name: Ready by
+
+- type: conditional
+  conditions:
+    - entity: input_select.immax_smart_charging_mode
+      state: "Nord Pool"
+  card:
+    type: entities
+    title: Nord Pool planner
+    state_color: true
+    entities:
+      - entity: input_boolean.immax_max_price_enabled
+        name: Maximum price enabled
+      - entity: input_number.immax_max_energy_price
+        name: Maximum spot price
+      - entity: input_number.immax_nordpool_current
+        name: Charging current
+      - entity: sensor.renault_zoe_new_immax_planned_charging_times
+        name: Planned charging
+        tap_action:
+          action: more-info
+      - entity: sensor.renault_zoe_new_immax_planned_energy
+        name: Planned energy
+        tap_action:
+          action: more-info
+      - entity: sensor.renault_zoe_new_immax_estimated_charge_cost
+        name: Estimated cost
+        tap_action:
+          action: more-info
+
+- type: conditional
+  conditions:
+    - entity: input_select.immax_smart_charging_mode
+      state: "Solar surplus"
+  card:
+    type: entities
+    title: Solar surplus control
+    state_color: true
+    entities:
+      - entity: input_select.immax_solar_phase_mode
+        name: Phase mode
+      - entity: sensor.renault_zoe_new_immax_detected_phase_mode
+        name: Detected phase mode
+        tap_action:
+          action: more-info
+      - entity: input_number.immax_solar_reserve_power
+        name: Reserve (+) / battery support (-)
+      - entity: input_number.immax_solar_min_power
+        name: Minimum charging power
+      - entity: input_number.immax_solar_max_power
+        name: Maximum charging power
+      - entity: sensor.renault_zoe_new_immax_solar_production
+        name: Solar production
+        tap_action:
+          action: more-info
+      - entity: sensor.renault_zoe_new_immax_solar_available_power
+        name: Available solar surplus
+        tap_action:
+          action: more-info
+      - entity: sensor.renault_zoe_new_immax_solar_target_power
+        name: Target charging power
+        tap_action:
+          action: more-info
+      - entity: sensor.renault_zoe_new_immax_solar_charger_power
+        name: Actual charging power
+        tap_action:
+          action: more-info
+      - entity: sensor.renault_zoe_new_immax_solar_grid_export
+        name: Grid export
+        tap_action:
+          action: more-info
+      - entity: sensor.renault_zoe_new_immax_solar_battery_charge
+        name: Battery charging
+        tap_action:
+          action: more-info
+      - entity: sensor.renault_zoe_new_immax_solar_battery_discharge
+        name: Battery discharging
+        tap_action:
+          action: more-info
+
+- type: entities
+  title: AI advisor
+  state_color: true
+  entities:
+    - entity: input_boolean.immax_ai_advisor_enabled
+      name: AI advisor
+    - type: conditional
+      conditions:
+        - entity: input_boolean.immax_ai_advisor_enabled
+          state: "on"
+      row:
+        entity: input_number.immax_ai_advisor_interval
+        name: Analysis interval
+    - type: conditional
+      conditions:
+        - entity: input_boolean.immax_ai_advisor_enabled
+          state: "on"
+      row:
+        entity: input_text.immax_ai_advice
+        name: Recommendation
+
+- type: entities
+  title: Phase measurements
+  state_color: true
+  entities:
+    - entity: sensor.immax_ev_charger_voltage_a
+      name: Phase A voltage
+    - entity: sensor.immax_ev_charger_current_a
+      name: Phase A current
+    - entity: sensor.immax_ev_charger_power_a
+      name: Phase A power
+    - entity: sensor.immax_ev_charger_voltage_b
+      name: Phase B voltage
+    - entity: sensor.immax_ev_charger_current_b
+      name: Phase B current
+    - entity: sensor.immax_ev_charger_power_b
+      name: Phase B power
+    - entity: sensor.immax_ev_charger_voltage_c
+      name: Phase C voltage
+    - entity: sensor.immax_ev_charger_current_c
+      name: Phase C current
+    - entity: sensor.immax_ev_charger_power_c
+      name: Phase C power
+    - entity: sensor.immax_ev_charger_energy
+      name: Energy

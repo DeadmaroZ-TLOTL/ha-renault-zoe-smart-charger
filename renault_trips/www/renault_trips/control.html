@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="lv">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>Renault ZOE</title>
+  <link rel="stylesheet" href="./control-pages.css?v=1.0.3">
+</head>
+<body>
+  <main class="app">
+    <header class="topbar">
+      <div class="title-wrap">
+        <div id="titleIcon" class="title-icon" aria-hidden="true"></div>
+        <div>
+          <h1 id="pageTitle">Renault ZOE</h1>
+          <p id="pageSubtitle"></p>
+        </div>
+      </div>
+      <div class="filters">
+        <div class="language-switch" role="group" aria-label="Valoda">
+          <button id="langLv" type="button" data-language="lv" aria-pressed="true">LV</button>
+          <button id="langEn" type="button" data-language="en" aria-pressed="false">EN</button>
+        </div>
+        <select id="period" aria-label="Vēstures periods">
+          <option value="24h">24 h</option>
+          <option value="48h" selected>48 h</option>
+          <option value="7d">7 dienas</option>
+          <option value="30d">30 dienas</option>
+        </select>
+        <input id="dayDate" type="date" aria-label="Konkrēts datums">
+        <button id="clearDate" class="icon-command" type="button" hidden title="Notīrīt datumu" aria-label="Notīrīt datumu">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>
+        </button>
+        <button id="settings" class="icon-command" type="button" title="Iestatījumi" aria-label="Iestatījumi">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06-2.83 2.83-.06-.06A1.7 1.7 0 0 0 15 19.4a1.7 1.7 0 0 0-1 .6 1.7 1.7 0 0 0-.4 1.1V21h-4v-.09A1.7 1.7 0 0 0 8.55 19.4a1.7 1.7 0 0 0-1.88.34l-.06.06-2.83-2.83.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-.6-1 1.7 1.7 0 0 0-1.1-.4H3v-4h.09A1.7 1.7 0 0 0 4.6 8.55a1.7 1.7 0 0 0-.34-1.88l-.06-.06 2.83-2.83.06.06A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-.6 1.7 1.7 0 0 0 .4-1.1V3h4v.09A1.7 1.7 0 0 0 15.45 4.6a1.7 1.7 0 0 0 1.88-.34l.06-.06 2.83 2.83-.06.06A1.7 1.7 0 0 0 19.4 9c.15.37.36.7.64.98.3.28.68.43 1.07.43H21v4h-.09A1.7 1.7 0 0 0 19.4 15Z"/></svg>
+        </button>
+        <button id="reload" class="primary" type="button">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8.1 8.1 0 1 0-2.37 5.73"/><path d="M20 4v7h-7"/></svg>
+          <span id="reloadLabel">Atjaunot</span>
+        </button>
+      </div>
+    </header>
+
+    <div id="status" class="status">Ielādēju Home Assistant datus...</div>
+
+    <section id="metrics" class="metrics" aria-label="Kopsavilkums"></section>
+
+    <section id="actions" class="actions" aria-label="Komandas"></section>
+
+    <section id="controlPanels" class="control-grid"></section>
+
+    <section class="charts">
+      <article class="panel chart-panel">
+        <div class="panel-header">
+          <div>
+            <h2 id="mainChartTitle">Vēsture</h2>
+            <span id="mainChartSubtitle"></span>
+          </div>
+          <div id="mainLegend" class="legend"></div>
+        </div>
+        <div class="chart-wrap">
+          <canvas id="mainChart" role="img" aria-label="Vēstures grafiks"></canvas>
+          <div id="mainTooltip" class="chart-tooltip" hidden></div>
+        </div>
+      </article>
+
+      <article class="panel chart-panel">
+        <div class="panel-header">
+          <div>
+            <h2 id="secondaryChartTitle">Detalizēta vēsture</h2>
+            <span id="secondaryChartSubtitle"></span>
+          </div>
+          <div id="secondaryLegend" class="legend"></div>
+        </div>
+        <div class="chart-wrap">
+          <canvas id="secondaryChart" role="img" aria-label="Detalizētas vēstures grafiks"></canvas>
+          <div id="secondaryTooltip" class="chart-tooltip" hidden></div>
+        </div>
+      </article>
+    </section>
+
+    <section id="detailPanel" class="panel detail-panel">
+      <div class="panel-header">
+        <div>
+          <h2 id="detailTitle">Datu vēsture</h2>
+          <span id="detailSubtitle"></span>
+        </div>
+      </div>
+      <div id="detailContent"></div>
+    </section>
+  </main>
+
+  <script src="./control-pages.js?v=1.0.3"></script>
+</body>
+</html>

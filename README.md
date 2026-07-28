@@ -20,7 +20,8 @@ used by the included Nord Pool smart charger package.
 - Vehicle-specific API probing avoids creating tyre-pressure entities when the
   Renault cloud does not expose TPMS data for the VIN.
 - Smart charging permission by one or more Home Assistant zones.
-- Nord Pool country/price area selector in the integration options.
+- Nord Pool country/price area, Renault planner targets, price cap, energy cost
+  model, and IMMAX setpoints in the integration options.
 - Local Renault icon and logo on Home Assistant 2026.3 or newer.
 - Optional Nord Pool planner, switchable SOC/range target, maximum spot price, deadline,
   estimated cost, and adaptive charging model.
@@ -36,6 +37,8 @@ used by the included Nord Pool smart charger package.
 - Separate mileage dashboard view with daily totals, odometer-based paved and
   gravel/unpaved distance, unknown-surface coverage, and approximate average
   and maximum route speeds.
+- Matching full-screen Charging and IMMAX views with responsive controls,
+  configurable history periods, calendar dates, and large interactive charts.
 
 The command workaround follows the behavior proposed in
 [renault-api pull request #2202](https://github.com/hacf-fr/renault-api/pull/2202).
@@ -53,11 +56,14 @@ in this integration can be removed.
 
 The official Renault integration must already contain a loaded Zoe phase 2.
 Open **Zoe New Extended > Configure > Renault smart charging** to select the
-planner's Nord Pool country and allowed zones. Use **Configure > IMMAX entity
-sources** to select the charger controls, phase measurements, grid export,
-battery flow, solar production, vehicle SOC, and price entities. Charger
-control and current are required; every measurement or status source can be
-left empty and is then excluded. Two global switches expose the location guard
+planner's Nord Pool country, targets, price cap, and allowed zones. Use
+**Energy cost model** for delivery price, VAT, usable capacity, efficiency, and
+fallback consumption. **IMMAX setpoints** stores the charger controller limits
+and synchronizes them to the included helpers. Use **IMMAX entity sources** to
+select the charger controls, phase measurements, grid export, battery flow,
+solar production, vehicle SOC, and price entities. Charger control and current
+are required; every measurement or status source can be left empty and is then
+excluded. Two global switches expose the location guard
 and unrestricted-location option without duplicating every zone as a device
 switch.
 

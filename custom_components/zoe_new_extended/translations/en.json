@@ -17,6 +17,8 @@
         "title": "Settings",
         "menu_options": {
           "smart_charging": "Renault smart charging",
+          "cost_model": "Energy cost model",
+          "immax_setpoints": "IMMAX setpoints",
           "immax_entities": "IMMAX entity sources"
         }
       },
@@ -27,7 +29,50 @@
           "location_control_enabled": "Smart charging location allowed",
           "allow_any_location": "Allow at any location",
           "allowed_zones": "Allowed zones",
-          "nordpool_area": "Nord Pool country / price area"
+          "nordpool_area": "Nord Pool country / price area",
+          "zoe_smart_charging_enabled": "Smart charging enabled",
+          "zoe_max_price_enabled": "Maximum price limit enabled",
+          "zoe_max_energy_price": "Maximum Nord Pool price",
+          "zoe_charge_target_mode": "Target mode",
+          "zoe_charge_target_percent": "Target SOC",
+          "zoe_charge_range_target_km": "Target range"
+        }
+      },
+      "cost_model": {
+        "title": "Energy cost model",
+        "description": "Configure the values used for charge-session costs, battery inventory value, and fallback trip estimates.",
+        "data": {
+          "delivery_price_excl_vat": "Delivery price excluding VAT",
+          "energy_vat_percent": "Energy VAT",
+          "battery_capacity_kwh": "Usable battery capacity",
+          "charging_efficiency_percent": "Charging efficiency",
+          "default_charging_power_kw": "Default charging power",
+          "fallback_consumption_kwh_100": "Fallback consumption"
+        }
+      },
+      "immax_setpoints": {
+        "title": "IMMAX setpoints",
+        "description": "Configure the IMMAX charging controller. These values are synchronized with the existing Home Assistant helpers after saving.",
+        "data": {
+          "immax_smart_charging_mode": "Smart charging mode",
+          "immax_solar_phase_mode": "Solar phase mode",
+          "immax_max_price_enabled": "Maximum price limit enabled",
+          "immax_charge_to_percentage_enabled": "Charge to percentage enabled",
+          "immax_ai_advisor_enabled": "AI advisor enabled",
+          "immax_delay_period": "Delayed charging period",
+          "immax_total_power_limit": "Maximum total site load",
+          "immax_battery_soc_stop_limit": "Battery SOC stop threshold",
+          "immax_battery_soc_resume_limit": "Battery SOC resume threshold",
+          "immax_ai_advisor_interval": "Control analysis interval",
+          "immax_ai_current_cap": "Maximum advised current",
+          "immax_max_energy_price": "Maximum Nord Pool price",
+          "immax_energy_to_add": "Energy to add",
+          "immax_charge_target_percentage": "Vehicle target SOC",
+          "immax_nordpool_current": "Nord Pool charging current",
+          "immax_planning_power": "Planning power",
+          "immax_solar_reserve_power": "Solar reserve power",
+          "immax_solar_min_power": "Minimum solar charging power",
+          "immax_solar_max_power": "Maximum solar charging power"
         }
       },
       "immax_entities": {
@@ -57,6 +102,10 @@
           "immax_nordpool_price_entity": "Nord Pool price"
         }
       }
+    },
+    "error": {
+      "soc_resume_must_exceed_stop": "Battery SOC resume threshold must be higher than the stop threshold.",
+      "solar_max_must_reach_min": "Maximum solar charging power must be at least the minimum power."
     }
   },
   "entity": {
