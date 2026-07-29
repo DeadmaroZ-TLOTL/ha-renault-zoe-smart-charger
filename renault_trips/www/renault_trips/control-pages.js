@@ -36,9 +36,11 @@ const I18N = {
     planAndTarget: "Plāns un mērķis",
     locationAndStatus: "Lokācija un statuss",
     chargerControl: "Lādētāja vadība",
+    localControls: "Tuya Local vadība",
     limitsAndTarget: "Limiti un mērķis",
     activeMode: "Aktīvā režīma iestatījumi",
     measurements: "Mērījumi",
+    deviceDetails: "Ierīces informācija",
     priceAndPower: "Nord Pool cena un ZOE uzlādes jauda",
     priceAndPowerNote: "Cena c/kWh, jauda kW",
     batteryHistory: "Baterijas un uzlādes vēsture",
@@ -60,10 +62,15 @@ const I18N = {
     currentPrice: "Pašreizējā cena",
     location: "Atrašanās vieta",
     chargerStatus: "Lādētāja statuss",
+    chargerOnline: "Lādētājs tiešsaistē",
+    chargerProblem: "Lādētāja kļūda",
     chargingPower: "Uzlādes jauda",
+    totalPower: "Kopējā lādētāja jauda",
     totalLoad: "Kopējā AC slodze",
     currentLimit: "Strāvas limits",
     chargerEnergy: "Lādētāja enerģija",
+    sessionEnergy: "Šīs uzlādes enerģija",
+    chargerTemperature: "Lādētāja temperatūra",
     siteBatterySoc: "Mājas baterijas SOC",
     smartMode: "Viedais režīms",
     detectedPhases: "Noteiktās fāzes",
@@ -115,6 +122,23 @@ const I18N = {
     phaseBCurrent: "Fāze B strāva",
     phaseCVoltage: "Fāze C spriegums",
     phaseCCurrent: "Fāze C strāva",
+    phaseAPower: "Fāze A jauda",
+    phaseBPower: "Fāze B jauda",
+    phaseCPower: "Fāze C jauda",
+    workMode: "Darba režīms",
+    delayTimer: "Atlikšanas taimeris",
+    requireEarth: "Pieprasīt zemējumu",
+    onlineControl: "Lādētāja online slēdzis",
+    chargeNow: "Sākt tūlīt",
+    pause12h: "Atlikt uz 12 stundām",
+    restartCharger: "Pārstartēt lādētāju",
+    disableEarth: "Atslēgt zemējuma kontroli",
+    disableEarthConfirm: "Vai tiešām atslēgt lādētāja zemējuma kontroli?",
+    deviceVersion: "Sistēmas versija",
+    deviceInfo: "Aparatūras informācija",
+    realtimeData: "Tuya Local reāllaika dati",
+    supportedCurrent: "Atbalstītās strāvas",
+    faultCode: "Kļūdas kods",
     analysisInterval: "Analīzes intervāls",
     aiCurrentCap: "AI strāvas limits",
     voltage: "spriegums",
@@ -131,6 +155,11 @@ const I18N = {
     noSessions: "Šajā mēnesī pabeigtu uzlādes sesiju nav.",
     valueSaved: "Saglabāts: {value}",
     commandDone: "Komanda izpildīta.",
+    commandNotConfirmed: "IMMAX komandu neapstiprināja. Pašreizējais stāvoklis: {state}.",
+    chargerWaiting: "Komanda pieņemta. IMMAX gaida auto uzlādes pieprasījumu (pašlaik 0 A); pāreja var ilgt līdz 2 minūtēm.",
+    chargerStarted: "Komanda pieņemta. IMMAX uzlādē ar {current} A.",
+    chargerDelayed: "Komanda pieņemta. IMMAX uzlāde atlikta uz 12 stundām.",
+    chargerOfflineCommand: "IMMAX Tuya Local nav sasniedzams. Komanda netika sūtīta.",
   },
   en: {
     refresh: "Refresh",
@@ -161,9 +190,11 @@ const I18N = {
     planAndTarget: "Plan and target",
     locationAndStatus: "Location and status",
     chargerControl: "Charger control",
+    localControls: "Tuya Local controls",
     limitsAndTarget: "Limits and target",
     activeMode: "Active mode settings",
     measurements: "Measurements",
+    deviceDetails: "Device information",
     priceAndPower: "Nord Pool price and ZOE charging power",
     priceAndPowerNote: "Price c/kWh, power kW",
     batteryHistory: "Battery and charging history",
@@ -185,10 +216,15 @@ const I18N = {
     currentPrice: "Current price",
     location: "Location",
     chargerStatus: "Charger status",
+    chargerOnline: "Charger online",
+    chargerProblem: "Charger problem",
     chargingPower: "Charging power",
+    totalPower: "Total charger power",
     totalLoad: "Total AC load",
     currentLimit: "Current limit",
     chargerEnergy: "Charger energy",
+    sessionEnergy: "Current session energy",
+    chargerTemperature: "Charger temperature",
     siteBatterySoc: "Site battery SOC",
     smartMode: "Smart mode",
     detectedPhases: "Detected phases",
@@ -240,6 +276,23 @@ const I18N = {
     phaseBCurrent: "Phase B current",
     phaseCVoltage: "Phase C voltage",
     phaseCCurrent: "Phase C current",
+    phaseAPower: "Phase A power",
+    phaseBPower: "Phase B power",
+    phaseCPower: "Phase C power",
+    workMode: "Work mode",
+    delayTimer: "Delay timer",
+    requireEarth: "Require protective earth",
+    onlineControl: "Charger online switch",
+    chargeNow: "Charge now",
+    pause12h: "Delay for 12 hours",
+    restartCharger: "Restart charger",
+    disableEarth: "Disable earth control",
+    disableEarthConfirm: "Disable the charger's protective-earth check?",
+    deviceVersion: "System version",
+    deviceInfo: "Hardware information",
+    realtimeData: "Tuya Local realtime data",
+    supportedCurrent: "Supported currents",
+    faultCode: "Fault code",
     analysisInterval: "Analysis interval",
     aiCurrentCap: "AI current cap",
     voltage: "voltage",
@@ -256,6 +309,11 @@ const I18N = {
     noSessions: "No completed charge sessions in the current month.",
     valueSaved: "Saved: {value}",
     commandDone: "Command completed.",
+    commandNotConfirmed: "IMMAX did not confirm the command. Current state: {state}.",
+    chargerWaiting: "Command accepted. IMMAX is waiting for the vehicle to request charging (currently 0 A); the transition can take up to 2 minutes.",
+    chargerStarted: "Command accepted. IMMAX is charging at {current} A.",
+    chargerDelayed: "Command accepted. IMMAX charging is delayed for 12 hours.",
+    chargerOfflineCommand: "IMMAX Tuya Local is offline. The command was not sent.",
   },
 };
 
@@ -343,25 +401,82 @@ const CONFIG = {
       ["sensor.unibms_soc", "siteBatterySoc"],
       ["input_select.immax_smart_charging_mode", "smartMode"],
       ["sensor.renault_zoe_new_immax_detected_phase_mode", "detectedPhases"],
+      ["binary_sensor.renault_zoe_new_immax_online", "chargerOnline"],
+      ["binary_sensor.renault_zoe_new_immax_problem", "chargerProblem"],
+      ["sensor.immax_ev_charger_temperature", "chargerTemperature"],
+      ["sensor.immax_ev_charger_charge_energy_once", "sessionEnergy"],
     ],
-    actions: [],
+    actions: [
+      [
+        "select.immax_ev_charger_charging_mode",
+        "chargeNow",
+        "start",
+        "play",
+        {
+          command: "immaxStart",
+        },
+      ],
+      [
+        "select.immax_ev_charger_charging_mode",
+        "pause12h",
+        "stop",
+        "clock",
+        {
+          command: "immaxDelay",
+        },
+      ],
+      [
+        "switch.immax_ev_charger_require_earth",
+        "disableEarth",
+        "stop",
+        "shieldOff",
+        {
+          confirmKey: "disableEarthConfirm",
+          requiresState: "on",
+          expectedState: "off",
+          calls: [
+            {
+              domain: "switch",
+              service: "turn_off",
+              entityId: "switch.immax_ev_charger_require_earth",
+            },
+          ],
+        },
+      ],
+      [
+        "button.immax_ev_charger_restart",
+        "restartCharger",
+        "neutral",
+        "restart",
+      ],
+    ],
     panels: [
+      {
+        title: "localControls",
+        items: [
+          ["select.immax_ev_charger_charging_mode", "chargingMode"],
+          ["number.immax_ev_charger_current", "currentLimit"],
+          ["number.immax_ev_charger_delay_timer", "delayTimer"],
+          ["switch.immax_ev_charger_require_earth", "requireEarth"],
+          ["switch.immax_ev_charger_online_state", "onlineControl"],
+          ["sensor.immax_ev_charger_status", "chargerStatus"],
+          ["binary_sensor.immax_ev_charger_problem", "chargerProblem"],
+        ],
+      },
       {
         title: "chargerControl",
         items: [
-          ["select.immax_ev_charger_charging_mode", "chargingMode"],
-          ["input_number.immax_delay_period", "delayPeriod"],
           ["input_select.immax_smart_charging_mode", "smartMode"],
           ["sensor.renault_zoe_new_immax_smart_charge_status", "smartStatus"],
-          ["number.immax_ev_charger_current", "currentLimit"],
+          ["input_number.immax_delay_period", "delayPeriod"],
+          ["input_boolean.immax_ai_advisor_enabled", "aiAdvisor"],
+          ["input_text.immax_ai_advice", "aiAdvice"],
         ],
       },
       {
         title: "limitsAndTarget",
         items: [
           ["input_number.immax_total_power_limit", "totalPowerLimit"],
-          ["input_number.immax_battery_soc_stop_limit", "socStop"],
-          ["input_number.immax_battery_soc_resume_limit", "socResume"],
           ["input_boolean.immax_charge_to_percentage_enabled", "externalSocTarget"],
           ["input_number.immax_energy_to_add", "energyToAdd"],
           ["input_number.immax_charge_target_percentage", "chargeTarget"],
@@ -394,10 +509,27 @@ const CONFIG = {
         items: [
           ["sensor.immax_ev_charger_voltage_a", "phaseAVoltage"],
           ["sensor.immax_ev_charger_current_a", "phaseACurrent"],
+          ["sensor.immax_ev_charger_power_a", "phaseAPower"],
           ["sensor.immax_ev_charger_voltage_b", "phaseBVoltage"],
           ["sensor.immax_ev_charger_current_b", "phaseBCurrent"],
+          ["sensor.immax_ev_charger_power_b", "phaseBPower"],
           ["sensor.immax_ev_charger_voltage_c", "phaseCVoltage"],
           ["sensor.immax_ev_charger_current_c", "phaseCCurrent"],
+          ["sensor.immax_ev_charger_power_c", "phaseCPower"],
+          ["sensor.immax_ev_charger_power_total", "totalPower"],
+          ["sensor.immax_ev_charger_temperature", "chargerTemperature"],
+          ["sensor.immax_ev_charger_charge_energy_once", "sessionEnergy"],
+          ["sensor.immax_ev_charger_energy", "chargerEnergy"],
+        ],
+      },
+      {
+        title: "deviceDetails",
+        items: [
+          ["sensor.immax_ev_charger_system_version", "deviceVersion"],
+          ["sensor.immax_ev_charger_device_info", "deviceInfo"],
+          ["sensor.immax_ev_charger_realtime_data", "realtimeData"],
+          ["sensor.immax_ev_charger_current_list", "supportedCurrent"],
+          ["sensor.immax_ev_charger_fault", "faultCode"],
         ],
       },
     ],
@@ -418,6 +550,9 @@ const ICONS = {
   play: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 5 11 7-11 7Z"/></svg>',
   square: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6h12v12H6z"/></svg>',
   fan: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 12c-1.5-2.8-.8-7 2-8.5 2.1-1.1 3.8.6 3.3 2.7-.6 2.4-2.5 4.6-5.3 5.8Z"/><path d="M12 12c2.8-1.5 7-.8 8.5 2 1.1 2.1-.6 3.8-2.7 3.3-2.4-.6-4.6-2.5-5.8-5.3Z"/><path d="M12 12c1.5 2.8.8 7-2 8.5-2.1 1.1-3.8-.6-3.3-2.7.6-2.4 2.5-4.6 5.3-5.8Z"/><path d="M12 12c-2.8 1.5-7 .8-8.5-2-1.1-2.1.6-3.8 2.7-3.3 2.4.6 4.6 2.5 5.8 5.3Z"/><circle cx="12" cy="12" r="1.3"/></svg>',
+  clock: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>',
+  restart: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 1 0-2.3 5.7"/><path d="M20 4v7h-7"/></svg>',
+  shieldOff: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 5 6v5c0 4.4 2.9 8.4 7 10 1.2-.5 2.3-1.2 3.2-2"/><path d="M19 15V6l-7-3M4 4l16 16"/></svg>',
 };
 
 const pageConfig = CONFIG[PAGE];
@@ -450,6 +585,8 @@ let loading = false;
 let historyLoading = false;
 let lastHistoryLoad = 0;
 let activeRange = null;
+let statusLockUntil = 0;
+let commandInProgress = false;
 
 function t(key, values = {}) {
   let text = I18N[language][key] ?? I18N.lv[key] ?? key;
@@ -487,7 +624,12 @@ function stateTime(state) {
   ).getTime();
 }
 
-function setStatus(text, warn = false) {
+function setStatus(text, warn = false, lockMilliseconds = 0) {
+  if (lockMilliseconds > 0) {
+    statusLockUntil = Date.now() + lockMilliseconds;
+  } else if (!warn && Date.now() < statusLockUntil) {
+    return;
+  }
   statusEl.textContent = text;
   statusEl.classList.toggle("warn", warn);
 }
@@ -593,6 +735,159 @@ async function callService(domain, service, entityId, data = {}) {
   });
 }
 
+function waitFor(milliseconds) {
+  return new Promise((resolve) => window.setTimeout(resolve, milliseconds));
+}
+
+function isStateAvailable(state) {
+  return Boolean(
+    state
+    && state.state !== "unknown"
+    && state.state !== "unavailable",
+  );
+}
+
+function immaxControlAvailable() {
+  return [
+    "select.immax_ev_charger_charging_mode",
+    "number.immax_ev_charger_current",
+    "text.immax_ev_charger_charge_mode",
+  ].every((entityId) => isStateAvailable(stateFor(entityId)));
+}
+
+function immaxModePayload(delayed) {
+  if (!delayed) {
+    return JSON.stringify({ pt: 0, dt: 0, ss: "00:00", se: "00:00" });
+  }
+  const start = new Date(Date.now() + 12 * 60 * 60 * 1000);
+  const hours = String(start.getHours()).padStart(2, "0");
+  const minutes = String(start.getMinutes()).padStart(2, "0");
+  return JSON.stringify({
+    pt: 1,
+    dt: 24,
+    ss: `${hours}:${minutes}`,
+    se: "00:00",
+  });
+}
+
+async function selectImmaxManualMode() {
+  if (stateFor("input_select.immax_smart_charging_mode")?.state === "Off") return;
+  await callService(
+    "input_select",
+    "select_option",
+    "input_select.immax_smart_charging_mode",
+    { option: "Off" },
+  );
+  // The existing mode-change automation first puts the charger into a safe
+  // delayed state. Let that sequence finish before issuing a manual command.
+  await waitFor(5000);
+}
+
+async function setImmaxDelayedMode() {
+  await callService(
+    "text",
+    "set_value",
+    "text.immax_ev_charger_charge_mode",
+    { value: immaxModePayload(true) },
+  );
+  await callService(
+    "number",
+    "set_value",
+    "number.immax_ev_charger_delay_timer",
+    { value: 12 },
+  );
+  await callService(
+    "number",
+    "set_value",
+    "number.immax_ev_charger_current",
+    { value: 6 },
+  );
+  await callService(
+    "select",
+    "select_option",
+    "select.immax_ev_charger_charging_mode",
+    { option: "delayed_charge" },
+  );
+}
+
+async function refreshImmaxCommandState() {
+  // Tuya Local shares one connection between all entities on this device.
+  // Refreshing several entities at once can create overlapping polls, so rely
+  // on the integration's normal update and its optimistic command state.
+  await waitFor(1200);
+  await loadCurrent(true);
+}
+
+async function runImmaxCommand(command) {
+  if (!immaxControlAvailable()) {
+    throw new Error(t("chargerOfflineCommand"));
+  }
+
+  const scriptEntityId = command === "immaxDelay"
+    ? "script.immax_delay_12h"
+    : "script.immax_charge_now_6a";
+  if (isStateAvailable(stateFor(scriptEntityId))) {
+    await callService("script", "turn_on", scriptEntityId);
+    await waitFor(command === "immaxDelay" ? 7500 : 12500);
+    await refreshImmaxCommandState();
+  } else {
+    await selectImmaxManualMode();
+    await setImmaxDelayedMode();
+    if (command === "immaxDelay") {
+      await waitFor(1800);
+    } else {
+      // Writing immediate while it is already selected is ignored. Start from
+      // delayed mode at 6 A, then make the real immediate transition.
+      await waitFor(4000);
+      await callService(
+        "text",
+        "set_value",
+        "text.immax_ev_charger_charge_mode",
+        { value: immaxModePayload(false) },
+      );
+      await callService(
+        "select",
+        "select_option",
+        "select.immax_ev_charger_charging_mode",
+        { option: "immediate" },
+      );
+      await waitFor(1800);
+    }
+    await refreshImmaxCommandState();
+  }
+
+  const mode = stateFor("select.immax_ev_charger_charging_mode")?.state;
+  if (command === "immaxDelay") {
+    return mode === "delayed_charge"
+      ? { message: t("chargerDelayed"), warn: false }
+      : {
+        message: t("commandNotConfirmed", { state: displayState(stateFor(
+          "select.immax_ev_charger_charging_mode",
+        )) }),
+        warn: true,
+      };
+  }
+  if (mode !== "immediate") {
+    return {
+      message: t("commandNotConfirmed", { state: displayState(stateFor(
+        "select.immax_ev_charger_charging_mode",
+      )) }),
+      warn: true,
+    };
+  }
+  const current = toNumber(stateFor("sensor.immax_ev_charger_current_a")?.state);
+  const status = stateFor("sensor.immax_ev_charger_status")?.state;
+  if (status === "charging" || current > 0.5) {
+    return {
+      message: t("chargerStarted", {
+        current: Number.isFinite(current) ? current.toFixed(1) : "6",
+      }),
+      warn: false,
+    };
+  }
+  return { message: t("chargerWaiting"), warn: true };
+}
+
 async function showMoreInfo(entityId) {
   try {
     const homeAssistant = window.parent.document.querySelector("home-assistant");
@@ -604,32 +899,6 @@ async function showMoreInfo(entityId) {
   } catch (error) {
     console.debug("Could not open more-info", error);
     window.parent.location.assign(`/history?entity_id=${encodeURIComponent(entityId)}`);
-  }
-}
-
-async function openIntegrationOptions(stepId) {
-  try {
-    const entries = await haFetch("/api/config/config_entries/entry");
-    const entry = entries.find((item) => item.domain === "zoe_new_extended");
-    if (!entry) throw new Error("Integration entry not found");
-    let flow = await haFetch("/api/config/config_entries/options/flow", {
-      method: "POST",
-      body: {
-        handler: entry.entry_id,
-        show_advanced_options: false,
-      },
-    });
-    if (flow?.type === "menu") {
-      flow = await haFetch(`/api/config/config_entries/options/flow/${flow.flow_id}`, {
-        method: "POST",
-        body: { next_step_id: stepId },
-      });
-    }
-    if (!flow?.flow_id) throw new Error("Options flow did not start");
-    window.parent.location.assign(`/config/integrations/options/flow/${flow.flow_id}`);
-  } catch (error) {
-    console.debug("Could not open the requested options step", error);
-    window.parent.location.assign("/config/integrations/integration/zoe_new_extended");
   }
 }
 
@@ -720,6 +989,11 @@ function displayOption(option) {
       fixed_charge: "Fiksēta uzlāde",
       scheduled_charge: "Ieplānota uzlāde",
       delayed_charge: "Atlikta uzlāde",
+      charge_now: "Uzlādēt tūlīt",
+      charge_pct: "Uzlādēt līdz procentiem",
+      charge_energy: "Uzlādēt noteiktu enerģiju",
+      charge_schedule: "Uzlāde pēc grafika",
+      charge_delay: "Atlikta uzlāde",
     },
     en: {
       Off: "Off",
@@ -734,6 +1008,11 @@ function displayOption(option) {
       fixed_charge: "Fixed charging",
       scheduled_charge: "Scheduled charging",
       delayed_charge: "Delayed charging",
+      charge_now: "Charge now",
+      charge_pct: "Charge to percentage",
+      charge_energy: "Charge fixed energy",
+      charge_schedule: "Scheduled charging",
+      charge_delay: "Delayed charging",
     },
   };
   return translations[language][option] || option;
@@ -795,24 +1074,79 @@ function renderMetrics() {
 function renderActions() {
   actionsEl.replaceChildren();
   actionsEl.hidden = pageConfig.actions.length === 0;
-  for (const [entityId, labelKey, style, icon] of pageConfig.actions) {
+  for (const [entityId, labelKey, style, icon, actionConfig = {}] of pageConfig.actions) {
     const button = document.createElement("button");
     button.type = "button";
-    button.className = style === "stop" ? "action-stop" : "action-start";
+    button.className = style === "stop"
+      ? "action-stop"
+      : style === "start"
+        ? "action-start"
+        : "";
     button.innerHTML = `${ICONS[icon] || ""}<span>${escapeHtml(t(labelKey))}</span>`;
-    button.disabled = !stateFor(entityId);
+    const actionState = stateFor(entityId);
+    button.disabled = (
+      commandInProgress
+      || !actionState
+      || actionState.state === "unavailable"
+      || (
+        actionConfig.requiresState
+        && actionState.state !== actionConfig.requiresState
+      )
+    );
     button.addEventListener("click", async () => {
+      if (actionConfig.confirmKey && !window.confirm(t(actionConfig.confirmKey))) {
+        return;
+      }
+      commandInProgress = true;
       button.disabled = true;
       try {
-        await callService("button", "press", entityId);
-        setStatus(t("commandDone"));
+        if (actionConfig.command) {
+          const result = await runImmaxCommand(actionConfig.command);
+          setStatus(result.message, result.warn, 120000);
+        } else {
+          const calls = actionConfig.calls || [
+            {
+              domain: "button",
+              service: "press",
+              entityId,
+              data: {},
+            },
+          ];
+          for (const call of calls) {
+            await callService(
+              call.domain,
+              call.service,
+              call.entityId,
+              call.data || {},
+            );
+          }
+          await waitFor(1500);
+          if (actionConfig.expectedState) {
+            try {
+              await callService("homeassistant", "update_entity", entityId);
+            } catch (error) {
+              console.debug("Could not refresh action entity", error);
+            }
+            await waitFor(700);
+          }
+          await loadCurrent(true);
+          const actual = stateFor(entityId);
+          if (
+            actionConfig.expectedState
+            && actual?.state !== actionConfig.expectedState
+          ) {
+            setStatus(t("commandNotConfirmed", {
+              state: displayState(actual),
+            }), true, 120000);
+          } else {
+            setStatus(t("commandDone"), false, 10000);
+          }
+        }
       } catch (error) {
-        setStatus(t("loadError", { error: error.message }), true);
+        setStatus(t("loadError", { error: error.message }), true, 120000);
       } finally {
-        window.setTimeout(() => {
-          button.disabled = false;
-          loadCurrent();
-        }, 1500);
+        commandInProgress = false;
+        renderActions();
       }
     });
     actionsEl.append(button);
@@ -922,10 +1256,21 @@ function controlValue(entityId, state) {
     }
     select.addEventListener("change", async () => {
       select.disabled = true;
+      select.blur();
       try {
-        await callService(domain, "select_option", entityId, { option: select.value });
-        setStatus(t("valueSaved", { value: select.value }));
-        await loadCurrent(true);
+        if (
+          entityId === "select.immax_ev_charger_charging_mode"
+          && ["immediate", "delayed_charge"].includes(select.value)
+        ) {
+          const result = await runImmaxCommand(
+            select.value === "immediate" ? "immaxStart" : "immaxDelay",
+          );
+          setStatus(result.message, result.warn, 120000);
+        } else {
+          await callService(domain, "select_option", entityId, { option: select.value });
+          await loadCurrent(true);
+          setStatus(t("valueSaved", { value: select.value }));
+        }
       } catch (error) {
         setStatus(t("loadError", { error: error.message }), true);
       } finally {
@@ -1026,8 +1371,18 @@ function applyLanguage() {
   detailSubtitleEl.textContent = t(pageConfig.detailSubtitle);
   const selected = periodEl.value;
   const periodLabels = language === "lv"
-    ? { "24h": "24 h", "48h": "48 h", "7d": "7 dienas", "30d": "30 dienas" }
-    : { "24h": "24 h", "48h": "48 h", "7d": "7 days", "30d": "30 days" };
+    ? {
+      "24h": "Šodiena (00–24)",
+      "48h": "2 kalendāra dienas",
+      "7d": "7 kalendāra dienas",
+      "30d": "30 kalendāra dienas",
+    }
+    : {
+      "24h": "Today (00–24)",
+      "48h": "2 calendar days",
+      "7d": "7 calendar days",
+      "30d": "30 calendar days",
+    };
   for (const option of periodEl.options) option.textContent = periodLabels[option.value];
   periodEl.value = selected;
   renderMetrics();
@@ -1044,25 +1399,28 @@ function selectedRange() {
     const start = new Date(`${dayDateEl.value}T00:00:00`);
     const end = new Date(start);
     end.setDate(end.getDate() + 1);
-    return {
-      start: start.getTime(),
-      end: PAGE === "charging" ? end.getTime() : Math.min(end.getTime(), now.getTime()),
-    };
+    return { start: start.getTime(), end: end.getTime() };
   }
+
+  const start = new Date(now);
+  start.setHours(0, 0, 0, 0);
   if (PAGE === "charging" && periodEl.value === "48h") {
-    const start = new Date(now);
-    start.setHours(0, 0, 0, 0);
     const end = new Date(start);
     end.setDate(end.getDate() + 2);
     return { start: start.getTime(), end: end.getTime() };
   }
-  const duration = {
-    "24h": DAY_MS,
-    "48h": 2 * DAY_MS,
-    "7d": 7 * DAY_MS,
-    "30d": 30 * DAY_MS,
-  }[periodEl.value] || 2 * DAY_MS;
-  return { start: now.getTime() - duration, end: now.getTime() };
+
+  const days = {
+    "24h": 1,
+    "48h": 2,
+    "7d": 7,
+    "30d": 30,
+  }[periodEl.value] || 2;
+  start.setDate(start.getDate() - (days - 1));
+  const end = new Date(now);
+  end.setHours(0, 0, 0, 0);
+  end.setDate(end.getDate() + 1);
+  return { start: start.getTime(), end: end.getTime() };
 }
 
 function normalizeHistory(history) {
@@ -1820,7 +2178,11 @@ async function loadCurrent(silent = false) {
       minute: "2-digit",
       second: "2-digit",
     }).format(new Date());
-    setStatus(t("updated", { time }));
+    if (PAGE === "immax" && !immaxControlAvailable()) {
+      setStatus(t("chargerOfflineCommand"), true);
+    } else {
+      setStatus(t("updated", { time }));
+    }
   } catch (error) {
     console.error(error);
     setStatus(t("loadError", { error: error.message }), true);
@@ -1839,9 +2201,24 @@ async function reloadAll() {
   }
 }
 
+function navigateSettings(event) {
+  if (window.parent === window) return;
+  event.preventDefault();
+  const path = event.currentTarget.getAttribute("href");
+  window.parent.history.pushState(null, "", path);
+  window.parent.dispatchEvent(new window.parent.Event("location-changed"));
+}
+
 titleIconEl.innerHTML = pageConfig.icon;
 if (PAGE === "immax") periodEl.value = "24h";
+settingsEl.href = "/config/integrations/integration/zoe_new_extended";
+settingsEl.target = "_top";
+entitySettingsEl.href = "/config/integrations/integration/zoe_new_extended";
+entitySettingsEl.target = "_top";
 entitySettingsEl.hidden = PAGE !== "immax";
+document.querySelectorAll("a.settings-link").forEach((link) => {
+  link.addEventListener("click", navigateSettings);
+});
 dayDateEl.max = localDateValue(new Date());
 applyLanguage();
 
@@ -1858,12 +2235,6 @@ clearDateEl.addEventListener("click", () => {
   dayDateEl.value = "";
   clearDateEl.hidden = true;
   loadHistory();
-});
-settingsEl.addEventListener("click", () => {
-  openIntegrationOptions(PAGE === "immax" ? "immax_setpoints" : "smart_charging");
-});
-entitySettingsEl.addEventListener("click", () => {
-  openIntegrationOptions("immax_entities");
 });
 reloadEl.addEventListener("click", reloadAll);
 

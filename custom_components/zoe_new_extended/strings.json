@@ -25,9 +25,10 @@
       },
       "dashboard": {
         "title": "Dashboard",
-        "description": "Choose one language for all Renault ZOE dashboard pages.",
+        "description": "Choose one language for all Renault ZOE dashboard pages and enable or disable the complete IMMAX module. Disabling IMMAX hides its tab and stops its automations.",
         "data": {
-          "dashboard_language": "Dashboard language"
+          "dashboard_language": "Dashboard language",
+          "immax_feature_enabled": "Enable IMMAX tab and automations"
         }
       },
       "smart_charging": {
@@ -62,6 +63,7 @@
         "title": "IMMAX setpoints",
         "description": "Configure the IMMAX charging controller. These values are synchronized with the existing Home Assistant helpers after saving.",
         "data": {
+          "immax_feature_enabled": "Enable IMMAX tab and automations",
           "immax_smart_charging_mode": "Smart charging mode",
           "immax_solar_phase_mode": "Solar phase mode",
           "immax_max_price_enabled": "Maximum price limit enabled",

@@ -25,6 +25,7 @@ from .const import (
     CONF_IMMAX_CHARGE_TO_PERCENTAGE_ENABLED,
     CONF_IMMAX_DELAY_PERIOD,
     CONF_IMMAX_ENERGY_TO_ADD,
+    CONF_IMMAX_FEATURE_ENABLED,
     CONF_IMMAX_MAX_ENERGY_PRICE,
     CONF_IMMAX_MAX_PRICE_ENABLED,
     CONF_IMMAX_NORDPOOL_CURRENT,
@@ -41,6 +42,7 @@ from .const import (
     CONF_ZOE_MAX_ENERGY_PRICE,
     CONF_ZOE_MAX_PRICE_ENABLED,
     CONF_ZOE_SMART_CHARGING_ENABLED,
+    DEFAULT_IMMAX_FEATURE_ENABLED,
     DOMAIN,
     TARGET_ENTITY_ID,
     ZOE_ENTITY_PREFIX,
@@ -73,6 +75,7 @@ ZOE_SELECT_OPTION_ENTITIES = {
 }
 
 IMMAX_BOOLEAN_OPTION_ENTITIES = {
+    CONF_IMMAX_FEATURE_ENABLED: "input_boolean.immax_feature_enabled",
     CONF_IMMAX_MAX_PRICE_ENABLED: "input_boolean.immax_max_price_enabled",
     CONF_IMMAX_CHARGE_TO_PERCENTAGE_ENABLED: (
         "input_boolean.immax_charge_to_percentage_enabled"
@@ -141,15 +144,39 @@ async def _async_sync_charging_setpoints(
         IMMAX_BOOLEAN_OPTION_ENTITIES | ZOE_BOOLEAN_OPTION_ENTITIES
     ).items():
         current_state = hass.states.get(entity_id)
-        if key not in options or current_state is None:
+        if current_state is None:
             continue
-        turn_on = bool(options[key])
+        if key not in options:
+            if key != CONF_IMMAX_FEATURE_ENABLED:
+                continue
+            turn_on = DEFAULT_IMMAX_FEATURE_ENABLED
+        else:
+            turn_on = bool(options[key])
         if (current_state.state == "on") == turn_on:
             continue
         await hass.services.async_call(
             "input_boolean",
             "turn_on" if turn_on else "turn_off",
             {"entity_id": entity_id},
+            blocking=True,
+        )
+
+    immax_enabled = bool(
+        options.get(CONF_IMMAX_FEATURE_ENABLED, DEFAULT_IMMAX_FEATURE_ENABLED)
+    )
+    immax_automations = [
+        state.entity_id
+        for state in hass.states.async_all("automation")
+        if state.entity_id.startswith("automation.immax_")
+    ]
+    if immax_automations:
+        service_data: dict[str, object] = {"entity_id": immax_automations}
+        if not immax_enabled:
+            service_data["stop_actions"] = True
+        await hass.services.async_call(
+            "automation",
+            "turn_on" if immax_enabled else "turn_off",
+            service_data,
             blocking=True,
         )
 
@@ -319,6 +346,17 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     }
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     await _async_sync_charging_setpoints(hass, entry)
+
+    @callback
+    def sync_after_automation_setup(_now: datetime) -> None:
+        """Repeat once after YAML helpers and automations have finished loading."""
+        hass.async_create_task(_async_sync_charging_setpoints(hass, entry))
+
+    hass.data[DOMAIN][entry.entry_id]["cancel_setpoint_sync"] = async_call_later(
+        hass,
+        10,
+        sync_after_automation_setup,
+    )
     return True
 
 
@@ -333,6 +371,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         runtime["unsubscribe_registry"]()
         runtime["cancel_retry"]()
         runtime["cancel_reconcile"]()
+        runtime["cancel_setpoint_sync"]()
     return True
 
 

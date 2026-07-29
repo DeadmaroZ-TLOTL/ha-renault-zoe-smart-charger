@@ -12,6 +12,12 @@ for an IMMAX three-phase Tuya EV charger:
   This avoids the feedback loop that would otherwise reduce charging power as
   soon as the charger starts.
 
+The package also defines `script.immax_charge_now_6a` and
+`script.immax_delay_12h`. These keep the proven delayed -> 6 A -> immediate
+start sequence on the Home Assistant server, so a dashboard refresh cannot
+interrupt it. Both scripts stop before sending anything when the Tuya Local
+control entities are unavailable.
+
 Solar control automatically detects whether one or three phases are available
 from the charger phase-voltage sensors. A phase is considered present when its
 voltage remains between 180 and 260 V. The controller confirms three-phase

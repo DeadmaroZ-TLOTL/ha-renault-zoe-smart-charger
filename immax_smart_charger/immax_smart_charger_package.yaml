@@ -53,6 +53,10 @@ input_select:
     icon: mdi:sine-wave
 
 input_boolean:
+  immax_feature_enabled:
+    name: IMMAX dashboard and automations enabled
+    icon: mdi:ev-station
+
   immax_max_price_enabled:
     name: IMMAX max price enabled
     initial: false
@@ -337,6 +341,110 @@ input_text:
     max: 255
     icon: mdi:head-lightbulb-outline
 
+script:
+  immax_charge_now_6a:
+    alias: IMMAX charge now at 6 A
+    description: Start the IMMAX charger with the proven delayed-to-immediate sequence.
+    icon: mdi:ev-plug-type2
+    mode: restart
+    sequence:
+      - condition: template
+        value_template: >-
+          {{ states('select.immax_ev_charger_charging_mode')
+               not in ['unknown', 'unavailable'] and
+             states('number.immax_ev_charger_current')
+               not in ['unknown', 'unavailable'] and
+             states('text.immax_ev_charger_charge_mode')
+               not in ['unknown', 'unavailable'] }}
+      - action: input_select.select_option
+        target:
+          entity_id: input_select.immax_smart_charging_mode
+        data:
+          option: "Off"
+      - delay:
+          seconds: 5
+      - action: text.set_value
+        target:
+          entity_id: text.immax_ev_charger_charge_mode
+        data:
+          value: >-
+            {% set target = now() + timedelta(hours=12) %}
+            {{ {'pt': 1, 'dt': 24, 'ss': target.strftime('%H:%M'),
+                'se': '00:00'} | to_json }}
+      - action: number.set_value
+        target:
+          entity_id: number.immax_ev_charger_delay_timer
+        data:
+          value: 12
+      - action: number.set_value
+        target:
+          entity_id: number.immax_ev_charger_current
+        data:
+          value: 6
+      - action: select.select_option
+        target:
+          entity_id: select.immax_ev_charger_charging_mode
+        data:
+          option: delayed_charge
+      - delay:
+          seconds: 3
+      - action: text.set_value
+        target:
+          entity_id: text.immax_ev_charger_charge_mode
+        data:
+          value: >-
+            {"pt":0,"dt":0,"ss":"00:00","se":"00:00"}
+      - action: select.select_option
+        target:
+          entity_id: select.immax_ev_charger_charging_mode
+        data:
+          option: immediate
+
+  immax_delay_12h:
+    alias: IMMAX delay charging for 12 hours
+    description: Put the IMMAX charger into delayed mode without switching its relay off.
+    icon: mdi:timer-pause-outline
+    mode: restart
+    sequence:
+      - condition: template
+        value_template: >-
+          {{ states('select.immax_ev_charger_charging_mode')
+               not in ['unknown', 'unavailable'] and
+             states('number.immax_ev_charger_current')
+               not in ['unknown', 'unavailable'] and
+             states('text.immax_ev_charger_charge_mode')
+               not in ['unknown', 'unavailable'] }}
+      - action: input_select.select_option
+        target:
+          entity_id: input_select.immax_smart_charging_mode
+        data:
+          option: "Off"
+      - delay:
+          seconds: 5
+      - action: text.set_value
+        target:
+          entity_id: text.immax_ev_charger_charge_mode
+        data:
+          value: >-
+            {% set target = now() + timedelta(hours=12) %}
+            {{ {'pt': 1, 'dt': 24, 'ss': target.strftime('%H:%M'),
+                'se': '00:00'} | to_json }}
+      - action: number.set_value
+        target:
+          entity_id: number.immax_ev_charger_delay_timer
+        data:
+          value: 12
+      - action: number.set_value
+        target:
+          entity_id: number.immax_ev_charger_current
+        data:
+          value: 6
+      - action: select.select_option
+        target:
+          entity_id: select.immax_ev_charger_charging_mode
+        data:
+          option: delayed_charge
+
 automation:
   - id: immax_smart_session_reset_package
     alias: IMMAX smart session reset
@@ -345,6 +453,9 @@ automation:
       - trigger: state
         entity_id: input_select.immax_smart_charging_mode
     conditions:
+      - condition: state
+        entity_id: input_boolean.immax_feature_enabled
+        state: "on"
       - condition: template
         value_template: "{{ trigger.to_state.state != trigger.from_state.state }}"
     actions:
@@ -437,6 +548,10 @@ automation:
           {% endfor %}
           {{ ns.active == 3 }}
         for: "00:00:08"
+    conditions:
+      - condition: state
+        entity_id: input_boolean.immax_feature_enabled
+        state: "on"
     actions:
       - variables:
           active_phase_count: >-
@@ -482,6 +597,10 @@ automation:
           - sensor.unibms_soc
           - input_number.immax_battery_soc_stop_limit
           - input_number.immax_battery_soc_resume_limit
+    conditions:
+      - condition: state
+        entity_id: input_boolean.immax_feature_enabled
+        state: "on"
     actions:
       - variables:
           battery_soc_valid: "{{ states('sensor.unibms_soc') | is_number }}"
@@ -525,6 +644,10 @@ automation:
     triggers:
       - trigger: time_pattern
         seconds: /15
+    conditions:
+      - condition: state
+        entity_id: input_boolean.immax_feature_enabled
+        state: "on"
     actions:
       - action: homeassistant.update_entity
         target:
@@ -553,6 +676,9 @@ automation:
           - sensor.renault_zoe_new_immax_total_site_load
           - sensor.renault_zoe_new_immax_nord_pool_price
     conditions:
+      - condition: state
+        entity_id: input_boolean.immax_feature_enabled
+        state: "on"
       - condition: state
         entity_id: input_boolean.immax_ai_advisor_enabled
         state: "on"
@@ -709,6 +835,10 @@ automation:
           - sensor.renault_zoe_new_immax_grid_export
           - sensor.renault_zoe_new_immax_battery_charging
           - sensor.renault_zoe_new_immax_battery_discharging
+    conditions:
+      - condition: state
+        entity_id: input_boolean.immax_feature_enabled
+        state: "on"
     actions:
       - variables:
           mode: "{{ states('input_select.immax_smart_charging_mode') }}"
@@ -1692,6 +1822,9 @@ automation:
         to: delayed_charge
     conditions:
       - condition: state
+        entity_id: input_boolean.immax_feature_enabled
+        state: "on"
+      - condition: state
         entity_id: select.immax_ev_charger_charging_mode
         state: delayed_charge
       - condition: template
@@ -1734,6 +1867,9 @@ automation:
           - sensor.renault_zoe_new_immax_vehicle_soc
           - input_number.immax_session_delivered_energy
     conditions:
+      - condition: state
+        entity_id: input_boolean.immax_feature_enabled
+        state: "on"
       - condition: template
         value_template: >-
           {% set ready = states('input_datetime.immax_ready_by') %}

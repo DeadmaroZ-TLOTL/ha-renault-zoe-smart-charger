@@ -45,10 +45,6 @@
       name: Site battery SOC
       tap_action:
         action: more-info
-    - entity: input_number.immax_battery_soc_stop_limit
-      name: Pause at battery SOC
-    - entity: input_number.immax_battery_soc_resume_limit
-      name: Resume at battery SOC
     - entity: input_boolean.immax_charge_to_percentage_enabled
       name: Use external EV SOC target
     - type: conditional

@@ -366,3 +366,605 @@ button.primary {
     color: var(--muted);
   }
 }
+
+/* Shared v2 layout: every Renault ZOE tab uses the same frame and rhythm. */
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  min-height: 100%;
+  margin: 0;
+  background: var(--page);
+  color: var(--text);
+}
+
+body {
+  font-family: Roboto, "Segoe UI", Arial, sans-serif;
+}
+
+.app,
+.shell {
+  display: block;
+  width: min(1600px, 100%);
+  min-height: 100vh;
+  margin: 0 auto;
+  padding: 14px;
+}
+
+.topbar {
+  display: flex;
+  min-height: 58px;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 12px;
+}
+
+.title-wrap {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 11px;
+}
+
+.title-icon {
+  display: grid;
+  width: 44px;
+  height: 44px;
+  flex: 0 0 44px;
+  place-items: center;
+  border: 1px solid #b9d9dc;
+  border-radius: 7px;
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.title-icon svg,
+button svg,
+.settings-link svg {
+  width: 20px;
+  height: 20px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.title-icon svg {
+  width: 26px;
+  height: 26px;
+  stroke-width: 1.8;
+}
+
+.title-wrap h1 {
+  margin: 0;
+  font-size: 24px;
+  line-height: 1.25;
+  font-weight: 600;
+  letter-spacing: 0;
+}
+
+.title-wrap p,
+.vehicle-updated {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+.filters,
+.toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+button,
+select,
+input,
+.settings-link {
+  font: inherit;
+  letter-spacing: 0;
+}
+
+button,
+select,
+input[type="date"],
+input[type="datetime-local"],
+input[type="number"],
+.settings-link {
+  min-height: 40px;
+  border: 1px solid var(--line-strong);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--text);
+}
+
+button,
+.settings-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 0 14px;
+  cursor: pointer;
+}
+
+.settings-link {
+  text-decoration: none;
+}
+
+button:hover,
+.settings-link:hover {
+  border-color: var(--accent);
+}
+
+button:focus-visible,
+select:focus-visible,
+input:focus-visible,
+.settings-link:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+select,
+input[type="date"],
+input[type="datetime-local"],
+input[type="number"] {
+  min-width: 0;
+  padding: 0 10px;
+}
+
+button.primary,
+.primary {
+  min-width: 112px;
+  border-color: var(--accent);
+  background: var(--accent);
+  color: #fff;
+  font-weight: 600;
+}
+
+.icon-command {
+  width: 42px;
+  min-width: 42px;
+  padding: 0;
+}
+
+.status {
+  min-height: 40px;
+  margin: 0 0 12px;
+  padding: 9px 12px;
+  border: 1px solid #b9d9dc;
+  border-radius: 6px;
+  background: var(--accent-soft);
+  color: #245a60;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.status.warn {
+  border-color: #e2b2ad;
+  background: #fff0ef;
+  color: #8d2f28;
+}
+
+.metrics,
+.summary,
+.vehicle-grid {
+  display: grid;
+  gap: 10px;
+  margin: 0 0 12px;
+  padding: 0;
+  border: 0;
+}
+
+.control-app .metrics,
+.trips-app .vehicle-grid {
+  grid-template-columns: repeat(8, minmax(0, 1fr));
+}
+
+.mileage-app .metrics {
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+}
+
+.costs-app .metrics,
+.info-app .metrics {
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+}
+
+.metric,
+.trips-app button.vehicle-stat {
+  display: block;
+  min-width: 0;
+  min-height: 88px;
+  padding: 12px 13px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--surface);
+  color: var(--text);
+  text-align: left;
+  box-shadow: var(--shadow);
+}
+
+.trips-app button.vehicle-stat {
+  width: 100%;
+  border: 1px solid var(--line);
+}
+
+.trips-app button.vehicle-stat:hover,
+.trips-app button.vehicle-stat:focus-visible {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  outline-offset: 1px;
+}
+
+.metric span,
+.metric-label,
+.trips-app .vehicle-stat span {
+  display: block;
+  min-height: 32px;
+  overflow: visible;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.35;
+  text-overflow: clip;
+  white-space: normal;
+}
+
+.metric strong,
+.metric-value,
+.trips-app .vehicle-stat strong {
+  display: block;
+  margin-top: 4px;
+  overflow: visible;
+  font-size: 20px;
+  line-height: 1.15;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+  text-overflow: clip;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.metric-note {
+  display: block;
+  min-height: 16px;
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.3;
+}
+
+.actions,
+.vehicle-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0 0 12px;
+  padding: 0;
+}
+
+.actions button,
+.vehicle-actions button {
+  min-width: 150px;
+  background: var(--surface);
+  font-weight: 600;
+}
+
+.panel {
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+
+.panel-header,
+.header,
+.map-title {
+  display: flex;
+  min-height: 54px;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 13px 14px 9px;
+  border-bottom: 0;
+  background: transparent;
+}
+
+.panel-header h2,
+.header h2,
+.map-title strong {
+  margin: 0;
+  font-size: 16px;
+  line-height: 1.3;
+  font-weight: 600;
+}
+
+.panel-header span,
+.map-title span {
+  display: block;
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.content-grid,
+.trips-layout,
+.control-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: stretch;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.trips-app .trips-list-panel .compact-summary {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  padding: 0 14px;
+}
+
+.trips-app .trips-list-panel .metric {
+  min-height: 78px;
+  box-shadow: none;
+}
+
+.trips-app .trip-list {
+  max-height: 620px;
+  margin: 0 14px 14px;
+}
+
+.trips-app .map-wrap {
+  min-height: 620px;
+}
+
+.trips-app #map {
+  height: 566px;
+  min-height: 566px;
+}
+
+.mileage-app .surface-overview {
+  margin-bottom: 12px;
+  padding: 14px;
+}
+
+.costs-app .costs-content-grid > .panel {
+  min-height: 534px;
+}
+
+.costs-app .costs-content-grid .table-scroll {
+  max-height: 480px;
+  overflow: auto;
+}
+
+.costs-app .battery-cost-panel {
+  margin-bottom: 12px;
+}
+
+.series-toggles {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 7px;
+}
+
+.series-toggle {
+  display: inline-flex;
+  min-height: 34px;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 9px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  color: var(--text);
+  font-size: 12px;
+  line-height: 1.2;
+  cursor: pointer;
+}
+
+.series-toggle:hover,
+.series-toggle:focus-within {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.series-toggle input {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  accent-color: var(--accent);
+}
+
+.series-toggle i {
+  width: 20px;
+  height: 3px;
+  flex: 0 0 20px;
+  background: var(--orange);
+}
+
+.series-toggle.forecast-series i {
+  height: 0;
+  border-top: 3px dashed var(--accent);
+  background: transparent;
+}
+
+.charts {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.chart-wrap {
+  position: relative;
+  height: 480px;
+}
+
+.costs-app .chart-wrap,
+.control-app .chart-wrap {
+  height: 480px;
+}
+
+@media (max-width: 1220px) {
+  .control-app .metrics,
+  .trips-app .vehicle-grid,
+  .mileage-app .metrics {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .costs-app .metrics,
+  .info-app .metrics {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 900px) {
+  .content-grid,
+  .trips-layout,
+  .control-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .trips-app .map-wrap {
+    min-height: 520px;
+  }
+
+  .trips-app #map {
+    height: 466px;
+    min-height: 466px;
+  }
+}
+
+@media (max-width: 760px) {
+  .app,
+  .shell {
+    width: 100%;
+    padding: 8px;
+  }
+
+  .topbar {
+    min-height: 0;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .title-wrap {
+    align-items: flex-start;
+  }
+
+  .title-icon {
+    width: 40px;
+    height: 40px;
+    flex-basis: 40px;
+  }
+
+  .title-wrap h1 {
+    font-size: 20px;
+  }
+
+  .title-wrap p {
+    font-size: 13px;
+  }
+
+  .filters,
+  .toolbar {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  .filters select,
+  .filters input[type="date"] {
+    min-width: 130px;
+    flex: 1 1 145px;
+  }
+
+  .filters .icon-command {
+    flex: 0 0 42px;
+  }
+
+  .filters .primary {
+    flex: 1 1 130px;
+  }
+
+  .control-app .metrics,
+  .trips-app .vehicle-grid,
+  .mileage-app .metrics,
+  .costs-app .metrics,
+  .info-app .metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  .metric,
+  .trips-app button.vehicle-stat {
+    min-height: 78px;
+    padding: 10px 11px;
+  }
+
+  .metric strong,
+  .metric-value,
+  .trips-app .vehicle-stat strong {
+    font-size: 18px;
+  }
+
+  .trips-app .trips-list-panel .compact-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    padding: 0 10px;
+  }
+
+  .trips-app .trip-list {
+    max-height: none;
+    margin: 0 10px 10px;
+  }
+
+  .panel-header,
+  .header,
+  .map-title {
+    min-height: 48px;
+    padding: 11px 12px 7px;
+  }
+
+  .chart-wrap,
+  .costs-app .chart-wrap,
+  .control-app .chart-wrap {
+    height: 340px;
+  }
+
+  .costs-app .costs-content-grid > .panel {
+    min-height: 0;
+  }
+
+  .costs-app .costs-content-grid .table-scroll {
+    max-height: none;
+  }
+
+  .series-toggles {
+    width: 100%;
+    justify-content: flex-start;
+  }
+}
+
+@media (prefers-color-scheme: dark) {
+  .title-icon {
+    border-color: #29545a;
+  }
+
+  .status {
+    border-color: #29545a;
+    color: #b9e4e7;
+  }
+
+  .status.warn {
+    border-color: #7c4a45;
+    background: #3b2524;
+    color: #f1bbb5;
+  }
+}

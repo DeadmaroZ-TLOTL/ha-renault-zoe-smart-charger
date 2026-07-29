@@ -25,9 +25,10 @@
       },
       "dashboard": {
         "title": "Informācijas panelis",
-        "description": "Izvēlieties vienu valodu visām Renault ZOE informācijas paneļa lapām.",
+        "description": "Izvēlieties vienu valodu visām Renault ZOE informācijas paneļa lapām un ieslēdziet vai izslēdziet visu IMMAX moduli. Izslēdzot IMMAX, tā tabs pazūd un automatizācijas tiek apturētas.",
         "data": {
-          "dashboard_language": "Informācijas paneļa valoda"
+          "dashboard_language": "Informācijas paneļa valoda",
+          "immax_feature_enabled": "Ieslēgt IMMAX tabu un automatizācijas"
         }
       },
       "smart_charging": {
@@ -62,6 +63,7 @@
         "title": "IMMAX setpointi",
         "description": "Iestatiet IMMAX uzlādes regulatoru. Pēc saglabāšanas šīs vērtības tiek sinhronizētas ar esošajiem Home Assistant palīgiem.",
         "data": {
+          "immax_feature_enabled": "Ieslēgt IMMAX tabu un automatizācijas",
           "immax_smart_charging_mode": "Viedās uzlādes režīms",
           "immax_solar_phase_mode": "Saules fāžu režīms",
           "immax_max_price_enabled": "Maksimālās cenas limits ieslēgts",

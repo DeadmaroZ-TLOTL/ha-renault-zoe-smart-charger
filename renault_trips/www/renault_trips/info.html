@@ -1,0 +1,904 @@
+<!doctype html>
+<html lang="lv">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>Renault ZOE API info</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --page: #f4f6f7;
+      --surface: #fff;
+      --surface-muted: #f6f8f9;
+      --line: #d8dde1;
+      --line-strong: #b8c1c7;
+      --text: #192127;
+      --muted: #65717a;
+      --accent: #087f8c;
+      --accent-soft: #e8f5f6;
+      --green: #2e7d4f;
+      --red: #b34136;
+      --shadow: 0 1px 3px rgba(16, 31, 43, 0.08);
+      font-family: Roboto, "Segoe UI", Arial, sans-serif;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      background: var(--page);
+      color: var(--text);
+    }
+
+    .search {
+      min-width: 220px;
+    }
+
+    .api-groups {
+      display: grid;
+      gap: 12px;
+      margin-bottom: 12px;
+    }
+
+    .domain-count {
+      white-space: nowrap;
+    }
+
+    .entity-list {
+      border-top: 1px solid var(--line);
+    }
+
+    .api-entity {
+      border-bottom: 1px solid var(--line);
+    }
+
+    .api-entity:last-child {
+      border-bottom: 0;
+    }
+
+    .api-entity summary {
+      display: grid;
+      min-height: 66px;
+      grid-template-columns: minmax(220px, 1fr) minmax(130px, auto) minmax(118px, auto);
+      align-items: center;
+      gap: 14px;
+      padding: 10px 14px;
+      list-style: none;
+      cursor: pointer;
+    }
+
+    .api-entity summary::-webkit-details-marker {
+      display: none;
+    }
+
+    .api-entity summary:hover,
+    .api-entity summary:focus-visible {
+      background: var(--surface-muted);
+      outline: 0;
+    }
+
+    .entity-name {
+      display: block;
+      margin-bottom: 3px;
+      font-size: 14px;
+      font-weight: 600;
+      overflow-wrap: anywhere;
+    }
+
+    .entity-id,
+    .entity-updated {
+      display: block;
+      color: var(--muted);
+      font-size: 11px;
+      line-height: 1.35;
+      overflow-wrap: anywhere;
+    }
+
+    .entity-state {
+      justify-self: end;
+      font-size: 15px;
+      font-weight: 650;
+      font-variant-numeric: tabular-nums;
+      text-align: right;
+      overflow-wrap: anywhere;
+    }
+
+    .entity-state.unavailable {
+      color: var(--red);
+    }
+
+    .entity-updated {
+      justify-self: end;
+      text-align: right;
+    }
+
+    .entity-details {
+      padding: 0 14px 14px;
+      background: var(--surface-muted);
+    }
+
+    .entity-meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      padding: 10px 0;
+    }
+
+    .entity-meta span {
+      padding: 4px 7px;
+      border: 1px solid var(--line);
+      border-radius: 5px;
+      background: var(--surface);
+      color: var(--muted);
+      font-size: 11px;
+    }
+
+    .attribute-table {
+      width: 100%;
+      border-collapse: collapse;
+      table-layout: fixed;
+    }
+
+    .attribute-table th,
+    .attribute-table td {
+      padding: 7px 8px;
+      border-top: 1px solid var(--line);
+      vertical-align: top;
+      font-size: 12px;
+      line-height: 1.4;
+      text-align: left;
+      overflow-wrap: anywhere;
+    }
+
+    .attribute-table th {
+      width: 230px;
+      color: var(--muted);
+      font-weight: 600;
+    }
+
+    .attribute-table pre {
+      margin: 0;
+      white-space: pre-wrap;
+      word-break: break-word;
+      font: 11px/1.45 Consolas, "Cascadia Mono", monospace;
+    }
+
+    .more-info {
+      display: inline-flex;
+      min-height: 36px;
+      align-items: center;
+      gap: 7px;
+      margin-top: 10px;
+      padding: 7px 10px;
+    }
+
+    .more-info svg {
+      width: 18px;
+      height: 18px;
+    }
+
+    .empty {
+      padding: 30px 16px;
+      color: var(--muted);
+      text-align: center;
+    }
+
+    @media (max-width: 760px) {
+      .search {
+        min-width: 0;
+        flex: 1 1 100%;
+      }
+
+      .api-entity summary {
+        min-height: 0;
+        grid-template-columns: minmax(0, 1fr) auto;
+        gap: 7px 10px;
+        padding: 10px 12px;
+      }
+
+      .entity-updated {
+        grid-column: 1 / -1;
+        justify-self: start;
+        text-align: left;
+      }
+
+      .attribute-table th {
+        width: 120px;
+      }
+    }
+
+    @media (prefers-color-scheme: dark) {
+      :root {
+        color-scheme: dark;
+        --page: #111417;
+        --surface: #1c2024;
+        --surface-muted: #24292e;
+        --line: #394047;
+        --line-strong: #505961;
+        --text: #edf1f4;
+        --muted: #a9b4bc;
+        --accent: #43a9b5;
+        --accent-soft: #17383d;
+        --green: #76c893;
+        --red: #ef8b80;
+        --shadow: none;
+      }
+    }
+  </style>
+  <link rel="stylesheet" href="./shared-theme.css?v=2.1.1">
+</head>
+<body>
+  <main class="app info-app">
+    <header class="topbar">
+      <div class="title-wrap">
+        <div class="title-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7.5v.01"/></svg>
+        </div>
+        <div>
+          <h1 data-i18n="pageTitle">Renault ZOE API informācija</h1>
+          <p data-i18n="pageSubtitle">Visas no Renault API pieejamās entītijas, stāvokļi un atribūti.</p>
+        </div>
+      </div>
+      <div class="filters">
+        <input id="search" class="search" type="search" placeholder="Meklēt entītiju vai atribūtu" data-i18n-placeholder="search">
+        <select id="domain" aria-label="Domēns" data-i18n-aria="domain">
+          <option value="all" data-i18n="allDomains">Visi domēni</option>
+        </select>
+        <button id="expandAll" class="icon-command" type="button" title="Atvērt visu" data-i18n-title="expandAll" aria-label="Atvērt visu">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m7 10 5 5 5-5M7 4l5 5 5-5"/></svg>
+        </button>
+        <button id="collapseAll" class="icon-command" type="button" title="Aizvērt visu" data-i18n-title="collapseAll" aria-label="Aizvērt visu">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m7 14 5-5 5 5M7 20l5-5 5 5"/></svg>
+        </button>
+        <a id="settings" class="icon-command settings-link" href="/config/integrations/integration/zoe_new_extended" target="_top" title="Iestatījumi" aria-label="Iestatījumi">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06-2.83 2.83-.06-.06A1.7 1.7 0 0 0 15 19.4a1.7 1.7 0 0 0-1 .6 1.7 1.7 0 0 0-.4 1.1V21h-4v-.09A1.7 1.7 0 0 0 8.55 19.4a1.7 1.7 0 0 0-1.88.34l-.06.06-2.83-2.83.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-.6-1 1.7 1.7 0 0 0-1.1-.4H3v-4h.09A1.7 1.7 0 0 0 4.6 8.55a1.7 1.7 0 0 0-.34-1.88l-.06-.06 2.83-2.83.06.06A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-.6 1.7 1.7 0 0 0 .4-1.1V3h4v.09A1.7 1.7 0 0 0 15.45 4.6a1.7 1.7 0 0 0 1.88-.34l.06-.06 2.83 2.83-.06.06A1.7 1.7 0 0 0 19.4 9c.15.37.36.7.64.98.3.28.68.43 1.07.43H21v4h-.09A1.7 1.7 0 0 0 19.4 15Z"/></svg>
+        </a>
+        <button id="reload" class="primary" type="button">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8.1 8.1 0 1 0-2.37 5.73"/><path d="M20 4v7h-7"/></svg>
+          <span data-i18n="refresh">Atjaunot</span>
+        </button>
+      </div>
+    </header>
+
+    <div id="status" class="status" data-i18n="loading">Ielādēju Renault API datus...</div>
+
+    <section class="metrics summary" aria-label="API kopsavilkums" data-i18n-aria="summary">
+      <article class="metric"><span data-i18n="device">Ierīce</span><strong id="mDevice">-</strong><small id="mDeviceNote" class="metric-note"></small></article>
+      <article class="metric"><span data-i18n="entities">Entītijas</span><strong id="mEntities">-</strong><small id="mDomains" class="metric-note"></small></article>
+      <article class="metric"><span data-i18n="available">Pieejamas</span><strong id="mAvailable">-</strong><small id="mUnavailable" class="metric-note"></small></article>
+      <article class="metric"><span data-i18n="attributes">API atribūti</span><strong id="mAttributes">-</strong><small id="mRaw" class="metric-note"></small></article>
+      <article class="metric"><span data-i18n="lastUpdate">Pēdējais atjauninājums</span><strong id="mUpdated">-</strong><small id="mUpdatedEntity" class="metric-note"></small></article>
+      <article class="metric"><span data-i18n="integration">Integrācija</span><strong id="mIntegration">-</strong><small id="mEntry" class="metric-note"></small></article>
+    </section>
+
+    <div id="groups" class="api-groups"></div>
+    <div id="empty" class="panel empty" hidden data-i18n="noMatches">Nekas neatbilst izvēlētajam filtram.</div>
+  </main>
+
+  <script src="./dashboard-tabs.js?v=1.0.0"></script>
+  <script>
+    "use strict";
+
+    const DOMAIN = "zoe_new_extended";
+    const SETTINGS_ENTITY = "sensor.renault_zoe_new_cost_settings";
+    const I18N = {
+      lv: {
+        pageTitle: "Renault ZOE API informācija",
+        pageSubtitle: "Visas no Renault API pieejamās entītijas, stāvokļi un atribūti.",
+        search: "Meklēt entītiju vai atribūtu",
+        domain: "Domēns",
+        allDomains: "Visi domēni",
+        expandAll: "Atvērt visu",
+        collapseAll: "Aizvērt visu",
+        settings: "Iestatījumi",
+        refresh: "Atjaunot",
+        loading: "Ielādēju Renault API datus...",
+        summary: "API kopsavilkums",
+        device: "Ierīce",
+        devices: "{count} ierīces",
+        entities: "Entītijas",
+        domains: "{count} domēni",
+        available: "Pieejamas",
+        unavailableCount: "{count} nav pieejamas",
+        attributes: "API atribūti",
+        rawAttributes: "{count} raw/strukturēti lauki",
+        lastUpdate: "Pēdējais atjauninājums",
+        integration: "Integrācija",
+        entry: "Config entry {id}",
+        entityCount: "{count} entītijas",
+        updated: "Atjaunots {time}. Atrastas {count} Renault ZOE API entītijas.",
+        loadError: "Datus neizdevās ielādēt: {error}",
+        noMatches: "Nekas neatbilst izvēlētajam filtram.",
+        stateUnavailable: "Nav pieejams",
+        stateDisabled: "Atspējots",
+        stateUnknown: "Nav zināms",
+        updatedAt: "Atjaunots {time}",
+        platform: "Platforma",
+        category: "Kategorija",
+        disabledBy: "Atspējoja",
+        attributesTitle: "Atribūti",
+        moreInfo: "Atvērt HA informāciju",
+        none: "nav",
+      },
+      en: {
+        pageTitle: "Renault ZOE API information",
+        pageSubtitle: "Every entity, state, and attribute available from the Renault API.",
+        search: "Search entities or attributes",
+        domain: "Domain",
+        allDomains: "All domains",
+        expandAll: "Expand all",
+        collapseAll: "Collapse all",
+        settings: "Settings",
+        refresh: "Refresh",
+        loading: "Loading Renault API data...",
+        summary: "API summary",
+        device: "Device",
+        devices: "{count} devices",
+        entities: "Entities",
+        domains: "{count} domains",
+        available: "Available",
+        unavailableCount: "{count} unavailable",
+        attributes: "API attributes",
+        rawAttributes: "{count} raw/structured fields",
+        lastUpdate: "Last update",
+        integration: "Integration",
+        entry: "Config entry {id}",
+        entityCount: "{count} entities",
+        updated: "Updated {time}. Found {count} Renault ZOE API entities.",
+        loadError: "Could not load data: {error}",
+        noMatches: "Nothing matches the selected filter.",
+        stateUnavailable: "Unavailable",
+        stateDisabled: "Disabled",
+        stateUnknown: "Unknown",
+        updatedAt: "Updated {time}",
+        platform: "Platform",
+        category: "Category",
+        disabledBy: "Disabled by",
+        attributesTitle: "Attributes",
+        moreInfo: "Open HA information",
+        none: "none",
+      },
+    };
+
+    const LOCALES = { lv: "lv-LV", en: "en-GB" };
+    const groupsEl = document.getElementById("groups");
+    const emptyEl = document.getElementById("empty");
+    const statusEl = document.getElementById("status");
+    const searchEl = document.getElementById("search");
+    const domainEl = document.getElementById("domain");
+    const reloadEl = document.getElementById("reload");
+    let language = "lv";
+    let hass = null;
+    let rows = [];
+    let deviceNames = [];
+    let entryIds = [];
+
+    function t(key, values = {}) {
+      let text = I18N[language][key] ?? key;
+      for (const [name, value] of Object.entries(values)) {
+        text = text.replaceAll(`{${name}}`, String(value));
+      }
+      return text;
+    }
+
+    function applyLanguage() {
+      document.documentElement.lang = language;
+      document.title = t("pageTitle");
+      document.querySelectorAll("[data-i18n]").forEach((element) => {
+        element.textContent = t(element.dataset.i18n);
+      });
+      document.querySelectorAll("[data-i18n-aria]").forEach((element) => {
+        element.setAttribute("aria-label", t(element.dataset.i18nAria));
+      });
+      document.querySelectorAll("[data-i18n-title]").forEach((element) => {
+        const text = t(element.dataset.i18nTitle);
+        element.title = text;
+        element.setAttribute("aria-label", text);
+      });
+      document.querySelectorAll("[data-i18n-placeholder]").forEach((element) => {
+        element.placeholder = t(element.dataset.i18nPlaceholder);
+      });
+      const settings = document.getElementById("settings");
+      settings.title = t("settings");
+      settings.setAttribute("aria-label", t("settings"));
+    }
+
+    function parseMaybeJson(value) {
+      try {
+        return JSON.parse(value);
+      } catch (_error) {
+        return null;
+      }
+    }
+
+    async function refreshToken(tokens) {
+      if (!tokens?.refresh_token) return null;
+      const body = new URLSearchParams();
+      body.set("grant_type", "refresh_token");
+      body.set("refresh_token", tokens.refresh_token);
+      body.set("client_id", `${location.origin}/`);
+      const response = await fetch("/auth/token", {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body,
+      });
+      if (!response.ok) return null;
+      const fresh = await response.json();
+      const merged = {
+        ...tokens,
+        ...fresh,
+        expires: Date.now() + fresh.expires_in * 1000,
+      };
+      localStorage.setItem("hassTokens", JSON.stringify(merged));
+      return merged.access_token;
+    }
+
+    async function getAccessToken() {
+      const direct = parseMaybeJson(localStorage.getItem("hassTokens"));
+      if (direct?.access_token) {
+        if (!direct.expires || direct.expires > Date.now() + 60000) {
+          return direct.access_token;
+        }
+        const refreshed = await refreshToken(direct);
+        if (refreshed) return refreshed;
+      }
+      for (let index = 0; index < localStorage.length; index += 1) {
+        const value = parseMaybeJson(localStorage.getItem(localStorage.key(index)));
+        if (value?.access_token) return value.access_token;
+      }
+      return null;
+    }
+
+    async function authorizedFetch(token, path, options = {}) {
+      const headers = {
+        ...(options.headers || {}),
+        Authorization: `Bearer ${token}`,
+      };
+      const request = {
+        ...options,
+        headers,
+        credentials: "same-origin",
+      };
+      if (request.body && typeof request.body !== "string") {
+        request.body = JSON.stringify(request.body);
+        headers["Content-Type"] = "application/json";
+      }
+      const response = await fetch(path, request);
+      if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
+      if (response.status === 204) return null;
+      return response.json();
+    }
+
+    async function createCallWs(token) {
+      const protocol = location.protocol === "https:" ? "wss:" : "ws:";
+      const socket = new WebSocket(`${protocol}//${location.host}/api/websocket`);
+      await new Promise((resolve, reject) => {
+        const timeout = window.setTimeout(
+          () => reject(new Error("Home Assistant WebSocket timed out")),
+          10000,
+        );
+        socket.addEventListener("error", () => {
+          window.clearTimeout(timeout);
+          reject(new Error("Home Assistant WebSocket failed"));
+        }, { once: true });
+        socket.addEventListener("message", function authenticate(event) {
+          const message = parseMaybeJson(event.data);
+          if (message?.type === "auth_required") {
+            socket.send(JSON.stringify({ type: "auth", access_token: token }));
+          } else if (message?.type === "auth_ok") {
+            window.clearTimeout(timeout);
+            socket.removeEventListener("message", authenticate);
+            resolve();
+          } else if (message?.type === "auth_invalid") {
+            window.clearTimeout(timeout);
+            socket.removeEventListener("message", authenticate);
+            reject(new Error("Home Assistant authentication failed"));
+          }
+        });
+      });
+
+      let nextId = 1;
+      const pending = new Map();
+      socket.addEventListener("message", (event) => {
+        const message = parseMaybeJson(event.data);
+        if (!message?.id || !pending.has(message.id)) return;
+        const request = pending.get(message.id);
+        pending.delete(message.id);
+        if (message.success === false) {
+          request.reject(new Error(message.error?.message || "Home Assistant request failed"));
+        } else {
+          request.resolve(message.result);
+        }
+      });
+      socket.addEventListener("close", () => {
+        for (const request of pending.values()) {
+          request.reject(new Error("Home Assistant WebSocket closed"));
+        }
+        pending.clear();
+      });
+      return (message) => new Promise((resolve, reject) => {
+        const id = nextId;
+        nextId += 1;
+        pending.set(id, { resolve, reject });
+        socket.send(JSON.stringify({ id, ...message }));
+      });
+    }
+
+    async function createStandaloneHass() {
+      const token = await getAccessToken();
+      if (!token) return null;
+      const [states, callWS] = await Promise.all([
+        authorizedFetch(token, "/api/states"),
+        createCallWs(token),
+      ]);
+      return {
+        states: Object.fromEntries(states.map((state) => [state.entity_id, state])),
+        callWS,
+        callApi(method, path, body) {
+          return authorizedFetch(token, `/api/${path}`, { method, body });
+        },
+      };
+    }
+
+    async function getParentHass() {
+      if (hass?.states && hass?.callWS) return hass;
+      if (window.parent !== window) {
+        for (let attempt = 0; attempt < 20; attempt += 1) {
+          try {
+            const candidate = window.parent.document.querySelector("home-assistant")?.hass;
+            if (candidate?.states && candidate?.callWS) {
+              hass = candidate;
+              return hass;
+            }
+          } catch (_error) {
+            break;
+          }
+          await new Promise((resolve) => window.setTimeout(resolve, 100));
+        }
+      }
+      hass = await createStandaloneHass();
+      return hass;
+    }
+
+    function isUnavailable(state) {
+      return !state || ["unknown", "unavailable", "none", ""].includes(
+        String(state.state).toLowerCase(),
+      );
+    }
+
+    function displayState(row) {
+      if (!row.state) {
+        return row.registry.disabled_by ? t("stateDisabled") : t("stateUnavailable");
+      }
+      if (row.state.state === "unknown") return t("stateUnknown");
+      if (row.state.state === "unavailable") return t("stateUnavailable");
+      const unit = row.state.attributes?.unit_of_measurement;
+      return unit ? `${row.state.state} ${unit}` : String(row.state.state);
+    }
+
+    function formatTime(value) {
+      const date = new Date(value);
+      if (!Number.isFinite(date.getTime())) return "-";
+      return new Intl.DateTimeFormat(LOCALES[language], {
+        day: "2-digit",
+        month: "2-digit",
+        year: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+      }).format(date);
+    }
+
+    function friendlyName(registry, state) {
+      return (
+        state?.attributes?.friendly_name
+        || registry.name
+        || registry.original_name
+        || registry.entity_id
+      );
+    }
+
+    function attributeValue(value) {
+      if (value === null) return "null";
+      if (typeof value === "object") return JSON.stringify(value, null, 2);
+      return String(value);
+    }
+
+    function setText(id, value) {
+      document.getElementById(id).textContent = value;
+    }
+
+    function showMoreInfo(entityId) {
+      try {
+        const homeAssistant = window.parent.document.querySelector("home-assistant");
+        homeAssistant?.dispatchEvent(new window.parent.CustomEvent("hass-more-info", {
+          detail: { entityId },
+          bubbles: true,
+          composed: true,
+        }));
+      } catch (error) {
+        console.debug("Could not open more-info", error);
+      }
+    }
+
+    function renderMetrics() {
+      const available = rows.filter((row) => !isUnavailable(row.state)).length;
+      const attributeCount = rows.reduce(
+        (sum, row) => sum + Object.keys(row.state?.attributes || {}).length,
+        0,
+      );
+      const structuredCount = rows.reduce(
+        (sum, row) => sum + Object.values(row.state?.attributes || {})
+          .filter((value) => value && typeof value === "object").length,
+        0,
+      );
+      const domains = new Set(rows.map((row) => row.domain));
+      const newest = [...rows]
+        .filter((row) => row.state?.last_updated)
+        .sort((left, right) => (
+          new Date(right.state.last_updated) - new Date(left.state.last_updated)
+        ))[0];
+
+      setText("mDevice", deviceNames.join(", ") || "Renault ZOE");
+      setText("mDeviceNote", t("devices", { count: deviceNames.length || 1 }));
+      setText("mEntities", String(rows.length));
+      setText("mDomains", t("domains", { count: domains.size }));
+      setText("mAvailable", String(available));
+      setText("mUnavailable", t("unavailableCount", { count: rows.length - available }));
+      setText("mAttributes", String(attributeCount));
+      setText("mRaw", t("rawAttributes", { count: structuredCount }));
+      setText("mUpdated", newest ? formatTime(newest.state.last_updated) : "-");
+      setText("mUpdatedEntity", newest?.registry.entity_id || "");
+      setText("mIntegration", DOMAIN);
+      setText("mEntry", entryIds.length ? t("entry", { id: entryIds[0].slice(0, 8) }) : "-");
+    }
+
+    function renderAttributeTable(row) {
+      const table = document.createElement("table");
+      table.className = "attribute-table";
+      const body = document.createElement("tbody");
+      const entries = Object.entries(row.state?.attributes || {})
+        .sort(([left], [right]) => left.localeCompare(right));
+      if (!entries.length) {
+        const tr = document.createElement("tr");
+        const th = document.createElement("th");
+        th.textContent = t("attributesTitle");
+        const td = document.createElement("td");
+        td.textContent = t("none");
+        tr.append(th, td);
+        body.append(tr);
+      }
+      for (const [key, value] of entries) {
+        const tr = document.createElement("tr");
+        const th = document.createElement("th");
+        th.textContent = key;
+        const td = document.createElement("td");
+        if (value && typeof value === "object") {
+          const pre = document.createElement("pre");
+          pre.textContent = attributeValue(value);
+          td.append(pre);
+        } else {
+          td.textContent = attributeValue(value);
+        }
+        tr.append(th, td);
+        body.append(tr);
+      }
+      table.append(body);
+      return table;
+    }
+
+    function renderEntity(row) {
+      const details = document.createElement("details");
+      details.className = "api-entity";
+      details.dataset.search = row.searchText;
+      const summary = document.createElement("summary");
+      const identity = document.createElement("div");
+      const name = document.createElement("span");
+      name.className = "entity-name";
+      name.textContent = row.name;
+      const id = document.createElement("code");
+      id.className = "entity-id";
+      id.textContent = row.registry.entity_id;
+      identity.append(name, id);
+
+      const state = document.createElement("strong");
+      state.className = `entity-state${isUnavailable(row.state) ? " unavailable" : ""}`;
+      state.textContent = displayState(row);
+      const updated = document.createElement("span");
+      updated.className = "entity-updated";
+      updated.textContent = row.state?.last_updated
+        ? t("updatedAt", { time: formatTime(row.state.last_updated) })
+        : t("stateUnavailable");
+      summary.append(identity, state, updated);
+
+      const content = document.createElement("div");
+      content.className = "entity-details";
+      const meta = document.createElement("div");
+      meta.className = "entity-meta";
+      for (const [label, value] of [
+        [t("platform"), row.registry.platform || "-"],
+        [t("category"), row.registry.entity_category || t("none")],
+        [t("disabledBy"), row.registry.disabled_by || t("none")],
+      ]) {
+        const item = document.createElement("span");
+        item.textContent = `${label}: ${value}`;
+        meta.append(item);
+      }
+      const button = document.createElement("button");
+      button.className = "more-info";
+      button.type = "button";
+      button.title = row.registry.entity_id;
+      button.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7.5v.01"/></svg>';
+      const buttonText = document.createElement("span");
+      buttonText.textContent = t("moreInfo");
+      button.append(buttonText);
+      button.addEventListener("click", () => showMoreInfo(row.registry.entity_id));
+      content.append(meta, renderAttributeTable(row), button);
+      details.append(summary, content);
+      return details;
+    }
+
+    function render() {
+      const query = searchEl.value.trim().toLocaleLowerCase(LOCALES[language]);
+      const selectedDomain = domainEl.value;
+      const visible = rows.filter((row) => (
+        (selectedDomain === "all" || row.domain === selectedDomain)
+        && (!query || row.searchText.includes(query))
+      ));
+      const grouped = new Map();
+      for (const row of visible) {
+        if (!grouped.has(row.domain)) grouped.set(row.domain, []);
+        grouped.get(row.domain).push(row);
+      }
+
+      groupsEl.replaceChildren();
+      for (const [domain, items] of [...grouped.entries()].sort()) {
+        const panel = document.createElement("section");
+        panel.className = "panel info-panel";
+        const header = document.createElement("div");
+        header.className = "panel-header";
+        const title = document.createElement("h2");
+        title.textContent = domain;
+        const count = document.createElement("span");
+        count.className = "domain-count";
+        count.textContent = t("entityCount", { count: items.length });
+        header.append(title, count);
+        const list = document.createElement("div");
+        list.className = "entity-list";
+        items.forEach((row) => list.append(renderEntity(row)));
+        panel.append(header, list);
+        groupsEl.append(panel);
+      }
+      emptyEl.hidden = visible.length > 0;
+    }
+
+    function fillDomainFilter() {
+      const selected = domainEl.value;
+      const domains = [...new Set(rows.map((row) => row.domain))].sort();
+      domainEl.replaceChildren();
+      const all = document.createElement("option");
+      all.value = "all";
+      all.textContent = t("allDomains");
+      domainEl.append(all);
+      for (const domain of domains) {
+        const option = document.createElement("option");
+        option.value = domain;
+        option.textContent = domain;
+        domainEl.append(option);
+      }
+      domainEl.value = domains.includes(selected) ? selected : "all";
+    }
+
+    async function load() {
+      reloadEl.disabled = true;
+      statusEl.classList.remove("warn");
+      statusEl.textContent = t("loading");
+      try {
+        const currentHass = await getParentHass();
+        if (!currentHass) throw new Error("Home Assistant connection is unavailable");
+        const settings = currentHass.states[SETTINGS_ENTITY];
+        language = settings?.attributes?.dashboard_language === "en" ? "en" : "lv";
+        applyLanguage();
+
+        const [entries, devices, registry] = await Promise.all([
+          currentHass.callApi("GET", "config/config_entries/entry"),
+          currentHass.callWS({ type: "config/device_registry/list" }),
+          currentHass.callWS({ type: "config/entity_registry/list" }),
+        ]);
+        entryIds = entries
+          .filter((entry) => entry.domain === DOMAIN)
+          .map((entry) => entry.entry_id);
+        const entrySet = new Set(entryIds);
+        const ownedDevices = devices.filter((device) => (
+          (device.config_entries || []).some((entryId) => entrySet.has(entryId))
+        ));
+        const deviceSet = new Set(ownedDevices.map((device) => device.id));
+        deviceNames = ownedDevices.map((device) => (
+          device.name_by_user || device.name || device.model || "Renault ZOE"
+        ));
+
+        let selected = registry.filter((entity) => (
+          entrySet.has(entity.config_entry_id)
+          || deviceSet.has(entity.device_id)
+        ));
+        if (!selected.length) {
+          selected = Object.keys(currentHass.states)
+            .filter((entityId) => entityId.includes("renault_zoe_new"))
+            .map((entityId) => ({ entity_id: entityId, platform: DOMAIN }));
+        }
+        rows = selected
+          .map((entity) => {
+            const state = currentHass.states[entity.entity_id] || null;
+            const name = friendlyName(entity, state);
+            const attributes = state?.attributes || {};
+            return {
+              registry: entity,
+              state,
+              name,
+              domain: entity.entity_id.split(".", 1)[0],
+              searchText: [
+                entity.entity_id,
+                name,
+                state?.state,
+                ...Object.keys(attributes),
+                ...Object.values(attributes).map(attributeValue),
+              ].join(" ").toLocaleLowerCase(LOCALES[language]),
+            };
+          })
+          .sort((left, right) => (
+            left.domain.localeCompare(right.domain)
+            || left.name.localeCompare(right.name, LOCALES[language])
+          ));
+
+        fillDomainFilter();
+        renderMetrics();
+        render();
+        const time = new Intl.DateTimeFormat(LOCALES[language], {
+          hour: "2-digit",
+          minute: "2-digit",
+          second: "2-digit",
+        }).format(new Date());
+        statusEl.textContent = t("updated", { time, count: rows.length });
+      } catch (error) {
+        console.error(error);
+        statusEl.classList.add("warn");
+        statusEl.textContent = t("loadError", { error: error.message });
+      } finally {
+        reloadEl.disabled = false;
+      }
+    }
+
+    function navigateSettings(event) {
+      if (window.parent === window) return;
+      event.preventDefault();
+      const path = event.currentTarget.getAttribute("href");
+      window.parent.history.pushState(null, "", path);
+      window.parent.dispatchEvent(new window.parent.Event("location-changed"));
+    }
+
+    document.getElementById("settings").addEventListener("click", navigateSettings);
+    searchEl.addEventListener("input", render);
+    domainEl.addEventListener("change", render);
+    reloadEl.addEventListener("click", load);
+    document.getElementById("expandAll").addEventListener("click", () => {
+      groupsEl.querySelectorAll("details").forEach((details) => {
+        details.open = true;
+      });
+    });
+    document.getElementById("collapseAll").addEventListener("click", () => {
+      groupsEl.querySelectorAll("details").forEach((details) => {
+        details.open = false;
+      });
+    });
+    window.setInterval(() => {
+      if (!document.hidden) load();
+    }, 60000);
+
+    applyLanguage();
+    load();
+  </script>
+</body>
+</html>

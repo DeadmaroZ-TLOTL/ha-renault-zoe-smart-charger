@@ -39,6 +39,9 @@ used by the included Nord Pool smart charger package.
   and maximum route speeds.
 - Matching full-screen Charging and IMMAX views with responsive controls,
   configurable history periods, calendar dates, and large interactive charts.
+- Server-side IMMAX **Charge now** and **Delay 12 h** command sequences start
+  at 6 A and use Tuya Local only. The controls are disabled while the local
+  charger connection is unavailable.
 
 The command workaround follows the behavior proposed in
 [renault-api pull request #2202](https://github.com/hacf-fr/renault-api/pull/2202).

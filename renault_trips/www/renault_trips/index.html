@@ -378,86 +378,105 @@
       }
     }
   </style>
-  <link rel="stylesheet" href="./shared-theme.css?v=1.1.0" />
+  <link rel="stylesheet" href="./shared-theme.css?v=2.1.1" />
 </head>
 <body>
-  <main class="shell trips-app">
-    <section class="panel vehicle-panel overview-block">
-      <div class="header">
-        <h1>Renault Zoe</h1>
-        <span class="vehicle-updated" id="vehicleUpdated" data-i18n="updating">Atjaunoju...</span>
-      </div>
-      <div class="vehicle-grid">
-        <button class="vehicle-stat" type="button" data-history-entity="sensor.battery" title="Rādīt vēsturi" data-i18n-title="showHistory"><span data-i18n="battery">Baterija</span><strong id="vBattery">-</strong></button>
-        <button class="vehicle-stat" type="button" data-history-entity="sensor.battery_autonomy" title="Rādīt vēsturi" data-i18n-title="showHistory"><span data-i18n="range">Atlikums</span><strong id="vRange">-</strong></button>
-        <button class="vehicle-stat" type="button" data-history-entity="sensor.mileage" title="Rādīt vēsturi" data-i18n-title="showHistory"><span data-i18n="mileage">Nobraukums</span><strong id="vMileage">-</strong></button>
-        <button class="vehicle-stat" id="vehicleLocation" type="button" title="Rādīt atrašanās vietu kartē" data-i18n-title="showLocation" disabled><span data-i18n="location">Atrašanās vieta</span><strong id="vLocation">-</strong></button>
-        <button class="vehicle-stat" type="button" data-history-entity="sensor.charge_state" title="Rādīt vēsturi" data-i18n-title="showHistory"><span data-i18n="chargeState">Uzlādes stāvoklis</span><strong id="vChargeState">-</strong></button>
-        <button class="vehicle-stat" type="button" data-history-entity="sensor.plug_state" title="Rādīt vēsturi" data-i18n-title="showHistory"><span data-i18n="plug">Spraudnis</span><strong id="vPlug">-</strong></button>
-        <button class="vehicle-stat" type="button" data-history-entity="binary_sensor.charging" title="Rādīt vēsturi" data-i18n-title="showHistory"><span data-i18n="charging">Uzlāde</span><strong id="vCharging">-</strong></button>
-        <button class="vehicle-stat" type="button" data-history-entity="binary_sensor.hvac" title="Rādīt vēsturi" data-i18n-title="showHistory"><span data-i18n="climate">Klimats</span><strong id="vClimate">-</strong></button>
-      </div>
-      <div class="vehicle-actions">
-        <button id="startClimate" type="button" data-i18n="startClimate">Ieslēgt klimatu</button>
-        <button id="startCharge" type="button" data-i18n="startCharge">Sākt uzlādi</button>
-        <button id="stopCharge" type="button" data-i18n="stopCharge">Apturēt uzlādi</button>
-      </div>
-    </section>
-
-    <section class="panel trips-list-panel content-panel">
-      <div class="header">
-        <h1 data-i18n="tripsTitle">Renault braucieni</h1>
-        <div class="toolbar">
-          <select id="days" title="Periods līdz šodienai">
-            <option value="1" data-i18n="day1">1 diena</option>
-            <option value="3" data-i18n="days3">3 dienas</option>
-            <option value="7" selected data-i18n="days7">7 dienas</option>
-            <option value="14" data-i18n="days14">14 dienas</option>
-            <option value="30" data-i18n="days30">30 dienas</option>
-          </select>
-          <input id="dayDate" type="date" title="Konkrēts datums" aria-label="Konkrēts datums">
-          <button class="clear-date" id="clearDate" type="button" title="Atgriezties pie perioda" aria-label="Atgriezties pie perioda" hidden>×</button>
-          <button id="showAll" type="button" hidden data-i18n="allOnMap">Visi kartē</button>
-          <button id="settings" type="button" data-i18n="settings">Iestatījumi</button>
-          <button class="primary" id="reload" type="button" data-i18n="refresh">Atjaunot</button>
+  <main class="app trips-app">
+    <header class="topbar">
+      <div class="title-wrap">
+        <div class="title-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24"><path d="M4 17h16M6 17l-1-5 2-4h10l2 4-1 5M7 8l1-3h8l1 3M7.5 13h.01M16.5 13h.01"/><path d="M6 17v2M18 17v2"/></svg>
+        </div>
+        <div>
+          <h1 data-i18n="tripsTitle">Renault braucieni</h1>
+          <p>
+            <span data-i18n="pageSubtitle">Automātiski braucieni, enerģija un maršruti.</span>
+            <span aria-hidden="true"> · </span>
+            <span id="vehicleUpdated" data-i18n="updating">Atjaunoju...</span>
+          </p>
         </div>
       </div>
-      <div id="status" class="status">Ielādēju HA vēsturi...</div>
-      <div class="summary">
-        <div class="metric"><span data-i18n="trips">Braucieni</span><strong id="mTrips">-</strong></div>
-        <div class="metric"><span data-i18n="totalKm">Kopā km</span><strong id="mKm">-</strong></div>
-        <div class="metric"><span data-i18n="energy">Enerģija</span><strong id="mEnergy">-</strong></div>
-        <div class="metric"><span data-i18n="average">Vidēji</span><strong id="mAvg">-</strong></div>
+      <div class="filters">
+        <select id="days" title="Periods līdz šodienai">
+          <option value="1" data-i18n="day1">Šodiena (00–24)</option>
+          <option value="3" data-i18n="days3">3 kalendāra dienas</option>
+          <option value="7" selected data-i18n="days7">7 kalendāra dienas</option>
+          <option value="14" data-i18n="days14">14 kalendāra dienas</option>
+          <option value="30" data-i18n="days30">30 kalendāra dienas</option>
+        </select>
+        <input id="dayDate" type="date" title="Konkrēts datums" aria-label="Konkrēts datums">
+        <button class="icon-command clear-date" id="clearDate" type="button" title="Atgriezties pie perioda" aria-label="Atgriezties pie perioda" hidden>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>
+        </button>
+        <button id="showAll" type="button" hidden data-i18n="allOnMap">Visi kartē</button>
+        <a id="settings" class="icon-command settings-link" href="/config/integrations/integration/zoe_new_extended" target="_top" title="Iestatījumi" aria-label="Iestatījumi">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06-2.83 2.83-.06-.06A1.7 1.7 0 0 0 15 19.4a1.7 1.7 0 0 0-1 .6 1.7 1.7 0 0 0-.4 1.1V21h-4v-.09A1.7 1.7 0 0 0 8.55 19.4a1.7 1.7 0 0 0-1.88.34l-.06.06-2.83-2.83.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-.6-1 1.7 1.7 0 0 0-1.1-.4H3v-4h.09A1.7 1.7 0 0 0 4.6 8.55a1.7 1.7 0 0 0-.34-1.88l-.06-.06 2.83-2.83.06.06A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-.6 1.7 1.7 0 0 0 .4-1.1V3h4v.09A1.7 1.7 0 0 0 15.45 4.6a1.7 1.7 0 0 0 1.88-.34l.06-.06 2.83 2.83-.06.06A1.7 1.7 0 0 0 19.4 9c.15.37.36.7.64.98.3.28.68.43 1.07.43H21v4h-.09A1.7 1.7 0 0 0 19.4 15Z"/></svg>
+        </a>
+        <button class="primary" id="reload" type="button">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8.1 8.1 0 1 0-2.37 5.73"/><path d="M20 4v7h-7"/></svg>
+          <span data-i18n="refresh">Atjaunot</span>
+        </button>
       </div>
-      <div class="trip-list">
-        <table>
-          <thead>
-            <tr>
-              <th data-i18n="startApprox">Sākums (apt.)</th>
-              <th data-i18n="endApprox">Beigas (apt.)</th>
-              <th data-i18n="durationApprox">Ilgums (apt.)</th>
-              <th data-i18n="socApprox">SOC (apt.)</th>
-              <th>Km</th>
-              <th data-i18n="energy">Enerģija</th>
-              <th>kWh/100</th>
-            </tr>
-          </thead>
-          <tbody id="trips"></tbody>
-        </table>
-        <div id="empty" class="empty" hidden data-i18n="noTrips">Šajā periodā nav atrasts neviens brauciens. Ja auto nav kustējies vai Renault integrācija nav atjaunojusi GPS/odometru, saraksts paliks tukšs.</div>
-      </div>
+    </header>
+
+    <div id="status" class="status">Ielādēju HA vēsturi...</div>
+
+    <section class="metrics vehicle-grid" aria-label="Transportlīdzekļa kopsavilkums">
+      <button class="vehicle-stat metric" type="button" data-history-entity="sensor.battery" title="Rādīt vēsturi" data-i18n-title="showHistory"><span data-i18n="battery">Baterija</span><strong id="vBattery">-</strong></button>
+      <button class="vehicle-stat metric" type="button" data-history-entity="sensor.battery_autonomy" title="Rādīt vēsturi" data-i18n-title="showHistory"><span data-i18n="range">Atlikums</span><strong id="vRange">-</strong></button>
+      <button class="vehicle-stat metric" type="button" data-history-entity="sensor.mileage" title="Rādīt vēsturi" data-i18n-title="showHistory"><span data-i18n="mileage">Nobraukums</span><strong id="vMileage">-</strong></button>
+      <button class="vehicle-stat metric" id="vehicleLocation" type="button" title="Rādīt atrašanās vietu kartē" data-i18n-title="showLocation" disabled><span data-i18n="location">Atrašanās vieta</span><strong id="vLocation">-</strong></button>
+      <button class="vehicle-stat metric" type="button" data-history-entity="sensor.charge_state" title="Rādīt vēsturi" data-i18n-title="showHistory"><span data-i18n="chargeState">Uzlādes stāvoklis</span><strong id="vChargeState">-</strong></button>
+      <button class="vehicle-stat metric" type="button" data-history-entity="sensor.plug_state" title="Rādīt vēsturi" data-i18n-title="showHistory"><span data-i18n="plug">Spraudnis</span><strong id="vPlug">-</strong></button>
+      <button class="vehicle-stat metric" type="button" data-history-entity="binary_sensor.charging" title="Rādīt vēsturi" data-i18n-title="showHistory"><span data-i18n="charging">Uzlāde</span><strong id="vCharging">-</strong></button>
+      <button class="vehicle-stat metric" type="button" data-history-entity="binary_sensor.hvac" title="Rādīt vēsturi" data-i18n-title="showHistory"><span data-i18n="climate">Klimats</span><strong id="vClimate">-</strong></button>
     </section>
 
-    <section class="panel map-wrap content-panel">
-      <div class="map-title">
-        <strong id="mapTripTitle" data-i18n="route">Maršruts</strong>
-        <span id="mapTripInfo" data-i18n="chooseTrip">Izvēlies braucienu no saraksta</span>
-      </div>
-      <div id="map"></div>
-    </section>
+    <div class="content-grid trips-layout">
+      <section class="panel trips-list-panel content-panel">
+        <div class="panel-header">
+          <div>
+            <h2 data-i18n="trips">Braucieni</h2>
+            <span data-i18n="chooseTrip">Izvēlies braucienu no saraksta</span>
+          </div>
+        </div>
+        <div class="summary compact-summary">
+          <div class="metric"><span data-i18n="trips">Braucieni</span><strong id="mTrips">-</strong></div>
+          <div class="metric"><span data-i18n="totalKm">Kopā km</span><strong id="mKm">-</strong></div>
+          <div class="metric"><span data-i18n="energy">Enerģija</span><strong id="mEnergy">-</strong></div>
+          <div class="metric"><span data-i18n="average">Vidēji</span><strong id="mAvg">-</strong></div>
+        </div>
+        <div class="trip-list">
+          <table>
+            <thead>
+              <tr>
+                <th data-i18n="startApprox">Sākums (apt.)</th>
+                <th data-i18n="endApprox">Beigas (apt.)</th>
+                <th data-i18n="durationApprox">Ilgums (apt.)</th>
+                <th data-i18n="socApprox">SOC (apt.)</th>
+                <th>Km</th>
+                <th data-i18n="energy">Enerģija</th>
+                <th>kWh/100</th>
+              </tr>
+            </thead>
+            <tbody id="trips"></tbody>
+          </table>
+          <div id="empty" class="empty" hidden data-i18n="noTrips">Šajā periodā nav atrasts neviens brauciens. Ja auto nav kustējies vai Renault integrācija nav atjaunojusi GPS/odometru, saraksts paliks tukšs.</div>
+        </div>
+      </section>
+
+      <section class="panel map-wrap content-panel">
+        <div class="map-title">
+          <strong id="mapTripTitle" data-i18n="route">Maršruts</strong>
+          <span id="mapTripInfo" data-i18n="chooseTrip">Izvēlies braucienu no saraksta</span>
+        </div>
+        <div id="map"></div>
+      </section>
+    </div>
   </main>
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="./dashboard-tabs.js?v=1.0.0"></script>
   <script>
     const ENTITY = {
       location: "device_tracker.location",
@@ -472,16 +491,18 @@
     };
     const I18N = {
       lv: {
-        pageTitle: "Renault braucieni", updating: "Atjaunoju...",
+        pageTitle: "Renault braucieni",
+        pageSubtitle: "Automātiski braucieni, enerģija un maršruti.",
+        updating: "Atjaunoju...",
         showHistory: "Rādīt vēsturi", showLocation: "Rādīt atrašanās vietu kartē",
         battery: "Baterija", range: "Atlikums", mileage: "Nobraukums",
         location: "Atrašanās vieta", chargeState: "Uzlādes stāvoklis",
         plug: "Spraudnis", charging: "Uzlāde", climate: "Klimats",
         startClimate: "Ieslēgt klimatu", startCharge: "Sākt uzlādi",
         stopCharge: "Apturēt uzlādi", tripsTitle: "Renault braucieni",
-        day1: "1 diena", days3: "3 dienas", days7: "7 dienas",
-        days14: "14 dienas", days30: "30 dienas",
-        periodToToday: "Periods līdz šodienai", specificDate: "Konkrēts datums",
+        day1: "Šodiena (00–24)", days3: "3 kalendāra dienas", days7: "7 kalendāra dienas",
+        days14: "14 kalendāra dienas", days30: "30 kalendāra dienas",
+        periodToToday: "Kalendāra dienas līdz šodienai", specificDate: "Konkrēts datums",
         returnToPeriod: "Atgriezties pie perioda", allOnMap: "Visi kartē",
         settings: "Iestatījumi", refresh: "Atjaunot", trips: "Braucieni",
         totalKm: "Kopā km", energy: "Enerģija", average: "Vidēji",
@@ -502,15 +523,17 @@
         plugged: "Pievienots", unplugged: "Atvienots", unknown: "Nav zināms",
       },
       en: {
-        pageTitle: "Renault trips", updating: "Updating...",
+        pageTitle: "Renault trips",
+        pageSubtitle: "Automatic trips, energy and routes.",
+        updating: "Updating...",
         showHistory: "Show history", showLocation: "Show location on map",
         battery: "Battery", range: "Range", mileage: "Mileage",
         location: "Location", chargeState: "Charge state", plug: "Plug",
         charging: "Charging", climate: "Climate", startClimate: "Start climate",
         startCharge: "Start charging", stopCharge: "Stop charging",
-        tripsTitle: "Renault trips", day1: "1 day", days3: "3 days",
-        days7: "7 days", days14: "14 days", days30: "30 days",
-        periodToToday: "Period ending today", specificDate: "Specific date",
+        tripsTitle: "Renault trips", day1: "Today (00–24)", days3: "3 calendar days",
+        days7: "7 calendar days", days14: "14 calendar days", days30: "30 calendar days",
+        periodToToday: "Calendar days ending today", specificDate: "Specific date",
         returnToPeriod: "Return to period", allOnMap: "All on map",
         settings: "Settings", refresh: "Refresh",
         trips: "Trips", totalKm: "Total km", energy: "Energy", average: "Average",
@@ -556,6 +579,9 @@
       dayDateEl.setAttribute("aria-label", t("specificDate"));
       clearDateEl.title = t("returnToPeriod");
       clearDateEl.setAttribute("aria-label", t("returnToPeriod"));
+      const settingsLink = document.getElementById("settings");
+      settingsLink.title = t("settings");
+      settingsLink.setAttribute("aria-label", t("settings"));
     }
 
     const BATTERY_KWH = 52;
@@ -717,29 +743,6 @@
         }
       } catch (error) {
         console.debug("Dashboard language is unavailable", error);
-      }
-    }
-
-    async function openIntegrationOptions(stepId) {
-      try {
-        const entries = await haFetch("/api/config/config_entries/entry");
-        const entry = entries.find((item) => item.domain === "zoe_new_extended");
-        if (!entry) throw new Error("Integration entry not found");
-        let flow = await haFetch("/api/config/config_entries/options/flow", {
-          method: "POST",
-          body: { handler: entry.entry_id, show_advanced_options: false },
-        });
-        if (flow?.type === "menu") {
-          flow = await haFetch(`/api/config/config_entries/options/flow/${flow.flow_id}`, {
-            method: "POST",
-            body: { next_step_id: stepId },
-          });
-        }
-        if (!flow?.flow_id) throw new Error("Options flow did not start");
-        window.parent.location.assign(`/config/integrations/options/flow/${flow.flow_id}`);
-      } catch (error) {
-        console.debug("Could not open the requested options step", error);
-        window.parent.location.assign("/config/integrations/integration/zoe_new_extended");
       }
     }
 
@@ -1498,9 +1501,13 @@
           start = new Date(`${dayDateEl.value}T00:00:00`);
           end = new Date(start);
           end.setDate(end.getDate() + 1);
-          if (end > now) end = now;
         } else {
-          start = new Date(end.getTime() - days * 86400000);
+          start = new Date(now);
+          start.setHours(0, 0, 0, 0);
+          start.setDate(start.getDate() - (days - 1));
+          end = new Date(now);
+          end.setHours(0, 0, 0, 0);
+          end.setDate(end.getDate() + 1);
         }
         const ids = [ENTITY.location, ENTITY.mileage, ENTITY.battery].join(",");
         const url = `/api/history/period/${encodeURIComponent(start.toISOString())}?end_time=${encodeURIComponent(end.toISOString())}&filter_entity_id=${encodeURIComponent(ids)}`;
@@ -1521,11 +1528,18 @@
       }
     }
 
+    function navigateSettings(event) {
+      if (window.parent === window) return;
+      event.preventDefault();
+      const path = event.currentTarget.getAttribute("href");
+      window.parent.history.pushState(null, "", path);
+      window.parent.dispatchEvent(new window.parent.Event("location-changed"));
+    }
+
+    document.querySelectorAll("a.settings-link").forEach((link) => {
+      link.addEventListener("click", navigateSettings);
+    });
     reloadEl.addEventListener("click", loadTrips);
-    document.getElementById("settings").addEventListener(
-      "click",
-      () => openIntegrationOptions("dashboard"),
-    );
     showAllEl.addEventListener("click", showAllTrips);
     daysEl.addEventListener("change", () => {
       dayDateEl.value = "";
@@ -1543,9 +1557,6 @@
       showAllEl.hidden = true;
       loadTrips();
     });
-    document.getElementById("startClimate").addEventListener("click", (event) => pressVehicleButton("button.start_air_conditioner", event.currentTarget));
-    document.getElementById("startCharge").addEventListener("click", (event) => pressVehicleButton("button.start_charge", event.currentTarget));
-    document.getElementById("stopCharge").addEventListener("click", (event) => pressVehicleButton("button.stop_charge", event.currentTarget));
     document.getElementById("vehicleLocation").addEventListener("click", showVehicleLocation);
     document.querySelectorAll("[data-history-entity]").forEach((button) => {
       button.addEventListener("click", () => showEntityHistory(button.dataset.historyEntity));

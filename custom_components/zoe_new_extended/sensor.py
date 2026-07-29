@@ -44,6 +44,7 @@ from .const import (
     CONF_IMMAX_CURRENT_A_ENTITY,
     CONF_IMMAX_CURRENT_B_ENTITY,
     CONF_IMMAX_CURRENT_C_ENTITY,
+    CONF_IMMAX_FEATURE_ENABLED,
     CONF_IMMAX_GRID_EXPORT_ENTITY,
     CONF_IMMAX_NORDPOOL_PRICE_ENTITY,
     CONF_IMMAX_POWER_A_ENTITY,
@@ -69,6 +70,7 @@ from .const import (
     DEFAULT_IMMAX_CURRENT_A_ENTITY,
     DEFAULT_IMMAX_CURRENT_B_ENTITY,
     DEFAULT_IMMAX_CURRENT_C_ENTITY,
+    DEFAULT_IMMAX_FEATURE_ENABLED,
     DEFAULT_IMMAX_GRID_EXPORT_ENTITY,
     DEFAULT_IMMAX_NORDPOOL_PRICE_ENTITY,
     DEFAULT_IMMAX_POWER_A_ENTITY,
@@ -493,6 +495,10 @@ class ZoeNewCostSettingsSensor(SensorEntity):
         settings["dashboard_language"] = self.config_entry.options.get(
             CONF_DASHBOARD_LANGUAGE,
             DEFAULT_DASHBOARD_LANGUAGE,
+        )
+        settings["immax_feature_enabled"] = self.config_entry.options.get(
+            CONF_IMMAX_FEATURE_ENABLED,
+            DEFAULT_IMMAX_FEATURE_ENABLED,
         )
         settings["immax_total_load_entity"] = self.config_entry.options.get(
             CONF_IMMAX_TOTAL_LOAD_ENTITY,

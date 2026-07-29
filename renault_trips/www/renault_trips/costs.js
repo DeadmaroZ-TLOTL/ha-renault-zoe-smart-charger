@@ -5,6 +5,9 @@ const ENTITY = {
   mileage: "sensor.mileage",
   battery: "sensor.battery",
   costSettings: "sensor.renault_zoe_new_cost_settings",
+  nordPoolPrice: "sensor.renault_zoe_new_nord_pool_price",
+  plannedCharging: "sensor.zoe_planned_charging_times",
+  plannedChargeLevel: "sensor.zoe_planned_charge_level",
   sessions: [
     "sensor.zoe_charge_sessions_history",
     "sensor.zoe_charge_sessions_history_raw",
@@ -32,9 +35,12 @@ const TRANSLATIONS = {
     language: "Valoda",
     period: "Periods",
     currentMonth: "Tekošais mēnesis",
-    days7: "7 dienas",
-    days30: "30 dienas",
-    days90: "90 dienas",
+    day1: "Šodiena (00–24)",
+    days3: "3 kalendāra dienas",
+    days7: "7 kalendāra dienas",
+    days14: "14 kalendāra dienas",
+    days30: "30 kalendāra dienas",
+    days90: "90 kalendāra dienas",
     allHistory: "Visa pieejamā vēsture",
     specificDate: "Konkrēts datums",
     clear: "Notīrīt",
@@ -50,8 +56,10 @@ const TRANSLATIONS = {
     dailyCosts: "Izmaksas pa dienām",
     dailyCostsAria: "Braucienu izmaksas pa dienām",
     batteryUnitCost: "Baterijas kWh pašizmaksa",
-    afterEachCharge: "c/kWh pēc katras uzlādes",
+    afterEachCharge: "Faktiskā cena mainās tikai pēc uzlādes; prognoze izmanto plānotās uzlādes",
     batteryPriceAria: "Vidējā baterijas enerģijas cena",
+    actualUnitCost: "Faktiskā pašizmaksa",
+    forecastUnitCost: "Prognoze pēc plānotās uzlādes",
     tripCosts: "Braucienu izmaksas",
     startEnd: "Sākums / beigas",
     minutes: "Min",
@@ -79,7 +87,7 @@ const TRANSLATIONS = {
     estimates: ", {count} enerģijas novērtējumi",
     loadError: "Datus neizdevās ielādēt: {error}",
     dataUnavailable: "Dati nav pieejami",
-    method: "<strong>Aprēķina princips.</strong> Renault uzlāde pievieno baterijai SOC pieaugumam atbilstošās kWh un sesijas faktiskās izmaksas ar pārvadi. Brauciens patērē kWh par pirms brauciena esošo svērto baterijas cenu. Baterijas izmantojamā ietilpība ir {capacity} kWh, uzlādes efektivitāte {efficiency}%, pārvade {deliveryExcl} EUR/kWh bez PVN jeb {deliveryIncl} EUR/kWh ar {vat}% PVN. Simbols <span class=\"estimated\">~</span> norāda vērtību, kas SOC datu trūkuma vai neiespējamas nobīdes dēļ novērtēta pēc {fallback} kWh/100 km rezerves patēriņa.",
+    method: "<strong>Aprēķina princips.</strong> Renault uzlāde pievieno baterijai SOC pieaugumam atbilstošās kWh un sesijas faktiskās izmaksas ar pārvadi. Brauciena laikā vienas baterijas kWh pašizmaksa nemainās; tā tiek pārrēķināta tikai pēc uzlādes. Pārtrauktā prognozes līkne izmanto plānotos uzlādes intervālus, Nord Pool cenu, pārvadi un efektivitāti. Baterijas izmantojamā ietilpība ir {capacity} kWh, uzlādes efektivitāte {efficiency}%, pārvade {deliveryExcl} EUR/kWh bez PVN jeb {deliveryIncl} EUR/kWh ar {vat}% PVN. Simbols <span class=\"estimated\">~</span> norāda vērtību, kas SOC datu trūkuma vai neiespējamas nobīdes dēļ novērtēta pēc {fallback} kWh/100 km rezerves patēriņa.",
   },
   en: {
     pageTitle: "Renault ZOE energy costs",
@@ -87,9 +95,12 @@ const TRANSLATIONS = {
     language: "Language",
     period: "Period",
     currentMonth: "Current month",
-    days7: "7 days",
-    days30: "30 days",
-    days90: "90 days",
+    day1: "Today (00–24)",
+    days3: "3 calendar days",
+    days7: "7 calendar days",
+    days14: "14 calendar days",
+    days30: "30 calendar days",
+    days90: "90 calendar days",
     allHistory: "All available history",
     specificDate: "Specific date",
     clear: "Clear",
@@ -105,8 +116,10 @@ const TRANSLATIONS = {
     dailyCosts: "Daily costs",
     dailyCostsAria: "Trip costs by day",
     batteryUnitCost: "Battery kWh unit cost",
-    afterEachCharge: "c/kWh after each charge",
+    afterEachCharge: "Actual cost changes only after charging; forecast uses planned charging",
     batteryPriceAria: "Average battery energy price",
+    actualUnitCost: "Actual unit cost",
+    forecastUnitCost: "Forecast after planned charging",
     tripCosts: "Trip costs",
     startEnd: "Start / end",
     minutes: "Min",
@@ -134,7 +147,7 @@ const TRANSLATIONS = {
     estimates: ", {count} energy estimates",
     loadError: "Could not load data: {error}",
     dataUnavailable: "Data unavailable",
-    method: "<strong>Calculation method.</strong> A Renault charge adds the kWh represented by the SOC increase and the session's actual cost including delivery. A trip consumes kWh at the weighted battery price immediately before that trip. Usable battery capacity is {capacity} kWh, charging efficiency is {efficiency}%, and delivery is {deliveryExcl} EUR/kWh before VAT or {deliveryIncl} EUR/kWh including {vat}% VAT. The <span class=\"estimated\">~</span> symbol marks a value estimated with the {fallback} kWh/100 km fallback consumption because SOC data was missing or implausible.",
+    method: "<strong>Calculation method.</strong> A Renault charge adds the kWh represented by the SOC increase and the session's actual cost including delivery. The unit cost of one battery kWh stays unchanged while driving and is recalculated only after charging. The dashed forecast uses planned charging intervals, Nord Pool prices, delivery, and charging efficiency. Usable battery capacity is {capacity} kWh, charging efficiency is {efficiency}%, and delivery is {deliveryExcl} EUR/kWh before VAT or {deliveryIncl} EUR/kWh including {vat}% VAT. The <span class=\"estimated\">~</span> symbol marks a value estimated with the {fallback} kWh/100 km fallback consumption because SOC data was missing or implausible.",
   },
 };
 
@@ -143,6 +156,7 @@ let currentLanguage = "lv";
 let costSettings = {
   batteryCapacityKwh: 52,
   chargingEfficiencyPercent: 90,
+  defaultChargingPowerKw: 11,
   deliveryPriceExclVat: 0.03962,
   deliveryPriceInclVat: 0.0479402,
   vatPercent: 21,
@@ -152,7 +166,6 @@ let costSettings = {
 const periodEl = document.getElementById("period");
 const dayDateEl = document.getElementById("dayDate");
 const clearDateEl = document.getElementById("clearDate");
-const settingsEl = document.getElementById("settings");
 const reloadEl = document.getElementById("reload");
 const statusEl = document.getElementById("status");
 const rowsEl = document.getElementById("tripRows");
@@ -161,6 +174,8 @@ const emptyEl = document.getElementById("empty");
 const tableSummaryEl = document.getElementById("tableSummary");
 const dailyCanvas = document.getElementById("dailyChart");
 const batteryCanvas = document.getElementById("batteryChart");
+const actualRateToggleEl = document.getElementById("actualRateToggle");
+const forecastRateToggleEl = document.getElementById("forecastRateToggle");
 const methodEl = document.getElementById("method");
 let cachedParentHass = null;
 let lastModel = null;
@@ -193,6 +208,7 @@ function applyLanguage() {
   for (const element of document.querySelectorAll("[data-i18n-aria]")) {
     element.setAttribute("aria-label", t(element.dataset.i18nAria));
   }
+  document.getElementById("settings").title = t("settings");
   renderMethod();
   if (lastModel) render(lastModel);
 }
@@ -222,6 +238,7 @@ async function loadCostSettings() {
     }
     const batteryCapacity = toNumber(attrs.battery_capacity_kwh);
     const efficiency = toNumber(attrs.charging_efficiency_percent);
+    const defaultPower = toNumber(attrs.default_charging_power_kw);
     const deliveryExcl = toNumber(
       attrs.delivery_price_excl_vat_eur_per_kwh,
     );
@@ -239,6 +256,9 @@ async function loadCostSettings() {
       chargingEfficiencyPercent: efficiency > 0
         ? efficiency
         : costSettings.chargingEfficiencyPercent,
+      defaultChargingPowerKw: defaultPower > 0
+        ? defaultPower
+        : costSettings.defaultChargingPowerKw,
       deliveryPriceExclVat: deliveryExcl >= 0
         ? deliveryExcl
         : costSettings.deliveryPriceExclVat,
@@ -360,32 +380,6 @@ async function haFetch(path, options = {}) {
     throw new Error(`${response.status} ${response.statusText}`);
   }
   return response.json();
-}
-
-async function openIntegrationOptions(stepId) {
-  try {
-    const entries = await haFetch("/api/config/config_entries/entry");
-    const entry = entries.find((item) => item.domain === "zoe_new_extended");
-    if (!entry) throw new Error("Integration entry not found");
-    let flow = await haFetch("/api/config/config_entries/options/flow", {
-      method: "POST",
-      body: {
-        handler: entry.entry_id,
-        show_advanced_options: false,
-      },
-    });
-    if (flow?.type === "menu") {
-      flow = await haFetch(`/api/config/config_entries/options/flow/${flow.flow_id}`, {
-        method: "POST",
-        body: { next_step_id: stepId },
-      });
-    }
-    if (!flow?.flow_id) throw new Error("Options flow did not start");
-    window.parent.location.assign(`/config/integrations/options/flow/${flow.flow_id}`);
-  } catch (error) {
-    console.debug("Could not open the requested options step", error);
-    window.parent.location.assign("/config/integrations/integration/zoe_new_extended");
-  }
 }
 
 function toNumber(value) {
@@ -947,12 +941,179 @@ function applyWeightedCostModel(trips, sessions, currentSoc) {
   };
 }
 
+function parsePlannedChargingIntervals(value, now = new Date()) {
+  const year = now.getFullYear();
+  const reference = now.getTime();
+  const halfYear = 183 * 86400000;
+  const intervals = [];
+  const pattern = /(\d{1,2})\.(\d{1,2})\s+(\d{1,2}):(\d{2})-(\d{1,2}):(\d{2})/g;
+  for (const match of String(value || "").matchAll(pattern)) {
+    const [, day, month, startHour, startMinute, endHour, endMinute] = match;
+    let start = new Date(
+      year,
+      Number(month) - 1,
+      Number(day),
+      Number(startHour),
+      Number(startMinute),
+    );
+    if (start.getTime() < reference - halfYear) {
+      start = new Date(
+        year + 1,
+        Number(month) - 1,
+        Number(day),
+        Number(startHour),
+        Number(startMinute),
+      );
+    } else if (start.getTime() > reference + halfYear) {
+      start = new Date(
+        year - 1,
+        Number(month) - 1,
+        Number(day),
+        Number(startHour),
+        Number(startMinute),
+      );
+    }
+    const end = new Date(start);
+    end.setHours(Number(endHour), Number(endMinute), 0, 0);
+    if (end <= start) end.setDate(end.getDate() + 1);
+    intervals.push({ start: start.getTime(), end: end.getTime() });
+  }
+  return intervals.sort((left, right) => left.start - right.start);
+}
+
+function normalizeNordPoolSlots(state) {
+  const attributes = state?.attributes || {};
+  return [
+    ...(Array.isArray(attributes.raw_today) ? attributes.raw_today : []),
+    ...(Array.isArray(attributes.raw_tomorrow) ? attributes.raw_tomorrow : []),
+  ]
+    .map((slot) => ({
+      start: new Date(slot.start).getTime(),
+      end: new Date(slot.end).getTime(),
+      value: toNumber(slot.value),
+    }))
+    .filter((slot) => (
+      Number.isFinite(slot.start)
+      && Number.isFinite(slot.end)
+      && slot.end > slot.start
+      && Number.isFinite(slot.value)
+    ))
+    .sort((left, right) => left.start - right.start);
+}
+
+function weightedPriceForInterval(priceSlots, start, end, fallback) {
+  let weightedPrice = 0;
+  let coveredDuration = 0;
+  for (const slot of priceSlots) {
+    const overlapStart = Math.max(start, slot.start);
+    const overlapEnd = Math.min(end, slot.end);
+    if (overlapEnd <= overlapStart) continue;
+    const duration = overlapEnd - overlapStart;
+    weightedPrice += slot.value * duration;
+    coveredDuration += duration;
+  }
+  return coveredDuration > 0 ? weightedPrice / coveredDuration : fallback;
+}
+
+function buildBatteryRateForecast(
+  model,
+  plannedState,
+  plannedLevelState,
+  priceState,
+  now = new Date(),
+) {
+  const nowTime = now.getTime();
+  const targetSoc = toNumber(plannedLevelState?.state);
+  const currentSoc = toNumber(model.currentSoc);
+  if (
+    !Number.isFinite(targetSoc)
+    || !Number.isFinite(currentSoc)
+    || targetSoc <= currentSoc
+  ) {
+    return [];
+  }
+
+  const intervals = parsePlannedChargingIntervals(
+    plannedState?.state,
+    now,
+  ).filter((interval) => interval.end > nowTime);
+  if (!intervals.length) return [];
+
+  const priceSlots = normalizeNordPoolSlots(priceState);
+  const fallbackPrice = toNumber(priceState?.state);
+  const efficiency = clamp(
+    costSettings.chargingEfficiencyPercent / 100,
+    0.1,
+    1,
+  );
+  const chargingPower = Math.max(0.1, costSettings.defaultChargingPowerKw);
+  const targetEnergy = clamp(
+    targetSoc * costSettings.batteryCapacityKwh / 100,
+    0,
+    costSettings.batteryCapacityKwh,
+  );
+  let remainingEnergy = Math.max(0, targetEnergy - model.currentEnergy);
+  let inventoryEnergy = model.currentEnergy;
+  let inventoryCost = model.currentCost;
+  let inventoryRate = model.currentRate;
+  const forecast = [{
+    time: nowTime,
+    rate: inventoryRate,
+    energy: inventoryEnergy,
+    type: "forecast",
+  }];
+
+  for (const interval of intervals) {
+    const start = Math.max(interval.start, nowTime);
+    if (interval.end <= start || remainingEnergy <= 0.001) continue;
+    const durationHours = (interval.end - start) / 3600000;
+    const possibleBatteryEnergy = chargingPower * durationHours * efficiency;
+    const addedBatteryEnergy = Math.min(
+      remainingEnergy,
+      possibleBatteryEnergy,
+      costSettings.batteryCapacityKwh - inventoryEnergy,
+    );
+    if (addedBatteryEnergy <= 0.001) continue;
+
+    const priceCents = weightedPriceForInterval(
+      priceSlots,
+      start,
+      interval.end,
+      fallbackPrice,
+    );
+    if (!Number.isFinite(priceCents)) continue;
+
+    const gridEnergy = addedBatteryEnergy / efficiency;
+    const gridUnitCost = (
+      priceCents / 100
+      + costSettings.deliveryPriceInclVat
+    );
+    inventoryCost += gridEnergy * gridUnitCost;
+    inventoryEnergy += addedBatteryEnergy;
+    inventoryRate = inventoryEnergy > 0
+      ? inventoryCost / inventoryEnergy
+      : inventoryRate;
+    remainingEnergy -= addedBatteryEnergy;
+    forecast.push({
+      time: interval.end,
+      rate: inventoryRate,
+      energy: inventoryEnergy,
+      priceCents,
+      addedBatteryEnergy,
+      gridEnergy,
+      type: "forecast",
+    });
+  }
+
+  return forecast.length > 1 ? forecast : [];
+}
+
 function selectedRange(now = new Date()) {
   if (dayDateEl.value) {
     const start = new Date(`${dayDateEl.value}T00:00:00`);
     const end = new Date(start);
     end.setDate(end.getDate() + 1);
-    return { start: start.getTime(), end: Math.min(end.getTime(), now.getTime()) };
+    return { start: start.getTime(), end: end.getTime() };
   }
 
   if (periodEl.value === "all") {
@@ -963,9 +1124,15 @@ function selectedRange(now = new Date()) {
     return { start: start.getTime(), end: now.getTime() };
   }
   const days = Number(periodEl.value) || 30;
+  const start = new Date(now);
+  start.setHours(0, 0, 0, 0);
+  start.setDate(start.getDate() - (days - 1));
+  const end = new Date(now);
+  end.setHours(0, 0, 0, 0);
+  end.setDate(end.getDate() + 1);
   return {
-    start: now.getTime() - days * 86400000,
-    end: now.getTime(),
+    start: start.getTime(),
+    end: end.getTime(),
   };
 }
 
@@ -983,6 +1150,11 @@ function filterModel(model) {
     ),
     batteryRateHistory: model.batteryRateHistory.filter(
       (point) => point.time < range.end,
+    ),
+    batteryRateForecast: (
+      range.end >= Date.now() - 60000
+        ? (model.batteryRateForecast || [])
+        : []
     ),
   };
 }
@@ -1265,15 +1437,45 @@ function renderBarChart(canvas, points) {
   });
 }
 
-function renderLineChart(canvas, points, range) {
-  const visible = points.filter(
-    (point) => point.time >= range.start && point.time < range.end,
-  );
-  const leading = [...points]
-    .reverse()
-    .find((point) => point.time < range.start);
-  if (leading) visible.unshift({ ...leading, time: range.start });
+function renderLineChart(canvas, points, forecastPoints, range) {
+  const showActual = actualRateToggleEl?.checked !== false;
+  const showForecast = forecastRateToggleEl?.checked !== false;
+  const now = Date.now();
+  const forecastEnd = showForecast && forecastPoints.length
+    ? forecastPoints.at(-1).time
+    : -Infinity;
+  const startTime = Number.isFinite(range.start)
+    ? range.start
+    : Math.min(
+      points[0]?.time ?? now,
+      forecastPoints[0]?.time ?? now,
+    );
+  const baseEnd = Number.isFinite(range.end) ? range.end : now;
+  const endTime = Math.max(startTime + 3600000, baseEnd, forecastEnd);
 
+  const actual = showActual
+    ? points.filter(
+      (point) => point.time >= startTime && point.time <= endTime,
+    )
+    : [];
+  if (showActual) {
+    const leading = [...points]
+      .reverse()
+      .find((point) => point.time < startTime);
+    if (leading) actual.unshift({ ...leading, time: startTime });
+    const last = actual.at(-1);
+    const actualEnd = Math.min(endTime, now);
+    if (last && last.time < actualEnd) {
+      actual.push({ ...last, time: actualEnd, type: "hold" });
+    }
+  }
+
+  const forecast = showForecast
+    ? forecastPoints.filter(
+      (point) => point.time >= startTime && point.time <= endTime,
+    )
+    : [];
+  const visible = [...actual, ...forecast];
   if (!visible.length) {
     renderEmptyChart(canvas, t("noChargePriceData"));
     return;
@@ -1290,14 +1492,6 @@ function renderLineChart(canvas, points, range) {
   const padding = Math.max(0.2, (maximum - minimum) * 0.2);
   const axisMin = Math.max(0, minimum - padding);
   const axisMax = Math.max(axisMin + 0.5, maximum + padding);
-  const startTime = Number.isFinite(range.start)
-    ? range.start
-    : visible[0].time;
-  const endTime = Math.max(
-    startTime + 86400000,
-    Number.isFinite(range.end) ? range.end : visible.at(-1).time,
-  );
-
   const xFor = (time) => (
     margin.left + (time - startTime) / (endTime - startTime) * plotWidth
   );
@@ -1323,21 +1517,30 @@ function renderLineChart(canvas, points, range) {
     context.fillText(formatNumber(value, 2), margin.left - 7, y);
   }
 
-  context.strokeStyle = colors.orange;
-  context.lineWidth = 2.5;
-  context.beginPath();
-  visible.forEach((point, index) => {
-    const x = xFor(point.time);
-    const y = yFor(point.rate * 100);
-    if (index === 0) {
-      context.moveTo(x, y);
-    } else {
-      const previous = visible[index - 1];
-      context.lineTo(x, yFor(previous.rate * 100));
-      context.lineTo(x, y);
-    }
-  });
-  context.stroke();
+  const drawStepSeries = (series, color, dashed = false) => {
+    if (!series.length) return;
+    context.save();
+    context.strokeStyle = color;
+    context.lineWidth = 2.5;
+    context.setLineDash(dashed ? [8, 6] : []);
+    context.beginPath();
+    series.forEach((point, index) => {
+      const x = xFor(point.time);
+      const y = yFor(point.rate * 100);
+      if (index === 0) {
+        context.moveTo(x, y);
+      } else {
+        const previous = series[index - 1];
+        context.lineTo(x, yFor(previous.rate * 100));
+        context.lineTo(x, y);
+      }
+    });
+    context.stroke();
+    context.restore();
+  };
+
+  drawStepSeries(actual, colors.orange);
+  drawStepSeries(forecast, colors.accent, true);
 
   const labelCount = 5;
   for (let index = 0; index < labelCount; index += 1) {
@@ -1361,7 +1564,12 @@ function render(model) {
   const summary = renderMetrics(filtered, model);
   renderTable(filtered, summary);
   renderBarChart(dailyCanvas, groupDaily(filtered.trips));
-  renderLineChart(batteryCanvas, filtered.batteryRateHistory, filtered.range);
+  renderLineChart(
+    batteryCanvas,
+    filtered.batteryRateHistory,
+    filtered.batteryRateForecast,
+    filtered.range,
+  );
 }
 
 async function loadSessionState() {
@@ -1380,14 +1588,33 @@ async function loadSessionState() {
   throw lastError || new Error(t("sessionsUnavailable"));
 }
 
+async function loadOptionalState(entityId) {
+  try {
+    return await haFetch(`/api/states/${encodeURIComponent(entityId)}`);
+  } catch (error) {
+    console.debug(`Optional entity ${entityId} is unavailable`, error);
+    return null;
+  }
+}
+
 async function loadModel() {
   setStatus(t("loading"));
   reloadEl.disabled = true;
   try {
-    const [sessionState, batteryState] = await Promise.all([
+    const [
+      sessionState,
+      batteryState,
+      _settings,
+      nordPoolState,
+      plannedState,
+      plannedLevelState,
+    ] = await Promise.all([
       loadSessionState(),
       haFetch(`/api/states/${encodeURIComponent(ENTITY.battery)}`),
       loadCostSettings(),
+      loadOptionalState(ENTITY.nordPoolPrice),
+      loadOptionalState(ENTITY.plannedCharging),
+      loadOptionalState(ENTITY.plannedChargeLevel),
     ]);
     const sessions = normalizeSessions(sessionState.sessions);
     if (!sessions.length) {
@@ -1413,6 +1640,12 @@ async function loadModel() {
     const learnedConsumption = normalizeTripEnergy(trips);
     const currentSoc = toNumber(batteryState.state);
     const model = applyWeightedCostModel(trips, sessions, currentSoc);
+    model.batteryRateForecast = buildBatteryRateForecast(
+      model,
+      plannedState,
+      plannedLevelState,
+      nordPoolState,
+    );
     model.learnedConsumption = learnedConsumption;
     model.sessionEntityId = sessionState.entityId;
     lastModel = model;
@@ -1455,6 +1688,17 @@ function updateDateMode() {
   periodEl.disabled = Boolean(dayDateEl.value);
 }
 
+function navigateSettings(event) {
+  if (window.parent === window) return;
+  event.preventDefault();
+  const path = event.currentTarget.getAttribute("href");
+  window.parent.history.pushState(null, "", path);
+  window.parent.dispatchEvent(new window.parent.Event("location-changed"));
+}
+
+document.querySelectorAll("a.settings-link").forEach((link) => {
+  link.addEventListener("click", navigateSettings);
+});
 periodEl.addEventListener("change", () => {
   dayDateEl.value = "";
   updateDateMode();
@@ -1469,8 +1713,10 @@ clearDateEl.addEventListener("click", () => {
   updateDateMode();
   if (lastModel) render(lastModel);
 });
-settingsEl.addEventListener("click", () => {
-  openIntegrationOptions("cost_model");
+[actualRateToggleEl, forecastRateToggleEl].forEach((toggle) => {
+  toggle?.addEventListener("change", () => {
+    if (lastModel) render(lastModel);
+  });
 });
 reloadEl.addEventListener("click", loadModel);
 window.addEventListener("resize", () => {

@@ -448,48 +448,64 @@
       }
     }
   </style>
-  <link rel="stylesheet" href="./shared-theme.css?v=1.1.0" />
+  <link rel="stylesheet" href="./shared-theme.css?v=2.1.1" />
 </head>
 <body>
-  <main class="shell mileage-app">
-    <section class="panel mileage-overview overview-block">
-      <div class="header">
-        <h1 data-i18n="pageTitle">Nobraukuma statistika</h1>
-        <div class="toolbar">
-          <select id="days" title="Periods līdz šodienai">
-            <option value="1" data-i18n="day1">1 diena</option>
-            <option value="3" data-i18n="days3">3 dienas</option>
-            <option value="7" selected data-i18n="days7">7 dienas</option>
-            <option value="14" data-i18n="days14">14 dienas</option>
-            <option value="30" data-i18n="days30">30 dienas</option>
-          </select>
-          <input id="dayDate" type="date" title="Konkrēts datums" aria-label="Konkrēts datums">
-          <button class="clear-date" id="clearDate" type="button" title="Atgriezties pie perioda" aria-label="Atgriezties pie perioda" hidden>×</button>
-          <button id="settings" type="button" data-i18n="settings">Iestatījumi</button>
-          <button class="primary" id="reload" type="button" data-i18n="refresh">Atjaunot</button>
+  <main class="app mileage-app">
+    <header class="topbar">
+      <div class="title-wrap">
+        <div class="title-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24"><path d="M4 19h16M6 17l3-10M18 17 15 7M12 5v3M10.5 11h3M9.5 14h5"/></svg>
+        </div>
+        <div>
+          <h1 data-i18n="pageTitle">Nobraukuma statistika</h1>
+          <p data-i18n="pageSubtitle">Dienu, braucienu, ātruma un ceļa seguma statistika.</p>
         </div>
       </div>
-      <div id="status" class="status">Ielādēju HA vēsturi...</div>
-      <div class="summary">
-        <div class="metric"><span data-i18n="odometer">Odometra rādījums</span><strong id="mOdometer">-</strong></div>
-        <div class="metric"><span data-i18n="trips">Braucieni</span><strong id="mTrips">-</strong></div>
-        <div class="metric"><span data-i18n="total">Kopā</span><strong id="mTotal">-</strong></div>
-        <div class="metric"><span data-i18n="averageSpeed">Vid. ātrums (apt.)</span><strong id="mAvgSpeed">-</strong></div>
-        <div class="metric"><span data-i18n="hardSurface">Asfalts / cietais</span><strong id="mHard">-</strong></div>
-        <div class="metric"><span data-i18n="looseSurface">Grants / neklātais</span><strong id="mLoose">-</strong></div>
-        <div class="metric"><span data-i18n="unknownSurface">Nezināms segums</span><strong id="mUnknown">-</strong></div>
+      <div class="filters">
+        <select id="days" title="Periods līdz šodienai">
+          <option value="1" data-i18n="day1">Šodiena (00–24)</option>
+          <option value="3" data-i18n="days3">3 kalendāra dienas</option>
+          <option value="7" selected data-i18n="days7">7 kalendāra dienas</option>
+          <option value="14" data-i18n="days14">14 kalendāra dienas</option>
+          <option value="30" data-i18n="days30">30 kalendāra dienas</option>
+        </select>
+        <input id="dayDate" type="date" title="Konkrēts datums" aria-label="Konkrēts datums">
+        <button class="icon-command clear-date" id="clearDate" type="button" title="Atgriezties pie perioda" aria-label="Atgriezties pie perioda" hidden>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>
+        </button>
+        <a id="settings" class="icon-command settings-link" href="/config/integrations/integration/zoe_new_extended" target="_top" title="Iestatījumi" aria-label="Iestatījumi">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06-2.83 2.83-.06-.06A1.7 1.7 0 0 0 15 19.4a1.7 1.7 0 0 0-1 .6 1.7 1.7 0 0 0-.4 1.1V21h-4v-.09A1.7 1.7 0 0 0 8.55 19.4a1.7 1.7 0 0 0-1.88.34l-.06.06-2.83-2.83.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-.6-1 1.7 1.7 0 0 0-1.1-.4H3v-4h.09A1.7 1.7 0 0 0 4.6 8.55a1.7 1.7 0 0 0-.34-1.88l-.06-.06 2.83-2.83.06.06A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-.6 1.7 1.7 0 0 0 .4-1.1V3h4v.09A1.7 1.7 0 0 0 15.45 4.6a1.7 1.7 0 0 0 1.88-.34l.06-.06 2.83 2.83-.06.06A1.7 1.7 0 0 0 19.4 9c.15.37.36.7.64.98.3.28.68.43 1.07.43H21v4h-.09A1.7 1.7 0 0 0 19.4 15Z"/></svg>
+        </a>
+        <button class="primary" id="reload" type="button">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8.1 8.1 0 1 0-2.37 5.73"/><path d="M20 4v7h-7"/></svg>
+          <span data-i18n="refresh">Atjaunot</span>
+        </button>
       </div>
-      <div class="surface-overview">
-        <div class="surface-bar" aria-label="Nobraukuma sadalījums pēc ceļa seguma">
-          <span id="hardBar" class="hard"></span>
-          <span id="looseBar" class="loose"></span>
-          <span id="unknownBar" class="unknown"></span>
-        </div>
-        <div class="legend">
-          <span><i class="hard"></i><span data-i18n="hardSurface">Asfalts / cietais</span></span>
-          <span><i class="loose"></i><span data-i18n="looseSurface">Grants / neklātais</span></span>
-          <span><i class="unknown"></i><span data-i18n="unknown">Nezināms</span></span>
-        </div>
+    </header>
+
+    <div id="status" class="status">Ielādēju HA vēsturi...</div>
+
+    <section class="metrics summary" aria-label="Nobraukuma kopsavilkums">
+      <div class="metric"><span data-i18n="odometer">Odometra rādījums</span><strong id="mOdometer">-</strong></div>
+      <div class="metric"><span data-i18n="trips">Braucieni</span><strong id="mTrips">-</strong></div>
+      <div class="metric"><span data-i18n="total">Kopā</span><strong id="mTotal">-</strong></div>
+      <div class="metric"><span data-i18n="averageSpeed">Vid. ātrums (apt.)</span><strong id="mAvgSpeed">-</strong></div>
+      <div class="metric"><span data-i18n="hardSurface">Asfalts / cietais</span><strong id="mHard">-</strong></div>
+      <div class="metric"><span data-i18n="looseSurface">Grants / neklātais</span><strong id="mLoose">-</strong></div>
+      <div class="metric"><span data-i18n="unknownSurface">Nezināms segums</span><strong id="mUnknown">-</strong></div>
+    </section>
+
+    <section class="panel surface-overview">
+      <div class="surface-bar" aria-label="Nobraukuma sadalījums pēc ceļa seguma">
+        <span id="hardBar" class="hard"></span>
+        <span id="looseBar" class="loose"></span>
+        <span id="unknownBar" class="unknown"></span>
+      </div>
+      <div class="legend">
+        <span><i class="hard"></i><span data-i18n="hardSurface">Asfalts / cietais</span></span>
+        <span><i class="loose"></i><span data-i18n="looseSurface">Grants / neklātais</span></span>
+        <span><i class="unknown"></i><span data-i18n="unknown">Nezināms</span></span>
       </div>
     </section>
 
@@ -529,6 +545,7 @@
     </div>
   </main>
 
+  <script src="./dashboard-tabs.js?v=1.0.0"></script>
   <script>
     const ENTITY = {
       location: "device_tracker.location",
@@ -537,9 +554,11 @@
     };
     const I18N = {
       lv: {
-        pageTitle: "Nobraukuma statistika", day1: "1 diena", days3: "3 dienas",
-        days7: "7 dienas", days14: "14 dienas", days30: "30 dienas",
-        periodToToday: "Periods līdz šodienai", specificDate: "Konkrēts datums",
+        pageTitle: "Nobraukuma statistika",
+        pageSubtitle: "Dienu, braucienu, ātruma un ceļa seguma statistika.",
+        day1: "Šodiena (00–24)", days3: "3 kalendāra dienas",
+        days7: "7 kalendāra dienas", days14: "14 kalendāra dienas", days30: "30 kalendāra dienas",
+        periodToToday: "Kalendāra dienas līdz šodienai", specificDate: "Konkrēts datums",
         returnToPeriod: "Atgriezties pie perioda",
         settings: "Iestatījumi", refresh: "Atjaunot", odometer: "Odometra rādījums",
         trips: "Braucieni", total: "Kopā", averageSpeed: "Vid. ātrums (apt.)",
@@ -560,9 +579,11 @@
         loadError: "Nevaru ielādēt nobraukuma statistiku: {error}",
       },
       en: {
-        pageTitle: "Mileage statistics", day1: "1 day", days3: "3 days",
-        days7: "7 days", days14: "14 days", days30: "30 days",
-        periodToToday: "Period ending today", specificDate: "Specific date",
+        pageTitle: "Mileage statistics",
+        pageSubtitle: "Daily, trip, speed and road-surface statistics.",
+        day1: "Today (00–24)", days3: "3 calendar days",
+        days7: "7 calendar days", days14: "14 calendar days", days30: "30 calendar days",
+        periodToToday: "Calendar days ending today", specificDate: "Specific date",
         returnToPeriod: "Return to period",
         settings: "Settings", refresh: "Refresh", odometer: "Odometer",
         trips: "Trips", total: "Total", averageSpeed: "Average speed (approx.)",
@@ -605,6 +626,9 @@
       dayDateEl.setAttribute("aria-label", t("specificDate"));
       clearDateEl.title = t("returnToPeriod");
       clearDateEl.setAttribute("aria-label", t("returnToPeriod"));
+      const settingsLink = document.getElementById("settings");
+      settingsLink.title = t("settings");
+      settingsLink.setAttribute("aria-label", t("settings"));
       document.querySelector(".surface-bar").setAttribute(
         "aria-label",
         t("surfaceBreakdown"),
@@ -742,29 +766,6 @@
         }
       } catch (error) {
         console.debug("Dashboard language is unavailable", error);
-      }
-    }
-
-    async function openIntegrationOptions(stepId) {
-      try {
-        const entries = await haFetch("/api/config/config_entries/entry");
-        const entry = entries.find((item) => item.domain === "zoe_new_extended");
-        if (!entry) throw new Error("Integration entry not found");
-        let flow = await haFetch("/api/config/config_entries/options/flow", {
-          method: "POST",
-          body: { handler: entry.entry_id, show_advanced_options: false },
-        });
-        if (flow?.type === "menu") {
-          flow = await haFetch(`/api/config/config_entries/options/flow/${flow.flow_id}`, {
-            method: "POST",
-            body: { next_step_id: stepId },
-          });
-        }
-        if (!flow?.flow_id) throw new Error("Options flow did not start");
-        window.parent.location.assign(`/config/integrations/options/flow/${flow.flow_id}`);
-      } catch (error) {
-        console.debug("Could not open the requested options step", error);
-        window.parent.location.assign("/config/integrations/integration/zoe_new_extended");
       }
     }
 
@@ -1365,9 +1366,13 @@
           start = new Date(`${dayDateEl.value}T00:00:00`);
           end = new Date(start);
           end.setDate(end.getDate() + 1);
-          if (end > now) end = now;
         } else {
-          start = new Date(end.getTime() - days * 86400000);
+          start = new Date(now);
+          start.setHours(0, 0, 0, 0);
+          start.setDate(start.getDate() - (days - 1));
+          end = new Date(now);
+          end.setHours(0, 0, 0, 0);
+          end.setDate(end.getDate() + 1);
         }
         const ids = [ENTITY.location, ENTITY.mileage].join(",");
         const historyUrl = `/api/history/period/${encodeURIComponent(start.toISOString())}?end_time=${encodeURIComponent(end.toISOString())}&filter_entity_id=${encodeURIComponent(ids)}`;
@@ -1409,12 +1414,19 @@
       }
     }
 
+    function navigateSettings(event) {
+      if (window.parent === window) return;
+      event.preventDefault();
+      const path = event.currentTarget.getAttribute("href");
+      window.parent.history.pushState(null, "", path);
+      window.parent.dispatchEvent(new window.parent.Event("location-changed"));
+    }
+
     dayDateEl.max = localDateValue(new Date());
+    document.querySelectorAll("a.settings-link").forEach((link) => {
+      link.addEventListener("click", navigateSettings);
+    });
     reloadEl.addEventListener("click", loadMileage);
-    document.getElementById("settings").addEventListener(
-      "click",
-      () => openIntegrationOptions("dashboard"),
-    );
     daysEl.addEventListener("change", () => {
       dayDateEl.value = "";
       updateCalendarMode();

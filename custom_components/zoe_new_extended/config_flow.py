@@ -37,6 +37,7 @@ from .const import (
     CONF_IMMAX_CURRENT_A_ENTITY,
     CONF_IMMAX_CURRENT_B_ENTITY,
     CONF_IMMAX_CURRENT_C_ENTITY,
+    CONF_IMMAX_FEATURE_ENABLED,
     CONF_IMMAX_GRID_EXPORT_ENTITY,
     CONF_IMMAX_NORDPOOL_PRICE_ENTITY,
     CONF_IMMAX_POWER_A_ENTITY,
@@ -86,6 +87,7 @@ from .const import (
     DEFAULT_IMMAX_CURRENT_A_ENTITY,
     DEFAULT_IMMAX_CURRENT_B_ENTITY,
     DEFAULT_IMMAX_CURRENT_C_ENTITY,
+    DEFAULT_IMMAX_FEATURE_ENABLED,
     DEFAULT_IMMAX_GRID_EXPORT_ENTITY,
     DEFAULT_IMMAX_NORDPOOL_PRICE_ENTITY,
     DEFAULT_IMMAX_POWER_A_ENTITY,
@@ -237,13 +239,17 @@ class ZoeNewExtendedOptionsFlow(config_entries.OptionsFlow):
         )
 
     async def async_step_dashboard(self, user_input=None):
-        """Configure the shared dashboard language."""
+        """Configure dashboard language and optional modules."""
         if user_input is not None:
             return self._create_merged_entry(user_input)
 
         language = self.config_entry.options.get(
             CONF_DASHBOARD_LANGUAGE,
             DEFAULT_DASHBOARD_LANGUAGE,
+        )
+        immax_enabled = self.config_entry.options.get(
+            CONF_IMMAX_FEATURE_ENABLED,
+            DEFAULT_IMMAX_FEATURE_ENABLED,
         )
         return self.async_show_form(
             step_id="dashboard",
@@ -261,6 +267,10 @@ class ZoeNewExtendedOptionsFlow(config_entries.OptionsFlow):
                             mode=SelectSelectorMode.DROPDOWN,
                         )
                     ),
+                    vol.Required(
+                        CONF_IMMAX_FEATURE_ENABLED,
+                        default=immax_enabled,
+                    ): BooleanSelector(),
                 }
             ),
         )
@@ -541,6 +551,11 @@ class ZoeNewExtendedOptionsFlow(config_entries.OptionsFlow):
     async def async_step_immax_setpoints(self, user_input=None):
         """Configure the IMMAX controller setpoints."""
         helper_defaults = {
+            CONF_IMMAX_FEATURE_ENABLED: self._option_or_helper(
+                CONF_IMMAX_FEATURE_ENABLED,
+                "input_boolean.immax_feature_enabled",
+                DEFAULT_IMMAX_FEATURE_ENABLED,
+            ),
             CONF_IMMAX_SMART_CHARGING_MODE: self._option_or_helper(
                 CONF_IMMAX_SMART_CHARGING_MODE,
                 "input_select.immax_smart_charging_mode",
@@ -673,6 +688,10 @@ class ZoeNewExtendedOptionsFlow(config_entries.OptionsFlow):
             }
 
         schema = {
+            vol.Required(
+                CONF_IMMAX_FEATURE_ENABLED,
+                default=values[CONF_IMMAX_FEATURE_ENABLED],
+            ): BooleanSelector(),
             vol.Required(
                 CONF_IMMAX_SMART_CHARGING_MODE,
                 default=values[CONF_IMMAX_SMART_CHARGING_MODE],

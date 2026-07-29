@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="lv">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>Renault ZOE iestatījumi</title>
+  <style>
+    :root {
+      color-scheme: light dark;
+      font-family: Roboto, "Segoe UI", Arial, sans-serif;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      display: grid;
+      min-height: 100vh;
+      margin: 0;
+      place-items: center;
+      background: #f5f7f8;
+      color: #182026;
+    }
+
+    main {
+      width: min(420px, calc(100% - 32px));
+      padding: 24px;
+      border: 1px solid #d9dee3;
+      border-radius: 7px;
+      background: #fff;
+      box-shadow: 0 1px 3px rgba(16, 31, 43, 0.08);
+      text-align: center;
+    }
+
+    .spinner {
+      width: 32px;
+      height: 32px;
+      margin: 0 auto 16px;
+      border: 3px solid #d9dee3;
+      border-top-color: #087f8c;
+      border-radius: 50%;
+      animation: spin 700ms linear infinite;
+    }
+
+    p {
+      margin: 0;
+      line-height: 1.45;
+    }
+
+    @keyframes spin {
+      to {
+        transform: rotate(360deg);
+      }
+    }
+
+    @media (prefers-color-scheme: dark) {
+      body {
+        background: #151a1d;
+        color: #edf1f4;
+      }
+
+      main {
+        border-color: #3a444a;
+        background: #1b2226;
+        box-shadow: none;
+      }
+
+      .spinner {
+        border-color: #3a444a;
+        border-top-color: #43a9b5;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <div class="spinner" aria-hidden="true"></div>
+    <p id="message">Atveru integrācijas iestatījumus...</p>
+  </main>
+
+  <script>
+    const INTEGRATION_URL =
+      "/config/integrations/integration/zoe_new_extended";
+
+    function navigate(path) {
+      if (window.parent !== window) {
+        window.parent.history.pushState(null, "", path);
+        window.parent.dispatchEvent(new window.parent.Event("location-changed"));
+        return;
+      }
+      window.location.replace(path);
+    }
+
+    navigate(INTEGRATION_URL);
+  </script>
+</body>
+</html>
