@@ -47,6 +47,8 @@ const I18N = {
     batteryHistoryNote: "SOC % un uzlādes jauda kW",
     immaxPower: "IMMAX, saules un kopējās slodzes vēsture",
     immaxPowerNote: "Jauda kW, baterijas SOC %",
+    immaxNordpool: "Nord Pool cenas un cenas iestatījums",
+    immaxNordpoolNote: "Nord Pool cena un maksimālās cenas setpoints, c/kWh",
     phaseHistory: "Fāžu strāvas un sprieguma vēsture",
     phaseHistoryNote: "Strāva A, spriegums V",
     chargeSessions: "Renault API uzlādes sesijas",
@@ -201,6 +203,8 @@ const I18N = {
     batteryHistoryNote: "SOC %, charging power kW",
     immaxPower: "IMMAX, solar and total load history",
     immaxPowerNote: "Power kW, battery SOC %",
+    immaxNordpool: "Nord Pool prices and price setpoint",
+    immaxNordpoolNote: "Nord Pool price and maximum-price setpoint, c/kWh",
     phaseHistory: "Phase current and voltage history",
     phaseHistoryNote: "Current A, voltage V",
     chargeSessions: "Renault API charge sessions",
@@ -587,6 +591,8 @@ let lastHistoryLoad = 0;
 let activeRange = null;
 let statusLockUntil = 0;
 let commandInProgress = false;
+let cachedHistoryMap = new Map();
+let cachedStatisticsMap = new Map();
 
 function t(key, values = {}) {
   let text = I18N[language][key] ?? I18N.lv[key] ?? key;
@@ -1338,6 +1344,23 @@ function renderPanels() {
   }
 }
 
+function immaxUsesNordPoolChart() {
+  const mode = stateFor(
+    "input_select.immax_smart_charging_mode",
+  )?.state?.toLowerCase() || "";
+  return PAGE === "immax" && mode.includes("nord");
+}
+
+function renderChartHeadings() {
+  const mainChartConfig = immaxUsesNordPoolChart()
+    ? { title: "immaxNordpool", subtitle: "immaxNordpoolNote" }
+    : pageConfig.mainChart;
+  mainChartTitleEl.textContent = t(mainChartConfig.title);
+  mainChartSubtitleEl.textContent = t(mainChartConfig.subtitle);
+  secondaryChartTitleEl.textContent = t(pageConfig.secondaryChart.title);
+  secondaryChartSubtitleEl.textContent = t(pageConfig.secondaryChart.subtitle);
+}
+
 function applyLanguage() {
   document.documentElement.lang = language;
   document.title = t(pageConfig.titleKey);
@@ -1363,10 +1386,7 @@ function applyLanguage() {
     "aria-label",
     t("detailedHistoryChart"),
   );
-  mainChartTitleEl.textContent = t(pageConfig.mainChart.title);
-  mainChartSubtitleEl.textContent = t(pageConfig.mainChart.subtitle);
-  secondaryChartTitleEl.textContent = t(pageConfig.secondaryChart.title);
-  secondaryChartSubtitleEl.textContent = t(pageConfig.secondaryChart.subtitle);
+  renderChartHeadings();
   detailTitleEl.textContent = t(pageConfig.detailTitle);
   detailSubtitleEl.textContent = t(pageConfig.detailSubtitle);
   const selected = periodEl.value;
@@ -1864,6 +1884,7 @@ async function loadHistory() {
       "sensor.battery",
     ]
     : [
+      "sensor.renault_zoe_new_nord_pool_price",
       "sensor.renault_zoe_new_immax_solar_production",
       "sensor.renault_zoe_new_immax_solar_charger_power",
       "sensor.renault_zoe_new_immax_total_site_load",
@@ -1910,6 +1931,8 @@ async function loadHistory() {
       history = await haFetch(path);
     }
     const historyMap = normalizeHistory(history);
+    cachedHistoryMap = historyMap;
+    cachedStatisticsMap = statisticsMap;
     if (PAGE === "charging") {
       renderChargingCharts(historyMap, statisticsMap, activeRange);
     } else {
@@ -1983,17 +2006,54 @@ function renderChargingCharts(historyMap, statisticsMap, range) {
 }
 
 function renderImmaxCharts(historyMap, statisticsMap, range) {
-  const solarEntity = "sensor.renault_zoe_new_immax_solar_production";
-  const chargerEntity = "sensor.renault_zoe_new_immax_solar_charger_power";
-  const loadEntity = "sensor.renault_zoe_new_immax_total_site_load";
-  const socEntity = "sensor.unibms_soc";
-  const powerTransform = (entityId) => (value) => toKw(entityId, value);
-  mainChart.setData([
-    { id: "solar", name: language === "lv" ? "Saule" : "Solar", points: pointsFor(historyMap, statisticsMap, solarEntity, powerTransform(solarEntity)), color: "#e3a516", unit: "kW", axis: "left" },
-    { id: "immax-power", name: "IMMAX", points: pointsFor(historyMap, statisticsMap, chargerEntity, powerTransform(chargerEntity)), color: cssColor("--orange"), unit: "kW", axis: "left" },
-    { id: "total-load", name: language === "lv" ? "Kopējā slodze" : "Total load", points: pointsFor(historyMap, statisticsMap, loadEntity, powerTransform(loadEntity)), color: cssColor("--blue"), unit: "kW", axis: "left" },
-    { id: "site-soc", name: language === "lv" ? "Baterijas SOC" : "Battery SOC", points: pointsFor(historyMap, statisticsMap, socEntity), color: cssColor("--green"), unit: "%", axis: "right" },
-  ], range, { left: { min: 0 }, right: { min: 0, max: 100 } });
+  renderChartHeadings();
+  if (immaxUsesNordPoolChart()) {
+    const priceEntity = "sensor.renault_zoe_new_nord_pool_price";
+    const historicalPrice = pointsFor(
+      historyMap,
+      statisticsMap,
+      priceEntity,
+      (value) => toCents(priceEntity, value),
+    );
+    const price = mergePoints(historicalPrice, priceForecastPoints(range));
+    const maxPrice = toNumber(
+      stateFor("input_number.immax_max_energy_price")?.state,
+    );
+    mainChart.setData([
+      {
+        id: "immax-price",
+        name: language === "lv" ? "Nord Pool cena" : "Nord Pool price",
+        points: price,
+        color: cssColor("--accent"),
+        unit: "c/kWh",
+        axis: "left",
+        step: true,
+        maximumGap: 2 * 3600000,
+      },
+      {
+        id: "immax-price-cap",
+        name: language === "lv" ? "Cenas setpoints" : "Price setpoint",
+        points: constantPoints(maxPrice, range),
+        color: cssColor("--red"),
+        unit: "c/kWh",
+        axis: "left",
+        width: 2.5,
+        maximumGap: Number.POSITIVE_INFINITY,
+      },
+    ], range, { left: {} });
+  } else {
+    const solarEntity = "sensor.renault_zoe_new_immax_solar_production";
+    const chargerEntity = "sensor.renault_zoe_new_immax_solar_charger_power";
+    const loadEntity = "sensor.renault_zoe_new_immax_total_site_load";
+    const socEntity = "sensor.unibms_soc";
+    const powerTransform = (entityId) => (value) => toKw(entityId, value);
+    mainChart.setData([
+      { id: "solar", name: language === "lv" ? "Saule" : "Solar", points: pointsFor(historyMap, statisticsMap, solarEntity, powerTransform(solarEntity)), color: "#e3a516", unit: "kW", axis: "left" },
+      { id: "immax-power", name: "IMMAX", points: pointsFor(historyMap, statisticsMap, chargerEntity, powerTransform(chargerEntity)), color: cssColor("--orange"), unit: "kW", axis: "left" },
+      { id: "total-load", name: language === "lv" ? "Kopējā slodze" : "Total load", points: pointsFor(historyMap, statisticsMap, loadEntity, powerTransform(loadEntity)), color: cssColor("--blue"), unit: "kW", axis: "left" },
+      { id: "site-soc", name: language === "lv" ? "Baterijas SOC" : "Battery SOC", points: pointsFor(historyMap, statisticsMap, socEntity), color: cssColor("--green"), unit: "%", axis: "right" },
+    ], range, { left: { min: 0 }, right: { min: 0, max: 100 } });
+  }
 
   const phaseColors = ["#2878b5", "#c96b16", "#27834a"];
   const phaseNames = language === "lv" ? ["Fāze A", "Fāze B", "Fāze C"] : ["Phase A", "Phase B", "Phase C"];
@@ -2173,6 +2233,14 @@ async function loadCurrent(silent = false) {
     renderActions();
     renderPanels();
     renderDetail();
+    renderChartHeadings();
+    if (PAGE === "immax" && activeRange) {
+      renderImmaxCharts(
+        cachedHistoryMap,
+        cachedStatisticsMap,
+        activeRange,
+      );
+    }
     const time = new Intl.DateTimeFormat(language === "lv" ? "lv-LV" : "en-GB", {
       hour: "2-digit",
       minute: "2-digit",
