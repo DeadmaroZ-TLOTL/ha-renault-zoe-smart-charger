@@ -49,6 +49,7 @@ from .const import (
 )
 from .extras import ZoeNewCloudExtrasCoordinator
 from .nordpool import NordPoolPriceCoordinator
+from .status_refresh import ZoeNewStatusRefresh
 
 RETRY_SECONDS = 15
 PLATFORMS = (
@@ -330,6 +331,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     reconcile()
 
     charge_control = ZoeNewChargeControl(hass, vehicle)
+    status_refresh = ZoeNewStatusRefresh(vehicle)
+    await status_refresh.async_refresh()
     nordpool_coordinator = NordPoolPriceCoordinator(hass, entry)
     await nordpool_coordinator.async_config_entry_first_refresh()
     extras_coordinator = ZoeNewCloudExtrasCoordinator(hass, entry, charge_control)
@@ -341,6 +344,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             lambda: reconcile_cancel() if reconcile_cancel else None
         ),
         "charge_control": charge_control,
+        "status_refresh": status_refresh,
         "nordpool_coordinator": nordpool_coordinator,
         "extras_coordinator": extras_coordinator,
     }
@@ -368,6 +372,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     if runtime:
         if runtime["charge_control"] is not None:
             runtime["charge_control"].restore()
+        runtime["status_refresh"].restore()
         runtime["unsubscribe_registry"]()
         runtime["cancel_retry"]()
         runtime["cancel_reconcile"]()

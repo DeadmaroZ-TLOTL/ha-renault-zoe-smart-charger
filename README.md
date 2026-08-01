@@ -10,6 +10,9 @@ used by the included Nord Pool smart charger package.
 
 ## Features
 
+- Adaptive Renault status refresh: battery and charging data refresh every five
+  minutes while Zoe New is plugged in, then return to Home Assistant's normal
+  Renault polling interval after unplugging.
 - Working start and stop charge commands for `X102VE`.
 - Charging mode selector with distinct `Always`, `Delayed`, and `Scheduled` states.
 - Automatic `Always` mode when smart charging is disabled or outside an allowed location.
