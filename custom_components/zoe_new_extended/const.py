@@ -1,6 +1,21 @@
 """Constants for Zoe New Extended."""
 
 DOMAIN = "zoe_new_extended"
+CONF_CHARGING_ACCOUNTS = "charging_accounts"
+CONF_ACCOUNT_ACTION = "account_action"
+CONF_ACCOUNT_ENABLED = "enabled"
+CONF_ACCOUNT_ID = "id"
+CONF_ACCOUNT_NAME = "name"
+CONF_ACCOUNT_TYPE = "type"
+CONF_MOBILLY_USERNAME = "username"
+CONF_MOBILLY_PASSWORD = "password"
+CONF_ELEKTRUM_PHONE = "phone"
+CONF_ELEKTRUM_COUNTRY_CODE = "country_code"
+CONF_ELEKTRUM_ACCESS_TOKEN = "access_token"
+CONF_ELEKTRUM_DEVICE_UUID = "device_uuid"
+ACCOUNT_TYPE_MOBILLY = "mobilly"
+ACCOUNT_TYPE_ELEKTRUM_DRIVE = "elektrum_drive"
+DEFAULT_ELEKTRUM_COUNTRY_CODE = "371"
 CONF_DASHBOARD_LANGUAGE = "dashboard_language"
 CONF_ALLOWED_ZONES = "allowed_zones"
 CONF_ALLOW_ANY_LOCATION = "allow_any_location"
@@ -18,6 +33,10 @@ CONF_DEFAULT_CHARGING_POWER_KW = "default_charging_power_kw"
 CONF_DELIVERY_PRICE_EXCL_VAT = "delivery_price_excl_vat"
 CONF_ENERGY_VAT_PERCENT = "energy_vat_percent"
 CONF_FALLBACK_CONSUMPTION_KWH_100 = "fallback_consumption_kwh_100"
+CONF_ELEKTRUM_DRIVE_ENABLED = "elektrum_drive_enabled"
+CONF_ELEKTRUM_POSTPAID_DISCOUNT_PERCENT = (
+    "elektrum_postpaid_discount_percent"
+)
 CONF_IMMAX_BATTERY_CHARGE_ENTITY = "immax_battery_charge_entity"
 CONF_IMMAX_BATTERY_DISCHARGE_ENTITY = "immax_battery_discharge_entity"
 CONF_IMMAX_CHARGER_CURRENT_ENTITY = "immax_charger_current_entity"
@@ -74,6 +93,8 @@ DEFAULT_DEFAULT_CHARGING_POWER_KW = 11.0
 DEFAULT_DELIVERY_PRICE_EXCL_VAT = 0.03962
 DEFAULT_ENERGY_VAT_PERCENT = 21.0
 DEFAULT_FALLBACK_CONSUMPTION_KWH_100 = 17.5
+DEFAULT_ELEKTRUM_DRIVE_ENABLED = True
+DEFAULT_ELEKTRUM_POSTPAID_DISCOUNT_PERCENT = 5.0
 DEFAULT_IMMAX_BATTERY_CHARGE_ENTITY = "sensor.unibms_battery_in"
 DEFAULT_IMMAX_BATTERY_DISCHARGE_ENTITY = "sensor.unibms_battery_out"
 DEFAULT_IMMAX_CHARGER_CURRENT_ENTITY = "number.immax_ev_charger_current"

@@ -14,6 +14,7 @@ from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.event import async_call_later
 
 from .charge_control import ZoeNewChargeControl, find_zoe_new
+from .charging_accounts import ChargingAccountsCoordinator
 from .const import (
     API_ENTITY_IDS,
     CONF_IMMAX_AI_ADVISOR_ENABLED,
@@ -48,6 +49,7 @@ from .const import (
     ZOE_ENTITY_PREFIX,
 )
 from .extras import ZoeNewCloudExtrasCoordinator
+from .elektrum_drive import ElektrumDriveCoordinator
 from .nordpool import NordPoolPriceCoordinator
 from .status_refresh import ZoeNewStatusRefresh
 
@@ -335,6 +337,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     await status_refresh.async_refresh()
     nordpool_coordinator = NordPoolPriceCoordinator(hass, entry)
     await nordpool_coordinator.async_config_entry_first_refresh()
+    elektrum_coordinator = ElektrumDriveCoordinator(hass, entry)
+    await elektrum_coordinator.async_config_entry_first_refresh()
+    charging_accounts_coordinator = ChargingAccountsCoordinator(hass, entry)
+    await charging_accounts_coordinator.async_config_entry_first_refresh()
     extras_coordinator = ZoeNewCloudExtrasCoordinator(hass, entry, charge_control)
     await extras_coordinator.async_config_entry_first_refresh()
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = {
@@ -346,6 +352,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         "charge_control": charge_control,
         "status_refresh": status_refresh,
         "nordpool_coordinator": nordpool_coordinator,
+        "elektrum_coordinator": elektrum_coordinator,
+        "charging_accounts_coordinator": charging_accounts_coordinator,
         "extras_coordinator": extras_coordinator,
     }
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)

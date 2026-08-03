@@ -38,7 +38,7 @@ Renault charge session data is temporarily unavailable.
 No completed Renault charge sessions found for this period.
 {% else %}
 {% set totals = namespace(battery=0, energy=0, cost=0, priced=0) %}
-{% set out = namespace(text='| Start / End | Min | SOC | Battery kWh | Grid kWh | Price c/kWh | Cost EUR | Status |\n|:--|--:|--:|--:|--:|--:|--:|:--|\n') %}
+{% set out = namespace(text='| Start / End | Station | Min | SOC | Battery kWh | Grid kWh | Price c/kWh | Cost EUR | Status |\n|:--|:--|--:|--:|--:|--:|--:|--:|:--|\n') %}
 {% for session in filtered.items %}
   {% set session_start = as_local(as_datetime(session.start)) %}
   {% set session_end = as_local(as_datetime(session.end)) %}
@@ -52,7 +52,9 @@ No completed Renault charge sessions found for this period.
   {% set energy_text = ('%.2f' | format(grid_energy)) if has_cost else '-' %}
   {% set rate_text = coverage_mark ~ ('%.2f' | format(session.total_rate_c_per_kwh | float(0))) if has_cost else '-' %}
   {% set cost_text = coverage_mark ~ ('%.2f' | format(total_cost)) if has_cost else '-' %}
-  {% set out.text = out.text ~ '| ' ~ session_start.strftime('%d.%m %H:%M') ~ '<br>' ~ end_text ~ ' | ' ~ (session.duration_min | int(0)) ~ ' | ' ~ soc ~ ' | ~' ~ ('%.2f' | format(battery_energy)) ~ ' | ' ~ energy_text ~ ' | ' ~ rate_text ~ ' | **' ~ cost_text ~ '** | ' ~ (session.status or '-') ~ ' |\n' %}
+  {% set station = session.station_name or ('Home / Nord Pool' if session.price_source in ['home_nord_pool', 'legacy_nord_pool'] else '-') %}
+  {% set connector = '<br><small>' ~ session.connector_code ~ '</small>' if session.connector_code else '' %}
+  {% set out.text = out.text ~ '| ' ~ session_start.strftime('%d.%m %H:%M') ~ '<br>' ~ end_text ~ ' | ' ~ station ~ connector ~ ' | ' ~ (session.duration_min | int(0)) ~ ' | ' ~ soc ~ ' | ~' ~ ('%.2f' | format(battery_energy)) ~ ' | ' ~ energy_text ~ ' | ' ~ rate_text ~ ' | **' ~ cost_text ~ '** | ' ~ (session.status or '-') ~ ' |\n' %}
   {% set totals.battery = totals.battery + battery_energy %}
   {% if has_cost %}
     {% set totals.energy = totals.energy + grid_energy %}
@@ -61,7 +63,7 @@ No completed Renault charge sessions found for this period.
   {% endif %}
 {% endfor %}
 {% set total_rate = totals.cost / totals.energy * 100 if totals.energy > 0 else 0 %}
-{% set out.text = out.text ~ '| **Total** |  |  | **~' ~ ('%.2f' | format(totals.battery)) ~ '** | **' ~ ('%.2f' | format(totals.energy)) ~ '** | **' ~ ('%.2f' | format(total_rate)) ~ '** | **' ~ ('%.2f' | format(totals.cost)) ~ '** |  |\n' %}
+{% set out.text = out.text ~ '| **Total** |  |  |  | **~' ~ ('%.2f' | format(totals.battery)) ~ '** | **' ~ ('%.2f' | format(totals.energy)) ~ '** | **' ~ ('%.2f' | format(total_rate)) ~ '** | **' ~ ('%.2f' | format(totals.cost)) ~ '** |  |\n' %}
 {{ out.text }}
 
 {% set capacity = state_attr('sensor.renault_zoe_new_cost_settings', 'battery_capacity_kwh') | float(52) %}
@@ -69,5 +71,5 @@ No completed Renault charge sessions found for this period.
 {% set delivery_excl = state_attr('sensor.renault_zoe_new_cost_settings', 'delivery_price_excl_vat_eur_per_kwh') | float(0.03962) %}
 {% set delivery_incl = state_attr('sensor.renault_zoe_new_cost_settings', 'delivery_price_incl_vat_eur_per_kwh') | float(0.0479402) %}
 {% set vat = state_attr('sensor.renault_zoe_new_cost_settings', 'vat_percent') | float(21) %}
-Battery energy is estimated from Renault's reported SOC gain and **{{ capacity | round(1) }} kWh** usable capacity. Cost converts that value to estimated grid input with the configured **{{ efficiency | round(1) }}%** charging efficiency, interval-weighted Nord Pool history, and **{{ delivery_incl | round(5) }} EUR/kWh** delivery including VAT ({{ delivery_excl | round(5) }} EUR/kWh + {{ vat | round(1) }}% VAT). A tilde before a price or cost marks incomplete price-history coverage.
+Battery energy is estimated from Renault's reported SOC gain and **{{ capacity | round(1) }} kWh** usable capacity. Cost converts that value to estimated grid input with the configured **{{ efficiency | round(1) }}%** charging efficiency. At an Elektrum Drive station it uses the recorded connector tariff; elsewhere it uses interval-weighted Nord Pool history and **{{ delivery_incl | round(5) }} EUR/kWh** delivery including VAT ({{ delivery_excl | round(5) }} EUR/kWh + {{ vat | round(1) }}% VAT). A tilde before a price or cost marks incomplete price-history coverage.
 {% endif %}

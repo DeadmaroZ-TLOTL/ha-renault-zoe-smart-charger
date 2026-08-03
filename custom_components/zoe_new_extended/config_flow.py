@@ -1,5 +1,7 @@
 """Config flow for Zoe New Extended."""
 
+from uuid import uuid4
+
 import voluptuous as vol
 
 from homeassistant import config_entries
@@ -14,16 +16,33 @@ from homeassistant.helpers.selector import (
     SelectSelector,
     SelectSelectorConfig,
     SelectSelectorMode,
+    TextSelector,
+    TextSelectorConfig,
+    TextSelectorType,
 )
 
 from .const import (
+    ACCOUNT_TYPE_ELEKTRUM_DRIVE,
+    ACCOUNT_TYPE_MOBILLY,
+    CONF_ACCOUNT_ACTION,
+    CONF_ACCOUNT_ENABLED,
+    CONF_ACCOUNT_ID,
+    CONF_ACCOUNT_NAME,
+    CONF_ACCOUNT_TYPE,
     CONF_ALLOW_ANY_LOCATION,
     CONF_ALLOWED_ZONES,
     CONF_BATTERY_CAPACITY_KWH,
     CONF_CHARGING_EFFICIENCY_PERCENT,
+    CONF_CHARGING_ACCOUNTS,
     CONF_DASHBOARD_LANGUAGE,
     CONF_DEFAULT_CHARGING_POWER_KW,
     CONF_DELIVERY_PRICE_EXCL_VAT,
+    CONF_ELEKTRUM_DRIVE_ENABLED,
+    CONF_ELEKTRUM_ACCESS_TOKEN,
+    CONF_ELEKTRUM_COUNTRY_CODE,
+    CONF_ELEKTRUM_DEVICE_UUID,
+    CONF_ELEKTRUM_PHONE,
+    CONF_ELEKTRUM_POSTPAID_DISCOUNT_PERCENT,
     CONF_ENERGY_VAT_PERCENT,
     CONF_FALLBACK_CONSUMPTION_KWH_100,
     CONF_IMMAX_BATTERY_CHARGE_ENTITY,
@@ -69,6 +88,8 @@ from .const import (
     CONF_IMMAX_TOTAL_LOAD_ENTITY,
     CONF_IMMAX_TOTAL_POWER_LIMIT,
     CONF_LOCATION_CONTROL_ENABLED,
+    CONF_MOBILLY_PASSWORD,
+    CONF_MOBILLY_USERNAME,
     CONF_NORDPOOL_AREA,
     CONF_ZOE_CHARGE_RANGE_TARGET_KM,
     CONF_ZOE_CHARGE_TARGET_MODE,
@@ -123,6 +144,9 @@ from .const import (
     DEFAULT_DASHBOARD_LANGUAGE,
     DEFAULT_DEFAULT_CHARGING_POWER_KW,
     DEFAULT_DELIVERY_PRICE_EXCL_VAT,
+    DEFAULT_ELEKTRUM_DRIVE_ENABLED,
+    DEFAULT_ELEKTRUM_COUNTRY_CODE,
+    DEFAULT_ELEKTRUM_POSTPAID_DISCOUNT_PERCENT,
     DEFAULT_ENERGY_VAT_PERCENT,
     DEFAULT_FALLBACK_CONSUMPTION_KWH_100,
     DEFAULT_NORDPOOL_AREA,
@@ -233,6 +257,7 @@ class ZoeNewExtendedOptionsFlow(config_entries.OptionsFlow):
                 "dashboard",
                 "smart_charging",
                 "cost_model",
+                "charging_accounts",
                 "immax_setpoints",
                 "immax_entities",
             ],
@@ -273,6 +298,276 @@ class ZoeNewExtendedOptionsFlow(config_entries.OptionsFlow):
                     ): BooleanSelector(),
                 }
             ),
+        )
+
+    @property
+    def _charging_accounts(self):
+        """Return copies of configured account records."""
+        raw_accounts = self.config_entry.data.get(CONF_CHARGING_ACCOUNTS, [])
+        if not isinstance(raw_accounts, list):
+            return []
+        return [dict(account) for account in raw_accounts if isinstance(account, dict)]
+
+    def _save_charging_accounts(self, accounts):
+        """Store secrets in config-entry data, outside ordinary options."""
+        data = dict(self.config_entry.data)
+        data[CONF_CHARGING_ACCOUNTS] = accounts
+        self.hass.config_entries.async_update_entry(self.config_entry, data=data)
+        return self.async_create_entry(
+            title="",
+            data=dict(self.config_entry.options),
+        )
+
+    def _selected_account(self):
+        selected_id = getattr(self, "_selected_account_id", None)
+        return next(
+            (
+                account
+                for account in self._charging_accounts
+                if account.get(CONF_ACCOUNT_ID) == selected_id
+            ),
+            None,
+        )
+
+    async def async_step_charging_accounts(self, user_input=None):
+        """Add, edit, or remove any number of charging accounts."""
+        accounts = self._charging_accounts
+        actions = [
+            {"value": "add:mobilly", "label": "Add Mobilly account"},
+            {
+                "value": "add:elektrum_drive",
+                "label": "Add Elektrum Drive account",
+            },
+        ]
+        for account in accounts:
+            account_id = account.get(CONF_ACCOUNT_ID)
+            name = account.get(CONF_ACCOUNT_NAME) or account.get(CONF_ACCOUNT_TYPE)
+            account_type = account.get(CONF_ACCOUNT_TYPE)
+            enabled = account.get(CONF_ACCOUNT_ENABLED, True)
+            state = "enabled" if enabled else "disabled"
+            actions.extend(
+                (
+                    {
+                        "value": f"edit:{account_id}",
+                        "label": f"Edit {name} ({account_type}, {state})",
+                    },
+                    {
+                        "value": f"remove:{account_id}",
+                        "label": f"Remove {name}",
+                    },
+                )
+            )
+
+        if user_input is not None:
+            action, _, account_id = user_input[CONF_ACCOUNT_ACTION].partition(":")
+            if action == "add":
+                self._selected_account_id = None
+                if account_id == ACCOUNT_TYPE_MOBILLY:
+                    return await self.async_step_mobilly_account()
+                return await self.async_step_elektrum_account()
+            self._selected_account_id = account_id
+            if action == "remove":
+                return await self.async_step_remove_charging_account()
+            selected = self._selected_account()
+            if selected and selected.get(CONF_ACCOUNT_TYPE) == ACCOUNT_TYPE_MOBILLY:
+                return await self.async_step_mobilly_account()
+            return await self.async_step_elektrum_account()
+
+        return self.async_show_form(
+            step_id="charging_accounts",
+            data_schema=vol.Schema(
+                {
+                    vol.Required(CONF_ACCOUNT_ACTION): SelectSelector(
+                        SelectSelectorConfig(
+                            options=actions,
+                            mode=SelectSelectorMode.DROPDOWN,
+                        )
+                    )
+                }
+            ),
+            description_placeholders={"account_count": str(len(accounts))},
+        )
+
+    async def async_step_mobilly_account(self, user_input=None):
+        """Add or edit one Mobilly account."""
+        account = self._selected_account()
+        errors = {}
+        if user_input is not None:
+            username = str(user_input.get(CONF_MOBILLY_USERNAME) or "").strip()
+            password = str(user_input.get(CONF_MOBILLY_PASSWORD) or "")
+            if not password and account is not None:
+                password = str(account.get(CONF_MOBILLY_PASSWORD) or "")
+            if not username or not password:
+                errors["base"] = "mobilly_credentials_required"
+            else:
+                updated = {
+                    CONF_ACCOUNT_ID: (
+                        account.get(CONF_ACCOUNT_ID) if account else uuid4().hex
+                    ),
+                    CONF_ACCOUNT_TYPE: ACCOUNT_TYPE_MOBILLY,
+                    CONF_ACCOUNT_NAME: str(
+                        user_input.get(CONF_ACCOUNT_NAME) or "Mobilly"
+                    ).strip(),
+                    CONF_ACCOUNT_ENABLED: bool(
+                        user_input.get(CONF_ACCOUNT_ENABLED, True)
+                    ),
+                    CONF_MOBILLY_USERNAME: username,
+                    CONF_MOBILLY_PASSWORD: password,
+                }
+                accounts = self._charging_accounts
+                if account is None:
+                    accounts.append(updated)
+                else:
+                    accounts = [
+                        updated
+                        if item.get(CONF_ACCOUNT_ID) == account.get(CONF_ACCOUNT_ID)
+                        else item
+                        for item in accounts
+                    ]
+                return self._save_charging_accounts(accounts)
+
+        return self.async_show_form(
+            step_id="mobilly_account",
+            data_schema=vol.Schema(
+                {
+                    vol.Required(
+                        CONF_ACCOUNT_NAME,
+                        default=(account or {}).get(CONF_ACCOUNT_NAME, "Mobilly"),
+                    ): TextSelector(TextSelectorConfig()),
+                    vol.Required(
+                        CONF_ACCOUNT_ENABLED,
+                        default=(account or {}).get(CONF_ACCOUNT_ENABLED, True),
+                    ): BooleanSelector(),
+                    vol.Required(
+                        CONF_MOBILLY_USERNAME,
+                        default=(account or {}).get(CONF_MOBILLY_USERNAME, ""),
+                    ): TextSelector(TextSelectorConfig()),
+                    vol.Optional(CONF_MOBILLY_PASSWORD): TextSelector(
+                        TextSelectorConfig(type=TextSelectorType.PASSWORD)
+                    ),
+                }
+            ),
+            errors=errors,
+            description_placeholders={
+                "mode": "edit" if account else "add",
+            },
+        )
+
+    async def async_step_elektrum_account(self, user_input=None):
+        """Add or edit one Elektrum Drive account and its app token."""
+        account = self._selected_account()
+        if user_input is not None:
+            access_token = str(
+                user_input.get(CONF_ELEKTRUM_ACCESS_TOKEN) or ""
+            ).strip()
+            if not access_token and account is not None:
+                access_token = str(
+                    account.get(CONF_ELEKTRUM_ACCESS_TOKEN) or ""
+                )
+            device_uuid = str(
+                user_input.get(CONF_ELEKTRUM_DEVICE_UUID) or ""
+            ).strip()
+            if not device_uuid and account is not None:
+                device_uuid = str(
+                    account.get(CONF_ELEKTRUM_DEVICE_UUID) or ""
+                )
+            if not device_uuid:
+                device_uuid = str(uuid4())
+            updated = {
+                CONF_ACCOUNT_ID: (
+                    account.get(CONF_ACCOUNT_ID) if account else uuid4().hex
+                ),
+                CONF_ACCOUNT_TYPE: ACCOUNT_TYPE_ELEKTRUM_DRIVE,
+                CONF_ACCOUNT_NAME: str(
+                    user_input.get(CONF_ACCOUNT_NAME) or "Elektrum Drive"
+                ).strip(),
+                CONF_ACCOUNT_ENABLED: bool(
+                    user_input.get(CONF_ACCOUNT_ENABLED, True)
+                ),
+                CONF_ELEKTRUM_PHONE: str(
+                    user_input.get(CONF_ELEKTRUM_PHONE) or ""
+                ).strip(),
+                CONF_ELEKTRUM_COUNTRY_CODE: str(
+                    user_input.get(CONF_ELEKTRUM_COUNTRY_CODE)
+                    or DEFAULT_ELEKTRUM_COUNTRY_CODE
+                ).lstrip("+"),
+                CONF_ELEKTRUM_ACCESS_TOKEN: access_token,
+                CONF_ELEKTRUM_DEVICE_UUID: device_uuid,
+            }
+            accounts = self._charging_accounts
+            if account is None:
+                accounts.append(updated)
+            else:
+                accounts = [
+                    updated
+                    if item.get(CONF_ACCOUNT_ID) == account.get(CONF_ACCOUNT_ID)
+                    else item
+                    for item in accounts
+                ]
+            return self._save_charging_accounts(accounts)
+
+        return self.async_show_form(
+            step_id="elektrum_account",
+            data_schema=vol.Schema(
+                {
+                    vol.Required(
+                        CONF_ACCOUNT_NAME,
+                        default=(account or {}).get(
+                            CONF_ACCOUNT_NAME, "Elektrum Drive"
+                        ),
+                    ): TextSelector(TextSelectorConfig()),
+                    vol.Required(
+                        CONF_ACCOUNT_ENABLED,
+                        default=(account or {}).get(CONF_ACCOUNT_ENABLED, True),
+                    ): BooleanSelector(),
+                    vol.Required(
+                        CONF_ELEKTRUM_PHONE,
+                        default=(account or {}).get(CONF_ELEKTRUM_PHONE, ""),
+                    ): TextSelector(TextSelectorConfig()),
+                    vol.Required(
+                        CONF_ELEKTRUM_COUNTRY_CODE,
+                        default=(account or {}).get(
+                            CONF_ELEKTRUM_COUNTRY_CODE,
+                            DEFAULT_ELEKTRUM_COUNTRY_CODE,
+                        ),
+                    ): TextSelector(TextSelectorConfig()),
+                    vol.Optional(CONF_ELEKTRUM_ACCESS_TOKEN): TextSelector(
+                        TextSelectorConfig(type=TextSelectorType.PASSWORD)
+                    ),
+                    vol.Optional(CONF_ELEKTRUM_DEVICE_UUID): TextSelector(
+                        TextSelectorConfig(type=TextSelectorType.PASSWORD)
+                    ),
+                }
+            ),
+            description_placeholders={
+                "mode": "edit" if account else "add",
+            },
+        )
+
+    async def async_step_remove_charging_account(self, user_input=None):
+        """Confirm removal of one charging account."""
+        account = self._selected_account()
+        if account is None:
+            return await self.async_step_charging_accounts()
+        errors = {}
+        if user_input is not None:
+            if user_input.get("confirm"):
+                accounts = [
+                    item
+                    for item in self._charging_accounts
+                    if item.get(CONF_ACCOUNT_ID) != account.get(CONF_ACCOUNT_ID)
+                ]
+                return self._save_charging_accounts(accounts)
+            errors["base"] = "account_removal_not_confirmed"
+        return self.async_show_form(
+            step_id="remove_charging_account",
+            data_schema=vol.Schema(
+                {vol.Required("confirm", default=False): BooleanSelector()}
+            ),
+            errors=errors,
+            description_placeholders={
+                "account_name": str(account.get(CONF_ACCOUNT_NAME) or ""),
+            },
         )
 
     def _create_merged_entry(self, user_input, *, clear_missing=()):
@@ -454,6 +749,28 @@ class ZoeNewExtendedOptionsFlow(config_entries.OptionsFlow):
             step_id="cost_model",
             data_schema=vol.Schema(
                 {
+                    vol.Required(
+                        CONF_ELEKTRUM_DRIVE_ENABLED,
+                        default=options.get(
+                            CONF_ELEKTRUM_DRIVE_ENABLED,
+                            DEFAULT_ELEKTRUM_DRIVE_ENABLED,
+                        ),
+                    ): BooleanSelector(),
+                    vol.Required(
+                        CONF_ELEKTRUM_POSTPAID_DISCOUNT_PERCENT,
+                        default=options.get(
+                            CONF_ELEKTRUM_POSTPAID_DISCOUNT_PERCENT,
+                            DEFAULT_ELEKTRUM_POSTPAID_DISCOUNT_PERCENT,
+                        ),
+                    ): NumberSelector(
+                        NumberSelectorConfig(
+                            min=0,
+                            max=100,
+                            step=0.1,
+                            mode=NumberSelectorMode.BOX,
+                            unit_of_measurement="%",
+                        )
+                    ),
                     vol.Required(
                         CONF_DELIVERY_PRICE_EXCL_VAT,
                         default=options.get(

@@ -26,6 +26,7 @@ from homeassistant.core import (
 )
 from homeassistant.helpers.event import async_track_state_change_event
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
+from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .charge_control import find_zoe_new
 from .const import (
@@ -36,8 +37,10 @@ from .const import (
     CONF_LOCATION_CONTROL_ENABLED,
     DEFAULT_IMMAX_CHARGER_ONLINE_ENTITY,
     DEFAULT_IMMAX_CHARGER_PROBLEM_ENTITY,
+    DOMAIN,
     ZOE_LOCATION_ENTITY_ID,
 )
+from .elektrum_drive import ElektrumDriveCoordinator
 
 ATTR_IN_ZONES = "in_zones"
 
@@ -78,9 +81,18 @@ async def async_setup_entry(
     """Set up the smart charging location guard."""
     vehicle = find_zoe_new(hass)
     if vehicle is not None:
+        elektrum_coordinator = hass.data[DOMAIN][config_entry.entry_id].get(
+            "elektrum_coordinator"
+        )
+        elektrum_entities = (
+            [ZoeNewAtElektrumStationSensor(elektrum_coordinator, vehicle)]
+            if elektrum_coordinator is not None
+            else []
+        )
         async_add_entities(
             [
                 ZoeNewLocationAllowedSensor(config_entry, vehicle),
+                *elektrum_entities,
                 *(
                     ZoeNewImmaxProxyBinarySensor(
                         config_entry,
@@ -91,6 +103,53 @@ async def async_setup_entry(
                 ),
             ]
         )
+
+
+class ZoeNewAtElektrumStationSensor(CoordinatorEntity, BinarySensorEntity):
+    """Report whether the Zoe GPS point matches an Elektrum Drive station."""
+
+    _attr_device_class = BinarySensorDeviceClass.PRESENCE
+    _attr_has_entity_name = True
+    _attr_icon = "mdi:ev-station"
+    _attr_name = "At Elektrum Drive station"
+    _attr_suggested_object_id = "renault_zoe_new_at_elektrum_drive_station"
+
+    def __init__(
+        self,
+        coordinator: ElektrumDriveCoordinator,
+        vehicle: Any,
+    ) -> None:
+        super().__init__(coordinator)
+        self._attr_device_info = vehicle.device_info
+        self._attr_unique_id = (
+            f"{vehicle.details.vin}_zoe_new_at_elektrum_station".lower()
+        )
+
+    @property
+    @override
+    def available(self) -> bool:
+        return (
+            super().available
+            and self.coordinator.data.get("enabled", False)
+            and self.coordinator.data.get("location_available", False)
+        )
+
+    @property
+    @override
+    def is_on(self) -> bool:
+        return bool(self.coordinator.data.get("matched"))
+
+    @property
+    @override
+    def extra_state_attributes(self) -> dict[str, Any]:
+        data = self.coordinator.data
+        return {
+            "station_name": data.get("station_name"),
+            "station_id": data.get("station_id"),
+            "distance_m": data.get("distance_m"),
+            "match_radius_m": data.get("match_radius_m"),
+            "location_entity_id": ZOE_LOCATION_ENTITY_ID,
+        }
 
 
 class ZoeNewImmaxProxyBinarySensor(BinarySensorEntity):

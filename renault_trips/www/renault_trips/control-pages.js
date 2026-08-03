@@ -63,6 +63,9 @@ const I18N = {
     chargingMode: "Uzlādes režīms",
     currentPrice: "Pašreizējā cena",
     location: "Atrašanās vieta",
+    elektrumStation: "Elektrum Drive stacija",
+    effectivePrice: "Faktiskā uzlādes cena",
+    notDetected: "Nav noteikta",
     chargerStatus: "Lādētāja statuss",
     chargerOnline: "Lādētājs tiešsaistē",
     chargerProblem: "Lādētāja kļūda",
@@ -90,6 +93,9 @@ const I18N = {
     actualCost: "Faktiskās izmaksas",
     remainingTime: "Atlikušais uzlādes laiks",
     calculatedPower: "Aprēķinātā uzlādes jauda",
+    estimatedFullAt: "100% būs ap",
+    notChargingNow: "Netiek lādēts",
+    notScheduled: "Nav ieplānots",
     locationControl: "Viedā uzlāde šajā lokācijā",
     anyLocation: "Atļaut jebkurā lokācijā",
     locationMatches: "Pašreizējā lokācija atbilst",
@@ -147,6 +153,12 @@ const I18N = {
     current: "strāva",
     power: "jauda",
     startEnd: "Sākums / beigas",
+    station: "Stacija",
+    connector: "Konektors",
+    homeNordPool: "Mājas / Nord Pool",
+    elektrumDrive: "Elektrum Drive",
+    elektrumDriveApp: "Elektrum Drive (precīzs darījums)",
+    mobilly: "Mobilly (precīzs darījums)",
     duration: "Ilgums",
     batteryEnergy: "Baterijas enerģija",
     gridEnergy: "Tīkla enerģija",
@@ -219,6 +231,9 @@ const I18N = {
     chargingMode: "Charging mode",
     currentPrice: "Current price",
     location: "Location",
+    elektrumStation: "Elektrum Drive station",
+    effectivePrice: "Effective charging price",
+    notDetected: "Not detected",
     chargerStatus: "Charger status",
     chargerOnline: "Charger online",
     chargerProblem: "Charger problem",
@@ -246,6 +261,9 @@ const I18N = {
     actualCost: "Actual cost",
     remainingTime: "Charging time remaining",
     calculatedPower: "Calculated charging power",
+    estimatedFullAt: "Estimated 100%",
+    notChargingNow: "Not charging",
+    notScheduled: "Not scheduled",
     locationControl: "Smart charging at this location",
     anyLocation: "Allow at any location",
     locationMatches: "Current location matches",
@@ -303,6 +321,12 @@ const I18N = {
     current: "current",
     power: "power",
     startEnd: "Start / end",
+    station: "Station",
+    connector: "Connector",
+    homeNordPool: "Home / Nord Pool",
+    elektrumDrive: "Elektrum Drive",
+    elektrumDriveApp: "Elektrum Drive (exact transaction)",
+    mobilly: "Mobilly (exact transaction)",
     duration: "Duration",
     batteryEnergy: "Battery energy",
     gridEnergy: "Grid energy",
@@ -335,11 +359,13 @@ const CONFIG = {
       ["sensor.battery", "battery"],
       ["sensor.battery_autonomy", "range"],
       ["sensor.mileage", "mileage"],
+      ["sensor.zoe_calculated_charging_power", "calculatedPower"],
+      ["sensor.battery", "estimatedFullAt", { display: "estimatedFull" }],
       ["sensor.charge_state", "chargeState"],
       ["sensor.plug_state", "plugState"],
       ["select.renault_zoe_new_charging_mode", "chargingMode"],
-      ["sensor.renault_zoe_new_nord_pool_price", "currentPrice"],
-      ["device_tracker.location", "location"],
+      ["sensor.renault_zoe_new_effective_charging_price", "effectivePrice"],
+      ["sensor.renault_zoe_new_elektrum_drive_station", "elektrumStation"],
     ],
     actions: [
       ["button.start_charge", "startCharge", "start", "play"],
@@ -912,6 +938,53 @@ function stateFor(entityId) {
   return currentStates[entityId] || null;
 }
 
+function plannedFullChargeDisplay() {
+  const plannedLevel = toNumber(stateFor("sensor.zoe_planned_charge_level")?.state);
+  if (!Number.isFinite(plannedLevel) || plannedLevel < 99.5) return null;
+  const plannedTimes = stateFor("sensor.zoe_planned_charging_times")?.state || "";
+  const matches = [
+    ...plannedTimes.matchAll(/(\d{2})\.(\d{2})\s+\d{2}:\d{2}-(\d{2}:\d{2})/g),
+  ];
+  if (!matches.length) return null;
+  const lastWindow = matches[matches.length - 1];
+  return `~${lastWindow[1]}.${lastWindow[2]} ${lastWindow[3]}`;
+}
+
+function estimatedFullChargeDisplay() {
+  const batteryState = stateFor("sensor.battery");
+  const powerState = stateFor("sensor.zoe_calculated_charging_power");
+  const soc = toNumber(batteryState?.state);
+  if (!Number.isFinite(soc)) return t("unavailable");
+  if (soc >= 99.5) return "100%";
+
+  const charging = stateFor("binary_sensor.charging")?.state === "on"
+    || stateFor("sensor.charge_state")?.state === "charge_in_progress";
+  const smartCharging = stateFor("input_boolean.zoe_smart_charging")?.state === "on";
+  const power = toNumber(powerState?.state);
+  if (charging && Number.isFinite(power) && power > 0) {
+    const capacity = toNumber(powerState?.attributes?.battery_capacity_kwh) || 52;
+    const efficiency = toNumber(powerState?.attributes?.charging_efficiency) || 0.9;
+    const hoursRemaining = ((100 - soc) / 100 * capacity) / (power * efficiency);
+    if (Number.isFinite(hoursRemaining) && hoursRemaining >= 0 && hoursRemaining <= 48) {
+      const fullAt = new Date(Date.now() + hoursRemaining * 3600000);
+      const now = new Date();
+      const sameDay = fullAt.getFullYear() === now.getFullYear()
+        && fullAt.getMonth() === now.getMonth()
+        && fullAt.getDate() === now.getDate();
+      const formatted = new Intl.DateTimeFormat(language === "lv" ? "lv-LV" : "en-GB", {
+        ...(sameDay ? {} : { day: "2-digit", month: "2-digit" }),
+        hour: "2-digit",
+        minute: "2-digit",
+      }).format(fullAt);
+      return `~${formatted}`;
+    }
+  }
+
+  if (charging) return t("unavailable");
+  if (!smartCharging) return t("notChargingNow");
+  return plannedFullChargeDisplay() || t("notScheduled");
+}
+
 function displayState(state) {
   if (!state || ["unknown", "unavailable", "none", ""].includes(state.state)) {
     return t("unavailable");
@@ -949,6 +1022,7 @@ function displayState(state) {
       charge_to_percent: "Uzlāde līdz procentiem",
       fixed_charge: "Fiksēta uzlāde",
       scheduled_charge: "Ieplānota uzlāde",
+      not_detected: "Nav noteikta",
       "Solar surplus": "Saules pārpalikums",
       "Nord Pool": "Nord Pool",
       Off: "Izslēgts",
@@ -967,6 +1041,7 @@ function displayState(state) {
       charge_to_percent: "Charge to percentage",
       fixed_charge: "Fixed charge",
       scheduled_charge: "Scheduled charge",
+      not_detected: "Not detected",
       "Solar surplus": "Solar surplus",
       "Nord Pool": "Nord Pool",
       Off: "Off",
@@ -1053,17 +1128,26 @@ function itemIsVisible(item) {
 
 function renderMetrics() {
   metricsEl.replaceChildren();
-  for (const [entityId, labelKey] of pageConfig.metrics) {
+  for (const [entityId, labelKey, options = {}] of pageConfig.metrics) {
     const state = stateFor(entityId);
     const button = document.createElement("button");
     button.type = "button";
     button.className = "metric";
     button.dataset.entity = entityId;
     button.title = entityId;
-    const changed = stateTime(state);
+    const changed = options.display === "estimatedFull"
+      ? Math.max(
+        stateTime(state),
+        stateTime(stateFor("sensor.zoe_calculated_charging_power")),
+        stateTime(stateFor("sensor.zoe_planned_charging_times")),
+      )
+      : stateTime(state);
+    const value = options.display === "estimatedFull"
+      ? estimatedFullChargeDisplay()
+      : displayState(state);
     button.innerHTML = `
       <span class="metric-label">${escapeHtml(t(labelKey))}</span>
-      <strong class="metric-value">${escapeHtml(displayState(state))}</strong>
+      <strong class="metric-value">${escapeHtml(value)}</strong>
       <span class="metric-note">${changed ? escapeHtml(t("lastChanged", {
         time: new Intl.DateTimeFormat(language === "lv" ? "lv-LV" : "en-GB", {
           day: "2-digit",
@@ -2083,6 +2167,7 @@ function renderImmaxCharts(historyMap, statisticsMap, range) {
 
 function sessionEntity() {
   return [
+    "sensor.zoe_charge_sessions_31d_raw",
     "sensor.zoe_charge_sessions_31d",
     "sensor.zoe_charge_sessions_history",
     "sensor.zoe_charge_sessions_history_raw",
@@ -2097,6 +2182,24 @@ function formatSessionDate(value, includeDate = true) {
     hour: "2-digit",
     minute: "2-digit",
   }).format(time);
+}
+
+function sessionStationLabel(session) {
+  if (session.station_name) return session.station_name;
+  if (["home_nord_pool", "legacy_nord_pool"].includes(session.price_source)) {
+    return t("homeNordPool");
+  }
+  return "-";
+}
+
+function sessionPriceSourceLabel(session) {
+  if (session.price_source === "elektrum_drive") return t("elektrumDrive");
+  if (session.price_source === "elektrum_drive_app") return t("elektrumDriveApp");
+  if (session.price_source === "mobilly") return t("mobilly");
+  if (["home_nord_pool", "legacy_nord_pool"].includes(session.price_source)) {
+    return t("homeNordPool");
+  }
+  return session.price_source || "-";
 }
 
 function renderSessions() {
@@ -2118,6 +2221,9 @@ function renderSessions() {
     const battery = toNumber(session.estimated_battery_energy_kwh) || 0;
     const grid = toNumber(session.grid_energy_kwh);
     const cost = toNumber(session.total_cost_eur);
+    const station = sessionStationLabel(session);
+    const connector = session.connector_code || "";
+    const priceSource = sessionPriceSourceLabel(session);
     totalBattery += battery;
     if (Number.isFinite(grid)) totalGrid += grid;
     if (Number.isFinite(cost)) totalCost += cost;
@@ -2125,11 +2231,12 @@ function renderSessions() {
     return `
       <tr>
         <td>${escapeHtml(formatSessionDate(session.start))}<br>${escapeHtml(formatSessionDate(session.end, false))}</td>
+        <td>${escapeHtml(station)}${connector ? `<span class="cell-note">${escapeHtml(connector)}</span>` : ""}</td>
         <td>${escapeHtml(Math.round(toNumber(session.duration_min) || 0))} min</td>
         <td>${escapeHtml(toNumber(session.start_soc) ?? "-")} → ${escapeHtml(toNumber(session.end_soc) ?? "-")}%</td>
         <td>~${battery.toFixed(2)} kWh</td>
         <td>${Number.isFinite(grid) ? `${grid.toFixed(2)} kWh` : "-"}</td>
-        <td>${Number.isFinite(toNumber(session.total_rate_c_per_kwh)) ? `${coverageMark}${toNumber(session.total_rate_c_per_kwh).toFixed(2)} c/kWh` : "-"}</td>
+        <td>${Number.isFinite(toNumber(session.total_rate_c_per_kwh)) ? `${coverageMark}${toNumber(session.total_rate_c_per_kwh).toFixed(2)} c/kWh` : "-"}<span class="cell-note">${escapeHtml(priceSource)}</span></td>
         <td><strong>${Number.isFinite(cost) ? `${coverageMark}${cost.toFixed(2)} EUR` : "-"}</strong></td>
         <td>${escapeHtml(session.status || "-")}</td>
       </tr>`;
@@ -2140,6 +2247,7 @@ function renderSessions() {
       <table>
         <thead><tr>
           <th>${escapeHtml(t("startEnd"))}</th>
+          <th>${escapeHtml(t("station"))}</th>
           <th>${escapeHtml(t("duration"))}</th>
           <th>SOC</th>
           <th>${escapeHtml(t("batteryEnergy"))}</th>
@@ -2151,7 +2259,7 @@ function renderSessions() {
         <tbody>${rows}</tbody>
         <tfoot><tr>
           <td><strong>${escapeHtml(t("total"))}</strong></td>
-          <td></td><td></td>
+          <td></td><td></td><td></td>
           <td><strong>~${totalBattery.toFixed(2)} kWh</strong></td>
           <td><strong>${totalGrid.toFixed(2)} kWh</strong></td>
           <td><strong>${totalRate.toFixed(2)} c/kWh</strong></td>
@@ -2227,6 +2335,15 @@ async function loadCurrent(silent = false) {
     } else {
       const states = await haFetch("/api/states");
       currentStates = Object.fromEntries(states.map((state) => [state.entity_id, state]));
+    }
+    if (PAGE === "charging") {
+      const liveSessions = await haFetch(
+        "/api/states/sensor.zoe_charge_sessions_31d_raw",
+      );
+      currentStates = {
+        ...currentStates,
+        [liveSessions.entity_id]: liveSessions,
+      };
     }
     applyConfiguredLanguage();
     renderMetrics();

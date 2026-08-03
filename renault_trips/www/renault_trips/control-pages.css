@@ -512,10 +512,19 @@ button.metric:hover {
 
 table {
   width: 100%;
-  min-width: 900px;
+  min-width: 1050px;
   border-collapse: collapse;
   font-size: 13px;
   font-variant-numeric: tabular-nums;
+}
+
+.cell-note {
+  display: block;
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
 }
 
 th,

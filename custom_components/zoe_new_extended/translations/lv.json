@@ -19,6 +19,7 @@
           "dashboard": "Informācijas panelis",
           "smart_charging": "Renault viedā uzlāde",
           "cost_model": "Enerģijas izmaksu modelis",
+          "charging_accounts": "Uzlādes konti",
           "immax_setpoints": "IMMAX setpointi",
           "immax_entities": "IMMAX entītiju avoti"
         }
@@ -51,12 +52,50 @@
         "title": "Enerģijas izmaksu modelis",
         "description": "Iestatiet vērtības, kuras izmanto uzlāžu sesiju izmaksām, baterijas enerģijas vērtībai un braucienu rezerves aprēķiniem.",
         "data": {
+          "elektrum_drive_enabled": "Noteikt Elektrum Drive staciju un tarifu",
+          "elektrum_postpaid_discount_percent": "Elektrum paša tīkla pēcapmaksas atlaide",
           "delivery_price_excl_vat": "Pārvades cena bez PVN",
           "energy_vat_percent": "Enerģijas PVN",
           "battery_capacity_kwh": "Baterijas izmantojamā ietilpība",
           "charging_efficiency_percent": "Uzlādes efektivitāte",
           "default_charging_power_kw": "Noklusējuma uzlādes jauda",
           "fallback_consumption_kwh_100": "Rezerves patēriņš"
+        }
+      },
+      "charging_accounts": {
+        "title": "Uzlādes konti",
+        "description": "Pārvaldi jebkuru skaitu Mobilly un Elektrum Drive kontu. Pievienoti konti: {account_count}. Visu ieslēgto kontu darījumi tiek apvienoti, nepieskaitot pārklājošās uzlādes divreiz.",
+        "data": {
+          "account_action": "Darbība ar kontu"
+        }
+      },
+      "mobilly_account": {
+        "title": "Mobilly konts",
+        "description": "{mode} Mobilly kontu. Tiks sinhronizēti gan Darījumi, gan Darījumi pie rēķina. Labojot kontu, atstāj paroli tukšu, lai saglabātu esošo.",
+        "data": {
+          "name": "Konta nosaukums",
+          "enabled": "Ieslēgts",
+          "username": "Tālruņa numurs / lietotājvārds",
+          "password": "Parole"
+        }
+      },
+      "elektrum_account": {
+        "title": "Elektrum Drive konts",
+        "description": "{mode} Elektrum Drive lietotnes kontu. Labojot kontu, atstāj piekļuves tokenu un ierīces ID tukšu, lai saglabātu esošos. Konts bez tokena tiks saglabāts kā neautorizēts.",
+        "data": {
+          "name": "Konta nosaukums",
+          "enabled": "Ieslēgts",
+          "phone": "Tālruņa numurs",
+          "country_code": "Valsts tālruņa kods",
+          "access_token": "Lietotnes piekļuves tokens",
+          "device_uuid": "Lietotnes ierīces ID"
+        }
+      },
+      "remove_charging_account": {
+        "title": "Noņemt uzlādes kontu",
+        "description": "Noņemt {account_name} un saglabātos autorizācijas datus? Vēsturiskie HA stāvokļi netiks dzēsti.",
+        "data": {
+          "confirm": "Apstiprināt noņemšanu"
         }
       },
       "immax_setpoints": {
@@ -115,6 +154,8 @@
       }
     },
     "error": {
+      "account_removal_not_confirmed": "Pirms turpināšanas apstiprini konta noņemšanu.",
+      "mobilly_credentials_required": "Mobilly lietotājvārds un parole ir obligāti.",
       "soc_resume_must_exceed_stop": "Baterijas SOC atsākšanas slieksnim jābūt lielākam par apturēšanas slieksni.",
       "solar_max_must_reach_min": "Maksimālajai saules uzlādes jaudai jābūt vismaz tikpat lielai kā minimālajai."
     }

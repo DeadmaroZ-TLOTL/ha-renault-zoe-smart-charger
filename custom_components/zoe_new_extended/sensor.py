@@ -29,12 +29,15 @@ from homeassistant.helpers.event import async_track_state_change_event
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .charge_control import ZoeNewChargeControl
+from .charging_accounts import ChargingAccountsCoordinator
 from .const import (
     CONF_BATTERY_CAPACITY_KWH,
     CONF_CHARGING_EFFICIENCY_PERCENT,
     CONF_DASHBOARD_LANGUAGE,
     CONF_DEFAULT_CHARGING_POWER_KW,
     CONF_DELIVERY_PRICE_EXCL_VAT,
+    CONF_ELEKTRUM_DRIVE_ENABLED,
+    CONF_ELEKTRUM_POSTPAID_DISCOUNT_PERCENT,
     CONF_ENERGY_VAT_PERCENT,
     CONF_FALLBACK_CONSUMPTION_KWH_100,
     CONF_IMMAX_BATTERY_CHARGE_ENTITY,
@@ -61,6 +64,8 @@ from .const import (
     DEFAULT_DASHBOARD_LANGUAGE,
     DEFAULT_DEFAULT_CHARGING_POWER_KW,
     DEFAULT_DELIVERY_PRICE_EXCL_VAT,
+    DEFAULT_ELEKTRUM_DRIVE_ENABLED,
+    DEFAULT_ELEKTRUM_POSTPAID_DISCOUNT_PERCENT,
     DEFAULT_ENERGY_VAT_PERCENT,
     DEFAULT_FALLBACK_CONSUMPTION_KWH_100,
     DEFAULT_IMMAX_BATTERY_CHARGE_ENTITY,
@@ -84,6 +89,7 @@ from .const import (
     DEFAULT_IMMAX_VOLTAGE_C_ENTITY,
     DOMAIN,
 )
+from .elektrum_drive import ElektrumDriveCoordinator
 from .extras import (
     ZoeNewCloudExtrasCoordinator,
     active_contracts,
@@ -367,6 +373,12 @@ async def async_setup_entry(
     extras_coordinator = hass.data[DOMAIN][config_entry.entry_id].get(
         "extras_coordinator"
     )
+    elektrum_coordinator = hass.data[DOMAIN][config_entry.entry_id].get(
+        "elektrum_coordinator"
+    )
+    charging_accounts_coordinator = hass.data[DOMAIN][config_entry.entry_id].get(
+        "charging_accounts_coordinator"
+    )
     entities: list[SensorEntity] = []
     if control is not None:
         entities.extend(
@@ -384,6 +396,19 @@ async def async_setup_entry(
         )
         if nordpool_coordinator is not None:
             entities.append(ZoeNordPoolPriceSensor(nordpool_coordinator, control))
+        if elektrum_coordinator is not None and nordpool_coordinator is not None:
+            entities.extend(
+                (
+                    ZoeNewElektrumStationSensor(elektrum_coordinator, control),
+                    ZoeNewElektrumDrivePriceSensor(elektrum_coordinator, control),
+                    ZoeNewEffectiveChargingPriceSensor(
+                        elektrum_coordinator,
+                        nordpool_coordinator,
+                        config_entry,
+                        control,
+                    ),
+                )
+            )
         if extras_coordinator is not None:
             entities.extend(
                 (
@@ -406,7 +431,57 @@ async def async_setup_entry(
                     ZoeNewRemoteServicesSensor(extras_coordinator, control),
                 )
             )
+        if charging_accounts_coordinator is not None:
+            entities.append(
+                ZoeNewChargingAccountsSensor(
+                    charging_accounts_coordinator,
+                    control,
+                )
+            )
     async_add_entities(entities)
+
+
+class ZoeNewChargingAccountsSensor(CoordinatorEntity, SensorEntity):
+    """Expose merged exact-cost transactions from all configured accounts."""
+
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_has_entity_name = True
+    _attr_icon = "mdi:account-cash"
+    _attr_name = "Charging accounts"
+    _attr_suggested_object_id = "renault_zoe_new_charging_accounts"
+    _unrecorded_attributes = frozenset({"transactions"})
+
+    def __init__(
+        self,
+        coordinator: ChargingAccountsCoordinator,
+        control: ZoeNewChargeControl,
+    ) -> None:
+        super().__init__(coordinator)
+        self._attr_device_info = control.vehicle.device_info
+        self._attr_unique_id = (
+            f"{control.vehicle.details.vin}_charging_accounts".lower()
+        )
+
+    @property
+    @override
+    def native_value(self) -> int:
+        """Return the number of unique provider transactions."""
+        return int(self.coordinator.data.get("transaction_count", 0))
+
+    @property
+    @override
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Expose sanitized account status and merged transaction details."""
+        return {
+            "configured": self.coordinator.data.get("configured", False),
+            "account_count": self.coordinator.data.get("account_count", 0),
+            "enabled_account_count": self.coordinator.data.get(
+                "enabled_account_count", 0
+            ),
+            "accounts": self.coordinator.data.get("accounts", []),
+            "transactions": self.coordinator.data.get("transactions", []),
+            "last_fetched": self.coordinator.data.get("fetched_at"),
+        }
 
 
 class ZoeNewCostSettingsSensor(SensorEntity):
@@ -503,6 +578,16 @@ class ZoeNewCostSettingsSensor(SensorEntity):
         settings["immax_total_load_entity"] = self.config_entry.options.get(
             CONF_IMMAX_TOTAL_LOAD_ENTITY,
             DEFAULT_IMMAX_TOTAL_LOAD_ENTITY,
+        )
+        settings["elektrum_drive_enabled"] = self.config_entry.options.get(
+            CONF_ELEKTRUM_DRIVE_ENABLED,
+            DEFAULT_ELEKTRUM_DRIVE_ENABLED,
+        )
+        settings["elektrum_postpaid_discount_percent"] = (
+            self.config_entry.options.get(
+                CONF_ELEKTRUM_POSTPAID_DISCOUNT_PERCENT,
+                DEFAULT_ELEKTRUM_POSTPAID_DISCOUNT_PERCENT,
+            )
         )
         return settings
 
@@ -669,6 +754,228 @@ class ZoeNordPoolPriceSensor(CoordinatorEntity, SensorEntity):
         return {
             key: value for key, value in self.coordinator.data.items() if key != "value"
         }
+
+
+class _ZoeNewElektrumSensor(CoordinatorEntity, SensorEntity):
+    """Base entity for Elektrum Drive station and tariff data."""
+
+    _attr_has_entity_name = True
+
+    def __init__(
+        self,
+        coordinator: ElektrumDriveCoordinator,
+        control: ZoeNewChargeControl,
+        unique_id_suffix: str,
+    ) -> None:
+        super().__init__(coordinator)
+        self._attr_device_info = control.vehicle.device_info
+        self._attr_unique_id = (
+            f"{control.vehicle.details.vin}_{unique_id_suffix}".lower()
+        )
+
+
+class ZoeNewElektrumStationSensor(_ZoeNewElektrumSensor):
+    """Expose the Elektrum Drive station nearest to the Zoe."""
+
+    _attr_icon = "mdi:ev-station"
+    _attr_name = "Elektrum Drive station"
+    _attr_suggested_object_id = "renault_zoe_new_elektrum_drive_station"
+    _unrecorded_attributes = frozenset({"connectors"})
+
+    def __init__(
+        self,
+        coordinator: ElektrumDriveCoordinator,
+        control: ZoeNewChargeControl,
+    ) -> None:
+        super().__init__(coordinator, control, "zoe_new_elektrum_station")
+
+    @property
+    @override
+    def available(self) -> bool:
+        return (
+            super().available
+            and self.coordinator.data.get("enabled", False)
+            and self.coordinator.data.get("location_available", False)
+        )
+
+    @property
+    @override
+    def native_value(self) -> str:
+        if self.coordinator.data.get("matched"):
+            return self.coordinator.data.get("station_name") or "detected"
+        return "not_detected"
+
+    @property
+    @override
+    def extra_state_attributes(self) -> dict[str, Any]:
+        return {
+            key: value
+            for key, value in self.coordinator.data.items()
+            if key not in {"price_c_per_kwh", "selected_connector"}
+        }
+
+
+class ZoeNewElektrumDrivePriceSensor(_ZoeNewElektrumSensor):
+    """Expose the current connector price including applicable discount."""
+
+    _attr_device_class = SensorDeviceClass.MONETARY
+    _attr_icon = "mdi:ev-station"
+    _attr_name = "Elektrum Drive price"
+    _attr_native_unit_of_measurement = "c/kWh"
+    _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_suggested_object_id = "renault_zoe_new_elektrum_drive_price"
+
+    def __init__(
+        self,
+        coordinator: ElektrumDriveCoordinator,
+        control: ZoeNewChargeControl,
+    ) -> None:
+        super().__init__(coordinator, control, "zoe_new_elektrum_drive_price")
+
+    @property
+    @override
+    def available(self) -> bool:
+        return (
+            super().available
+            and self.coordinator.data.get("matched", False)
+            and self.coordinator.data.get("price_c_per_kwh") is not None
+        )
+
+    @property
+    @override
+    def native_value(self) -> float | None:
+        return self.coordinator.data.get("price_c_per_kwh")
+
+    @property
+    @override
+    def extra_state_attributes(self) -> dict[str, Any]:
+        data = self.coordinator.data
+        return {
+            "station_name": data.get("station_name"),
+            "station_id": data.get("station_id"),
+            "station_address": data.get("station_address"),
+            "station_city": data.get("station_city"),
+            "distance_m": data.get("distance_m"),
+            "partner": data.get("station_partner"),
+            "connector_code": data.get("connector_code"),
+            "connector_status": data.get("connector_status"),
+            "connector_type": data.get("connector_type"),
+            "connector_power_kw": data.get("connector_power_kw"),
+            "direct_price_c_per_kwh": data.get("direct_price_c_per_kwh"),
+            "postpaid_discount_percent": data.get(
+                "postpaid_discount_percent"
+            ),
+            "vat_included": True,
+            "source": data.get("price_source"),
+            "source_url": data.get("price_url"),
+            "last_fetched": data.get("fetched_at"),
+        }
+
+
+class ZoeNewEffectiveChargingPriceSensor(_ZoeNewElektrumSensor):
+    """Expose one all-in price for live and completed charging costs."""
+
+    _attr_device_class = SensorDeviceClass.MONETARY
+    _attr_icon = "mdi:cash-sync"
+    _attr_name = "Effective charging price"
+    _attr_native_unit_of_measurement = "c/kWh"
+    _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_suggested_object_id = "renault_zoe_new_effective_charging_price"
+
+    def __init__(
+        self,
+        coordinator: ElektrumDriveCoordinator,
+        nordpool_coordinator: NordPoolPriceCoordinator,
+        config_entry: ConfigEntry,
+        control: ZoeNewChargeControl,
+    ) -> None:
+        super().__init__(coordinator, control, "zoe_new_effective_charging_price")
+        self.nordpool_coordinator = nordpool_coordinator
+        self.config_entry = config_entry
+
+    @property
+    def _price_data(self) -> dict[str, Any]:
+        elektrum = self.coordinator.data
+        if elektrum.get("matched"):
+            return {
+                "value": elektrum.get("price_c_per_kwh"),
+                "price_source": "elektrum_drive",
+                "station_name": elektrum.get("station_name"),
+                "station_id": elektrum.get("station_id"),
+                "station_address": elektrum.get("station_address"),
+                "station_city": elektrum.get("station_city"),
+                "station_partner": elektrum.get("station_partner"),
+                "connector_code": elektrum.get("connector_code"),
+                "connector_status": elektrum.get("connector_status"),
+                "direct_price_c_per_kwh": elektrum.get(
+                    "direct_price_c_per_kwh"
+                ),
+                "postpaid_discount_percent": elektrum.get(
+                    "postpaid_discount_percent"
+                ),
+                "source_url": elektrum.get("price_url"),
+                "last_fetched": elektrum.get("fetched_at"),
+            }
+
+        spot_price = self.nordpool_coordinator.data.get("value")
+        if spot_price is None:
+            return {"value": None, "price_source": "home_nord_pool"}
+        options = self.config_entry.options
+        delivery_excl_vat = float(
+            options.get(
+                CONF_DELIVERY_PRICE_EXCL_VAT,
+                DEFAULT_DELIVERY_PRICE_EXCL_VAT,
+            )
+        )
+        vat_percent = float(
+            options.get(CONF_ENERGY_VAT_PERCENT, DEFAULT_ENERGY_VAT_PERCENT)
+        )
+        delivery_cents = delivery_excl_vat * (1 + vat_percent / 100) * 100
+        return {
+            "value": round(float(spot_price) + delivery_cents, 4),
+            "price_source": "home_nord_pool",
+            "spot_price_c_per_kwh": float(spot_price),
+            "delivery_price_c_per_kwh": round(delivery_cents, 4),
+            "nordpool_region": self.nordpool_coordinator.data.get("region"),
+            "nordpool_source_entity": self.nordpool_coordinator.data.get(
+                "source_entity"
+            ),
+            "last_fetched": self.nordpool_coordinator.data.get("last_fetched"),
+        }
+
+    @property
+    @override
+    def available(self) -> bool:
+        return super().available and self._price_data.get("value") is not None
+
+    @property
+    @override
+    def native_value(self) -> float | None:
+        return self._price_data.get("value")
+
+    @property
+    @override
+    def extra_state_attributes(self) -> dict[str, Any]:
+        return {
+            **{key: value for key, value in self._price_data.items() if key != "value"},
+            "all_in": True,
+            "vat_included": True,
+            "elektrum_station_matched": self.coordinator.data.get(
+                "matched", False
+            ),
+        }
+
+    async def async_added_to_hass(self) -> None:
+        await super().async_added_to_hass()
+        self.async_on_remove(
+            self.nordpool_coordinator.async_add_listener(
+                self._handle_nordpool_update
+            )
+        )
+
+    @callback
+    def _handle_nordpool_update(self) -> None:
+        self.async_write_ha_state()
 
 
 class ZoeNewChargeCommandSensor(SensorEntity):

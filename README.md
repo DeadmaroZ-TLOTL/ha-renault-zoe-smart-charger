@@ -25,6 +25,10 @@ used by the included Nord Pool smart charger package.
 - Smart charging permission by one or more Home Assistant zones.
 - Nord Pool country/price area, Renault planner targets, price cap, energy cost
   model, and IMMAX setpoints in the integration options.
+- Any number of Mobilly and Elektrum Drive accounts. Exact completed-session
+  energy and cost are merged across accounts, including both Mobilly statement
+  pages, with Elektrum app transactions taking priority over overlapping
+  Mobilly rows so one charge is never counted twice.
 - Local Renault icon and logo on Home Assistant 2026.3 or newer.
 - Optional Nord Pool planner, switchable SOC/range target, maximum spot price, deadline,
   estimated cost, and adaptive charging model.
@@ -64,7 +68,10 @@ The official Renault integration must already contain a loaded Zoe phase 2.
 Open **Zoe New Extended > Configure > Renault smart charging** to select the
 planner's Nord Pool country, targets, price cap, and allowed zones. Use
 **Energy cost model** for delivery price, VAT, usable capacity, efficiency, and
-fallback consumption. **IMMAX setpoints** stores the charger controller limits
+fallback consumption. **Charging accounts** adds, edits, disables, or removes
+multiple Mobilly and Elektrum Drive accounts. Account secrets stay in the Home
+Assistant config-entry store and are not exposed as entity attributes or saved
+in this repository. **IMMAX setpoints** stores the charger controller limits
 and synchronizes them to the included helpers. Use **IMMAX entity sources** to
 select the charger controls, phase measurements, grid export, battery flow,
 solar production, vehicle SOC, and price entities. Charger control and current

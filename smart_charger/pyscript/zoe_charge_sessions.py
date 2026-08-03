@@ -2,12 +2,18 @@
 
 import asyncio
 import math
+import time
+from bisect import bisect_right
 from datetime import datetime, timedelta, timezone
 from functools import partial
 
 from custom_components.pyscript.function import Function
 from homeassistant.components.recorder import get_instance
 from homeassistant.components.recorder.history import get_significant_states
+
+from custom_components.zoe_new_extended.charging_accounts_data import (
+    apply_provider_transactions,
+)
 
 
 MODEL_CODE = "X102VE"
@@ -21,9 +27,13 @@ VISIBLE_HISTORY_DAYS = 31
 LEARNING_HISTORY_DAYS = 180
 MAX_EXPOSED_HISTORY_SESSIONS = 50
 UPDATE_INTERVAL_MINUTES = 15
+EFFECTIVE_PRICE_ENTITY = "sensor.renault_zoe_new_effective_charging_price"
 DYNAMIC_PRICE_ENTITY = "sensor.renault_zoe_new_nord_pool_price"
 LEGACY_PRICE_ENTITY = "sensor.nordpool_kwh_lv_eur_3_10_021"
 COST_SETTINGS_ENTITY = "sensor.renault_zoe_new_cost_settings"
+CHARGING_ACCOUNTS_ENTITY = "sensor.renault_zoe_new_charging_accounts"
+EXACT_PROVIDER_PRICE_SOURCES = {"elektrum_drive_app", "mobilly"}
+PYSCRIPT_REVISION = "multi_account_exact_costs_v1"
 
 _refresh_in_progress = False
 
@@ -159,7 +169,15 @@ def _history_state_time(item):
     return _parse_datetime(value)
 
 
-def _resolve_price_entity():
+def _history_state_attributes(item):
+    if isinstance(item, dict):
+        attributes = item.get("attributes", {})
+    else:
+        attributes = getattr(item, "attributes", {})
+    return attributes if isinstance(attributes, dict) else {}
+
+
+def _resolve_nordpool_price_entity():
     """Prefer the selected area's original sensor to retain old price history."""
     hass = Function.hass
     dynamic = hass.states.get(DYNAMIC_PRICE_ENTITY)
@@ -173,7 +191,32 @@ def _resolve_price_entity():
     return DYNAMIC_PRICE_ENTITY
 
 
-async def _get_price_history(start, end, price_entity):
+def _current_effective_price():
+    current = Function.hass.states.get(EFFECTIVE_PRICE_ENTITY)
+    if current is None:
+        return None
+    value = _number(current.state, float("nan"))
+    if not math.isfinite(value):
+        return None
+    return {"cents_per_kwh": value, "attributes": dict(current.attributes)}
+
+
+def _provider_transactions():
+    """Read normalized, de-duplicated transactions from account coordinators."""
+    current = Function.hass.states.get(CHARGING_ACCOUNTS_ENTITY)
+    if current is None:
+        return []
+    transactions = current.attributes.get("transactions") or []
+    return [dict(item) for item in transactions if isinstance(item, dict)]
+
+
+async def _get_price_history(
+    start,
+    end,
+    price_entity,
+    *,
+    include_attributes=False,
+):
     hass = Function.hass
     query = partial(
         get_significant_states,
@@ -183,7 +226,7 @@ async def _get_price_history(start, end, price_entity):
         [price_entity],
         include_start_time_state=True,
         significant_changes_only=False,
-        no_attributes=True,
+        no_attributes=not include_attributes,
     )
     result = await get_instance(hass).async_add_executor_job(query)
     prices = []
@@ -191,11 +234,59 @@ async def _get_price_history(start, end, price_entity):
         item_time = _history_state_time(item)
         item_value = _number(_history_state_value(item), float("nan"))
         if item_time is not None and math.isfinite(item_value):
-            prices.append({"time": item_time, "cents_per_kwh": item_value})
+            price = {"time": item_time, "cents_per_kwh": item_value}
+            if include_attributes:
+                price["attributes"] = _history_state_attributes(item)
+            prices.append(price)
     return sorted(prices, key=lambda item: item["time"])
 
 
-def _add_session_cost(session, prices, settings):
+def _weighted_price(start, end, prices, price_times):
+    covered_seconds = 0.0
+    weighted_price = 0.0
+    source_seconds = {}
+    source_attributes = {}
+    first_index = max(0, bisect_right(price_times, start) - 1)
+    for index in range(first_index, len(prices)):
+        price = prices[index]
+        slot_start = price["time"]
+        if slot_start >= end:
+            break
+        slot_end = prices[index + 1]["time"] if index + 1 < len(prices) else end
+        overlap_start = max(start, slot_start)
+        overlap_end = min(end, slot_end)
+        overlap_seconds = (overlap_end - overlap_start).total_seconds()
+        if overlap_seconds <= 0:
+            continue
+        covered_seconds += overlap_seconds
+        weighted_price += overlap_seconds * price["cents_per_kwh"]
+        attributes = price.get("attributes", {})
+        source_key = (
+            attributes.get("price_source"),
+            attributes.get("station_id"),
+            attributes.get("connector_code"),
+        )
+        source_seconds[source_key] = source_seconds.get(source_key, 0) + overlap_seconds
+        source_attributes[source_key] = attributes
+    if covered_seconds <= 0:
+        return None, 0.0, {}
+    dominant_key = max(source_seconds, key=source_seconds.get) if source_seconds else None
+    return (
+        weighted_price / covered_seconds,
+        covered_seconds,
+        source_attributes.get(dominant_key, {}),
+    )
+
+
+def _add_session_cost(
+    session,
+    effective_prices,
+    effective_price_times,
+    legacy_prices,
+    legacy_price_times,
+    settings,
+    current_effective=None,
+):
     start = _parse_datetime(session.get("start"))
     end = _parse_datetime(session.get("end"))
     result = dict(session)
@@ -208,25 +299,18 @@ def _add_session_cost(session, prices, settings):
             "delivery_cost_eur": None,
             "total_cost_eur": None,
             "price_coverage_percent": 0.0,
+            "price_source": None,
+            "price_entity": None,
+            "station_name": None,
+            "station_id": None,
+            "connector_code": None,
         }
     )
-    if start is None or end is None or end <= start or not prices:
+    if start is None or end is None or end <= start:
         return result
 
-    covered_seconds = 0.0
-    weighted_price = 0.0
-    for index, price in enumerate(prices):
-        slot_start = price["time"]
-        slot_end = prices[index + 1]["time"] if index + 1 < len(prices) else end
-        overlap_start = max(start, slot_start)
-        overlap_end = min(end, slot_end)
-        overlap_seconds = (overlap_end - overlap_start).total_seconds()
-        if overlap_seconds > 0:
-            covered_seconds += overlap_seconds
-            weighted_price += overlap_seconds * price["cents_per_kwh"]
-
     duration_seconds = (end - start).total_seconds()
-    if covered_seconds <= 0 or duration_seconds <= 0:
+    if duration_seconds <= 0:
         return result
 
     recovered = session.get("energy_recovered_kwh")
@@ -240,7 +324,91 @@ def _add_session_cost(session, prices, settings):
         return result
 
     grid_energy = battery_energy / settings["charging_efficiency"]
-    spot_rate = weighted_price / covered_seconds
+    effective_rate, effective_covered, effective_attrs = _weighted_price(
+        start,
+        end,
+        effective_prices,
+        effective_price_times,
+    )
+    price_inferred_from_current_station = False
+    if (
+        effective_rate is None
+        and current_effective
+        and current_effective.get("attributes", {}).get("price_source")
+        == "elektrum_drive"
+        and timedelta(0)
+        <= datetime.now(timezone.utc) - end
+        <= timedelta(hours=6)
+    ):
+        effective_rate = current_effective["cents_per_kwh"]
+        effective_covered = duration_seconds
+        effective_attrs = current_effective["attributes"]
+        price_inferred_from_current_station = True
+    effective_source = effective_attrs.get("price_source")
+    if effective_rate is not None and (
+        effective_source == "elektrum_drive"
+        or effective_covered >= duration_seconds * 0.8
+    ):
+        price_source = effective_source or "effective"
+        delivery_rate = (
+            _number(effective_attrs.get("delivery_price_c_per_kwh")) / 100.0
+            if price_source == "home_nord_pool"
+            else 0.0
+        )
+        spot_rate = (
+            effective_rate - delivery_rate * 100.0
+            if price_source == "home_nord_pool"
+            else None
+        )
+        delivery_cost = grid_energy * delivery_rate
+        spot_cost = (
+            grid_energy * spot_rate / 100.0
+            if spot_rate is not None
+            else grid_energy * effective_rate / 100.0
+        )
+        total_cost = grid_energy * effective_rate / 100.0
+        result.update(
+            {
+                "grid_energy_kwh": round(grid_energy, 2),
+                "spot_rate_c_per_kwh": (
+                    round(spot_rate, 3) if spot_rate is not None else None
+                ),
+                "total_rate_c_per_kwh": round(effective_rate, 3),
+                "spot_cost_eur": round(spot_cost, 4),
+                "delivery_cost_eur": round(delivery_cost, 4),
+                "total_cost_eur": round(total_cost, 4),
+                "price_coverage_percent": round(
+                    min(1.0, effective_covered / duration_seconds) * 100.0,
+                    1,
+                ),
+                "energy_source": energy_source,
+                "price_source": price_source,
+                "price_entity": EFFECTIVE_PRICE_ENTITY,
+                "station_name": effective_attrs.get("station_name"),
+                "station_id": effective_attrs.get("station_id"),
+                "station_address": effective_attrs.get("station_address"),
+                "station_city": effective_attrs.get("station_city"),
+                "connector_code": effective_attrs.get("connector_code"),
+                "station_partner": effective_attrs.get("station_partner"),
+                "postpaid_discount_percent": effective_attrs.get(
+                    "postpaid_discount_percent"
+                ),
+                "price_inferred_from_current_station": (
+                    price_inferred_from_current_station
+                ),
+            }
+        )
+        return result
+
+    legacy_rate, legacy_covered, _legacy_attrs = _weighted_price(
+        start,
+        end,
+        legacy_prices,
+        legacy_price_times,
+    )
+    if legacy_rate is None:
+        return result
+    spot_rate = legacy_rate
     spot_cost = grid_energy * spot_rate / 100.0
     delivery_rate = settings["delivery_price_incl_vat_eur_per_kwh"]
     delivery_cost = grid_energy * delivery_rate
@@ -256,12 +424,188 @@ def _add_session_cost(session, prices, settings):
             "delivery_cost_eur": round(delivery_cost, 4),
             "total_cost_eur": round(total_cost, 4),
             "price_coverage_percent": round(
-                min(1.0, covered_seconds / duration_seconds) * 100.0, 1
+                min(1.0, legacy_covered / duration_seconds) * 100.0, 1
             ),
             "energy_source": energy_source,
+            "price_source": "legacy_nord_pool",
+            "price_entity": _resolve_nordpool_price_entity(),
         }
     )
     return result
+
+
+def _sessions_are_contiguous(earlier, later):
+    """Return whether two API sessions belong to one uninterrupted stop."""
+    earlier_end = _parse_datetime(earlier.get("end"))
+    later_start = _parse_datetime(later.get("start"))
+    if earlier_end is None or later_start is None:
+        return False
+    gap = (later_start - earlier_end).total_seconds()
+    if gap < 0 or gap > 30 * 60:
+        return False
+    earlier_soc = _number(earlier.get("end_soc"), float("nan"))
+    later_soc = _number(later.get("start_soc"), float("nan"))
+    return (
+        math.isfinite(earlier_soc)
+        and math.isfinite(later_soc)
+        and abs(earlier_soc - later_soc) <= 1.0
+    )
+
+
+def _inherit_elektrum_cost(session, reference, settings):
+    """Apply a neighboring session's Elektrum station and all-in tariff."""
+    result = dict(session)
+    rate = _number(reference.get("total_rate_c_per_kwh"), float("nan"))
+    recovered = session.get("energy_recovered_kwh")
+    if recovered is None or _number(recovered) <= 0:
+        battery_energy = _number(session.get("estimated_battery_energy_kwh"))
+    else:
+        battery_energy = _number(recovered)
+    if not math.isfinite(rate) or rate <= 0 or battery_energy <= 0:
+        return result
+
+    grid_energy = battery_energy / settings["charging_efficiency"]
+    total_cost = grid_energy * rate / 100.0
+    result.update(
+        {
+            "grid_energy_kwh": round(grid_energy, 2),
+            "spot_rate_c_per_kwh": None,
+            "total_rate_c_per_kwh": round(rate, 3),
+            "spot_cost_eur": round(total_cost, 4),
+            "delivery_cost_eur": 0.0,
+            "total_cost_eur": round(total_cost, 4),
+            "price_coverage_percent": reference.get(
+                "price_coverage_percent", 0.0
+            ),
+            "price_source": "elektrum_drive",
+            "price_entity": EFFECTIVE_PRICE_ENTITY,
+            "station_name": reference.get("station_name"),
+            "station_id": reference.get("station_id"),
+            "station_address": reference.get("station_address"),
+            "station_city": reference.get("station_city"),
+            "connector_code": reference.get("connector_code"),
+            "station_partner": reference.get("station_partner"),
+            "postpaid_discount_percent": reference.get(
+                "postpaid_discount_percent"
+            ),
+            "price_inferred_from_adjacent_session": True,
+            "price_inference_reference_start": reference.get("start"),
+        }
+    )
+    return result
+
+
+def _inherit_adjacent_elektrum_sessions(sessions, settings):
+    """Fill short split sessions from a contiguous Elektrum session.
+
+    ``_deduplicate_sessions`` supplies newest-first input. Avoid a key callback
+    here because Pyscript evaluates script functions as awaitables when a
+    Python builtin invokes them.
+    """
+    updated = [dict(session) for session in sessions]
+    chronological = list(range(len(updated) - 1, -1, -1))
+    for _pass in range(2):
+        changed = False
+        for position, index in enumerate(chronological):
+            if updated[index].get("price_source") == "elektrum_drive":
+                continue
+            candidates = []
+            if position > 0:
+                previous = chronological[position - 1]
+                if (
+                    updated[previous].get("price_source") == "elektrum_drive"
+                    and _sessions_are_contiguous(updated[previous], updated[index])
+                ):
+                    candidates.append(previous)
+            if position + 1 < len(chronological):
+                following = chronological[position + 1]
+                if (
+                    updated[following].get("price_source") == "elektrum_drive"
+                    and _sessions_are_contiguous(updated[index], updated[following])
+                ):
+                    candidates.append(following)
+            if not candidates:
+                continue
+            updated[index] = _inherit_elektrum_cost(
+                updated[index], updated[candidates[0]], settings
+            )
+            changed = True
+        if not changed:
+            break
+    return updated
+
+
+def _stored_elektrum_sessions():
+    """Keep confirmed public and exact provider prices across API refreshes."""
+    stored = {}
+    for entity_id in (
+        "sensor.zoe_charge_sessions_history_raw",
+        "sensor.zoe_charge_sessions_31d_raw",
+    ):
+        current = Function.hass.states.get(entity_id)
+        if current is None:
+            continue
+        for session in current.attributes.get("sessions") or []:
+            key = (session.get("start"), session.get("end"))
+            if (
+                key != (None, None)
+                and session.get("price_source")
+                in ({"elektrum_drive"} | EXACT_PROVIDER_PRICE_SOURCES)
+            ):
+                stored[key] = dict(session)
+    return stored
+
+
+def _inherit_stored_elektrum_sessions(sessions, stored, settings):
+    """Reapply a recorded provider classification for the same API session."""
+    updated = []
+    for session in sessions:
+        key = (session.get("start"), session.get("end"))
+        reference = stored.get(key)
+        if (
+            session.get("price_source")
+            in ({"elektrum_drive"} | EXACT_PROVIDER_PRICE_SOURCES)
+            or reference is None
+        ):
+            updated.append(dict(session))
+            continue
+        if reference.get("price_source") in EXACT_PROVIDER_PRICE_SOURCES:
+            inherited = dict(session)
+            for field in (
+                "grid_energy_kwh",
+                "spot_rate_c_per_kwh",
+                "total_rate_c_per_kwh",
+                "spot_cost_eur",
+                "delivery_cost_eur",
+                "total_cost_eur",
+                "price_coverage_percent",
+                "energy_source",
+                "price_source",
+                "price_entity",
+                "station_name",
+                "station_address",
+                "provider",
+                "provider_transaction_id",
+                "provider_account_id",
+                "provider_account_name",
+                "provider_reported_cost",
+                "provider_reported_energy",
+                "provider_total_grid_energy_kwh",
+                "provider_total_cost_eur",
+                "provider_allocation_fraction",
+                "provider_split_session_count",
+                "transaction_status",
+                "alternate_sources",
+            ):
+                inherited[field] = reference.get(field)
+            inherited["price_preserved_from_previous_update"] = True
+            updated.append(inherited)
+            continue
+        inherited = _inherit_elektrum_cost(session, reference, settings)
+        if inherited.get("price_source") == "elektrum_drive":
+            inherited["price_preserved_from_previous_update"] = True
+        updated.append(inherited)
+    return updated
 
 
 def _deduplicate_sessions(sessions):
@@ -450,7 +794,11 @@ async def zoe_charge_sessions_update():
         return {"ok": False, "error": "Update already in progress"}
 
     _refresh_in_progress = True
+    update_started = time.monotonic()
+    phase_started = update_started
+    phase_durations = {}
     try:
+        stored_elektrum = _stored_elektrum_sessions()
         proxy = None
         last_error = None
         for attempt in range(7):
@@ -463,19 +811,29 @@ async def zoe_charge_sessions_update():
                     await asyncio.sleep(10)
         if proxy is None:
             raise last_error or RuntimeError("Active Zoe was not found")
+        phase_durations["find_vehicle"] = round(time.monotonic() - phase_started, 3)
 
         now = datetime.now(timezone.utc)
         settings = _cost_settings()
+        phase_started = time.monotonic()
         result = await _get_charges_with_auth_retry(
             proxy, now - timedelta(days=LEARNING_HISTORY_DAYS), now
         )
+        phase_durations["renault_charges_api"] = round(
+            time.monotonic() - phase_started, 3
+        )
         charging_settings = None
+        phase_started = time.monotonic()
         try:
             charging_settings = _attributes(
                 await _get_charging_settings_with_auth_retry(proxy)
             )
         except Exception as exc:
             log.warning("Zoe charging settings update failed: " + str(exc)[:240])
+        phase_durations["renault_settings_api"] = round(
+            time.monotonic() - phase_started, 3
+        )
+        phase_started = time.monotonic()
         raw_sessions = _attributes(result).get("charges") or []
         history_sessions = _deduplicate_sessions(
             [
@@ -489,18 +847,63 @@ async def zoe_charge_sessions_update():
         ]
         month_start = datetime(now.year, now.month, 1, tzinfo=timezone.utc)
         visible_cutoff = max(now - timedelta(days=VISIBLE_HISTORY_DAYS), month_start)
-        price_entity = _resolve_price_entity()
-        price_history = []
+        price_entity = _resolve_nordpool_price_entity()
+        phase_durations["normalise_sessions"] = round(
+            time.monotonic() - phase_started, 3
+        )
+        effective_price_history = []
+        legacy_price_history = []
+        current_effective_price = _current_effective_price()
+        phase_started = time.monotonic()
         try:
-            price_history = await _get_price_history(
+            effective_price_history = await _get_price_history(
+                visible_cutoff - timedelta(hours=1),
+                now,
+                EFFECTIVE_PRICE_ENTITY,
+                include_attributes=True,
+            )
+        except Exception as exc:
+            log.warning(
+                "Zoe effective price history update failed: " + str(exc)[:240]
+            )
+        try:
+            legacy_price_history = await _get_price_history(
                 visible_cutoff - timedelta(hours=1), now, price_entity
             )
         except Exception as exc:
             log.warning("Zoe Nord Pool price history update failed: " + str(exc)[:240])
+        phase_durations["price_history"] = round(
+            time.monotonic() - phase_started, 3
+        )
+        phase_started = time.monotonic()
+        effective_price_times = [item["time"] for item in effective_price_history]
+        legacy_price_times = [item["time"] for item in legacy_price_history]
         meaningful_sessions = [
-            _add_session_cost(item, price_history, settings)
+            _add_session_cost(
+                item,
+                effective_price_history,
+                effective_price_times,
+                legacy_price_history,
+                legacy_price_times,
+                settings,
+                current_effective_price,
+            )
             for item in meaningful_sessions
         ]
+        meaningful_sessions = _inherit_stored_elektrum_sessions(
+            meaningful_sessions,
+            stored_elektrum,
+            settings,
+        )
+        meaningful_sessions = _inherit_adjacent_elektrum_sessions(
+            meaningful_sessions,
+            settings,
+        )
+        provider_transactions = _provider_transactions()
+        meaningful_sessions = apply_provider_transactions(
+            meaningful_sessions,
+            provider_transactions,
+        )
         visible_sessions = [
             item
             for item in meaningful_sessions
@@ -508,9 +911,16 @@ async def zoe_charge_sessions_update():
             >= visible_cutoff
         ]
         model = _build_history_model(history_sessions, settings)
+        phase_durations["cost_and_model"] = round(
+            time.monotonic() - phase_started, 3
+        )
         updated = now.isoformat()
         common = {
             "source": "Renault API charges endpoint",
+            "pyscript_revision": PYSCRIPT_REVISION,
+            "stored_elektrum_session_count": len(stored_elektrum),
+            "provider_transaction_count": len(provider_transactions),
+            "charging_accounts_entity": CHARGING_ACCOUNTS_ENTITY,
             "last_api_update": updated,
             "period_days": VISIBLE_HISTORY_DAYS,
             "period_start": visible_cutoff.isoformat(),
@@ -523,7 +933,8 @@ async def zoe_charge_sessions_update():
                 4,
             ),
             "energy_note": "Renault recovered energy is battery energy, not metered grid input energy",
-            "price_entity": price_entity,
+            "price_entity": EFFECTIVE_PRICE_ENTITY,
+            "legacy_price_entity": price_entity,
             "delivery_excl_vat_eur_per_kwh": round(
                 settings["delivery_price_excl_vat_eur_per_kwh"],
                 7,
@@ -536,9 +947,11 @@ async def zoe_charge_sessions_update():
             "fallback_consumption_kwh_per_100km": settings[
                 "fallback_consumption_kwh_per_100km"
             ],
-            "cost_note": "Grid energy divides Renault battery-side energy by charging efficiency before applying Nord Pool and delivery prices",
+            "cost_note": "Grid energy divides Renault battery-side energy by charging efficiency, then applies the recorded all-in Elektrum Drive or home Nord Pool price",
+            "profile_phase_durations_s": dict(phase_durations),
         }
 
+        publish_started = time.monotonic()
         if charging_settings and charging_settings.get("dateTime"):
             _set_sensor(
                 "sensor.zoe_charging_settings_updated_raw",
@@ -740,6 +1153,14 @@ async def zoe_charge_sessions_update():
                 {**direct_common, "api_field": "chargeEndStatus"},
             )
 
+        phase_durations["publish_states"] = round(
+            time.monotonic() - publish_started, 3
+        )
+        total_duration = round(time.monotonic() - update_started, 3)
+        log.debug(
+            "Zoe charge session update profile: "
+            + str({"total": total_duration, **phase_durations})
+        )
         return {
             "ok": True,
             "count_31d": len(visible_sessions),
@@ -747,6 +1168,8 @@ async def zoe_charge_sessions_update():
             "raw_count_history": len(history_sessions),
             "model": model,
             "latest": meaningful_sessions[0] if meaningful_sessions else None,
+            "profile_phase_durations_s": phase_durations,
+            "profile_total_duration_s": total_duration,
         }
     except Exception as exc:
         message = str(exc)[:240]

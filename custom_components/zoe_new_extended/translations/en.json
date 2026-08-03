@@ -19,6 +19,7 @@
           "dashboard": "Dashboard",
           "smart_charging": "Renault smart charging",
           "cost_model": "Energy cost model",
+          "charging_accounts": "Charging accounts",
           "immax_setpoints": "IMMAX setpoints",
           "immax_entities": "IMMAX entity sources"
         }
@@ -51,12 +52,50 @@
         "title": "Energy cost model",
         "description": "Configure the values used for charge-session costs, battery inventory value, and fallback trip estimates.",
         "data": {
+          "elektrum_drive_enabled": "Detect Elektrum Drive stations and tariffs",
+          "elektrum_postpaid_discount_percent": "Elektrum own-network postpaid discount",
           "delivery_price_excl_vat": "Delivery price excluding VAT",
           "energy_vat_percent": "Energy VAT",
           "battery_capacity_kwh": "Usable battery capacity",
           "charging_efficiency_percent": "Charging efficiency",
           "default_charging_power_kw": "Default charging power",
           "fallback_consumption_kwh_100": "Fallback consumption"
+        }
+      },
+      "charging_accounts": {
+        "title": "Charging accounts",
+        "description": "Manage any number of Mobilly and Elektrum Drive accounts. Configured accounts: {account_count}. Transactions from all enabled accounts are merged without double-counting overlapping sessions.",
+        "data": {
+          "account_action": "Account action"
+        }
+      },
+      "mobilly_account": {
+        "title": "Mobilly account",
+        "description": "{mode} a Mobilly account. Both Transactions and Invoice transactions are synchronized. Leave the password empty while editing to keep the saved password.",
+        "data": {
+          "name": "Account name",
+          "enabled": "Enabled",
+          "username": "Phone number / username",
+          "password": "Password"
+        }
+      },
+      "elektrum_account": {
+        "title": "Elektrum Drive account",
+        "description": "{mode} an Elektrum Drive app account. Leave the access token and device ID empty while editing to keep their saved values. An account without a token is saved as awaiting authentication.",
+        "data": {
+          "name": "Account name",
+          "enabled": "Enabled",
+          "phone": "Phone number",
+          "country_code": "Country calling code",
+          "access_token": "App access token",
+          "device_uuid": "App device ID"
+        }
+      },
+      "remove_charging_account": {
+        "title": "Remove charging account",
+        "description": "Remove {account_name} and its saved authentication data? Historical HA states are not deleted.",
+        "data": {
+          "confirm": "Confirm removal"
         }
       },
       "immax_setpoints": {
@@ -115,6 +154,8 @@
       }
     },
     "error": {
+      "account_removal_not_confirmed": "Confirm account removal before continuing.",
+      "mobilly_credentials_required": "Mobilly username and password are required.",
       "soc_resume_must_exceed_stop": "Battery SOC resume threshold must be higher than the stop threshold.",
       "solar_max_must_reach_min": "Maximum solar charging power must be at least the minimum power."
     }
