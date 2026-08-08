@@ -6,7 +6,7 @@
   <title>Charging stations</title>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <link rel="stylesheet" href="./shared-theme.css?v=2.2.0" />
-  <link rel="stylesheet" href="./stations.css?v=1.2.2" />
+  <link rel="stylesheet" href="./stations.css?v=1.2.3" />
 </head>
 <body>
   <main class="app stations-app">
@@ -62,6 +62,17 @@
         <button id="nearest" class="secondary nearest-command" type="button">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 10c0 5-8 12-8 12S4 15 4 10a8 8 0 1 1 16 0Z"/><circle cx="12" cy="10" r="2"/></svg>
           <span data-i18n="findNearest">Tuvākās</span>
+        </button>
+        <label class="distance-field">
+          <span data-i18n="maxDistance">Maks. attālums</span>
+          <span class="distance-input-wrap">
+            <input id="cheapestDistance" type="number" min="1" max="500" step="5" value="50" inputmode="decimal" />
+            <span>km</span>
+          </span>
+        </label>
+        <button id="cheapest" class="secondary nearest-command cheapest-command" type="button">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 10c0 5-8 12-8 12S4 15 4 10a8 8 0 1 1 16 0Z"/><path d="M9 8.5h4.5a1.5 1.5 0 0 1 0 3H11a1.5 1.5 0 0 0 0 3h4M12 7v9"/></svg>
+          <span data-i18n="findCheapest">Tuvākā lētākā</span>
         </button>
         <a class="icon-command settings-link" href="/config/integrations/integration/zoe_new_extended" target="_top" title="Iestatījumi" data-i18n-title="settings" aria-label="Iestatījumi">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06-2.83 2.83-.06-.06A1.7 1.7 0 0 0 15 19.4a1.7 1.7 0 0 0-1 .6 1.7 1.7 0 0 0-.4 1.1V21h-4v-.09A1.7 1.7 0 0 0 8.55 19.4a1.7 1.7 0 0 0-1.88.34l-.06.06-2.83-2.83.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-.6-1 1.7 1.7 0 0 0-1.1-.4H3v-4h.09A1.7 1.7 0 0 0 4.6 8.55a1.7 1.7 0 0 0-.34-1.88l-.06-.06 2.83-2.83.06.06A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-.6 1.7 1.7 0 0 0 .4-1.1V3h4v.09A1.7 1.7 0 0 0 15.45 4.6a1.7 1.7 0 0 0 1.88-.34l.06-.06 2.83 2.83-.06.06A1.7 1.7 0 0 0 19.4 9c.15.37.36.7.64.98.3.28.68.43 1.07.43H21v4h-.09A1.7 1.7 0 0 0 19.4 15Z"/></svg>
@@ -147,6 +158,6 @@
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="./dashboard-tabs.js?v=1.2.0"></script>
-  <script src="./stations.js?v=1.2.2"></script>
+  <script src="./stations.js?v=1.2.3"></script>
 </body>
 </html>

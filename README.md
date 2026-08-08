@@ -38,8 +38,10 @@ used by the included Nord Pool smart charger package.
 - A responsive **Stations** map combining Elektrum Drive, Mobilly, and e-mobi
   catalogs, plus an embedded PlugShare map. It includes provider, plug-type,
   power, and availability filters; connector models and physical plug numbers;
-  provider prices and live state when available; Google Maps and Waze
-  navigation; and WhatsApp sharing.
+  provider prices, station descriptions/access notes, and live state when
+  available; Google Maps and Waze navigation; and WhatsApp sharing. A
+  configurable distance limit can select the nearest station with the lowest
+  known comparable price while respecting the active filters.
 - Extended entities are attached to the dedicated **Renault Zoe ... Zoe New
   API** source device. Existing entity IDs stay unchanged, and empty duplicate
   vehicle devices can be removed safely after registry reconciliation.
@@ -146,7 +148,8 @@ Elektrum station details include live connector state and current public
 tariff when the provider page is reachable. Mobilly exposes location,
 connector model/count, and maximum power publicly; live Mobilly occupancy and
 tariff require a mobile-app session and are marked unavailable rather than
-guessed.
+guessed. Provider descriptions, access instructions, opening hours, and notes
+are preserved when duplicate catalog entries are combined.
 
 Read [`renault_trips/README.md`](renault_trips/README.md) for the expected
 Renault entities and installation path.

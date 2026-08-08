@@ -42,7 +42,6 @@ from .const import (
     CONF_ZOE_CHARGE_TARGET_PERCENT,
     CONF_ZOE_MAX_ENERGY_PRICE,
     CONF_ZOE_MAX_PRICE_ENABLED,
-    CONF_ZOE_SMART_CHARGING_ENABLED,
     DEFAULT_IMMAX_FEATURE_ENABLED,
     DOMAIN,
     TARGET_ENTITY_ID,
@@ -88,7 +87,6 @@ IMMAX_BOOLEAN_OPTION_ENTITIES = {
 }
 
 ZOE_BOOLEAN_OPTION_ENTITIES = {
-    CONF_ZOE_SMART_CHARGING_ENABLED: "input_boolean.zoe_smart_charging",
     CONF_ZOE_MAX_PRICE_ENABLED: "input_boolean.zoe_max_price_enabled",
 }
 
@@ -125,12 +123,20 @@ ZOE_NUMBER_OPTION_ENTITIES = {
 async def _async_sync_charging_setpoints(
     hass: HomeAssistant,
     entry: ConfigEntry,
+    *,
+    apply_zoe_options: bool = False,
 ) -> None:
     """Apply saved integration options to existing charging helpers."""
     options = entry.options
-    for key, entity_id in (
-        IMMAX_SELECT_OPTION_ENTITIES | ZOE_SELECT_OPTION_ENTITIES
-    ).items():
+    select_entities = dict(IMMAX_SELECT_OPTION_ENTITIES)
+    boolean_entities = dict(IMMAX_BOOLEAN_OPTION_ENTITIES)
+    number_entities = dict(IMMAX_NUMBER_OPTION_ENTITIES)
+    if apply_zoe_options:
+        select_entities.update(ZOE_SELECT_OPTION_ENTITIES)
+        boolean_entities.update(ZOE_BOOLEAN_OPTION_ENTITIES)
+        number_entities.update(ZOE_NUMBER_OPTION_ENTITIES)
+
+    for key, entity_id in select_entities.items():
         current_state = hass.states.get(entity_id)
         if key not in options or current_state is None:
             continue
@@ -144,9 +150,7 @@ async def _async_sync_charging_setpoints(
             blocking=True,
         )
 
-    for key, entity_id in (
-        IMMAX_BOOLEAN_OPTION_ENTITIES | ZOE_BOOLEAN_OPTION_ENTITIES
-    ).items():
+    for key, entity_id in boolean_entities.items():
         current_state = hass.states.get(entity_id)
         if current_state is None:
             continue
@@ -184,9 +188,7 @@ async def _async_sync_charging_setpoints(
             blocking=True,
         )
 
-    for key, entity_id in (
-        IMMAX_NUMBER_OPTION_ENTITIES | ZOE_NUMBER_OPTION_ENTITIES
-    ).items():
+    for key, entity_id in number_entities.items():
         current_state = hass.states.get(entity_id)
         if key not in options or current_state is None:
             continue
@@ -207,6 +209,22 @@ async def _async_sync_charging_setpoints(
 
 async def _async_options_updated(hass: HomeAssistant, entry: ConfigEntry) -> None:
     """Reload options and refresh the derived charging-cost history."""
+    runtime = hass.data.get(DOMAIN, {}).get(entry.entry_id, {})
+    current_options = dict(entry.options)
+    previous_options = runtime.get("last_options", current_options)
+    options_changed = current_options != previous_options
+    runtime["last_options"] = current_options
+
+    # Account coordinators also update config-entry data. Only an actual options
+    # change may write saved setpoints back to the live dashboard helpers.
+    if not options_changed:
+        return
+
+    await _async_sync_charging_setpoints(
+        hass,
+        entry,
+        apply_zoe_options=True,
+    )
     await hass.config_entries.async_reload(entry.entry_id)
     if hass.services.has_service("pyscript", "zoe_charge_sessions_update"):
         hass.async_create_task(
@@ -233,6 +251,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     retry_cancel: Callable[[], None] | None = None
     reconcile_cancel: Callable[[], None] | None = None
     reconciling = False
+    runtime: dict[str, object] = {"last_options": dict(entry.options)}
+    hass.data.setdefault(DOMAIN, {})[entry.entry_id] = runtime
     entry.async_on_unload(entry.add_update_listener(_async_options_updated))
 
     for registry_entry in tuple(entity_registry.entities.values()):
@@ -344,19 +364,21 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     await charging_accounts_coordinator.async_config_entry_first_refresh()
     extras_coordinator = ZoeNewCloudExtrasCoordinator(hass, entry, charge_control)
     await extras_coordinator.async_config_entry_first_refresh()
-    hass.data.setdefault(DOMAIN, {})[entry.entry_id] = {
-        "unsubscribe_registry": unsubscribe_registry,
-        "cancel_retry": lambda: retry_cancel() if retry_cancel else None,
-        "cancel_reconcile": (
-            lambda: reconcile_cancel() if reconcile_cancel else None
-        ),
-        "charge_control": charge_control,
-        "status_refresh": status_refresh,
-        "nordpool_coordinator": nordpool_coordinator,
-        "elektrum_coordinator": elektrum_coordinator,
-        "charging_accounts_coordinator": charging_accounts_coordinator,
-        "extras_coordinator": extras_coordinator,
-    }
+    runtime.update(
+        {
+            "unsubscribe_registry": unsubscribe_registry,
+            "cancel_retry": lambda: retry_cancel() if retry_cancel else None,
+            "cancel_reconcile": (
+                lambda: reconcile_cancel() if reconcile_cancel else None
+            ),
+            "charge_control": charge_control,
+            "status_refresh": status_refresh,
+            "nordpool_coordinator": nordpool_coordinator,
+            "elektrum_coordinator": elektrum_coordinator,
+            "charging_accounts_coordinator": charging_accounts_coordinator,
+            "extras_coordinator": extras_coordinator,
+        }
+    )
     async_register_station_views(hass, entry)
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     await _async_sync_charging_setpoints(hass, entry)

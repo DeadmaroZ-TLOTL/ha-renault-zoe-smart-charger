@@ -165,6 +165,47 @@
   white-space: nowrap;
 }
 
+.distance-field {
+  display: flex;
+  min-height: 40px;
+  align-items: center;
+  gap: 7px;
+  padding: 0 9px;
+  border: 1px solid var(--line-strong);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.distance-field:focus-within {
+  border-color: var(--accent);
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.distance-input-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  color: var(--text);
+  font-size: 12px;
+}
+
+.distance-input-wrap input {
+  width: 58px;
+  min-height: 28px;
+  padding: 2px 4px;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
 .provider-tabs {
   display: flex;
   align-items: center;
@@ -387,6 +428,27 @@
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 7px;
   margin-bottom: 12px;
+}
+
+.station-description {
+  margin: 0 0 12px;
+  padding: 9px 10px;
+  border-left: 3px solid var(--accent);
+  background: var(--surface-muted);
+}
+
+.station-description > strong {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 12px;
+}
+
+.station-description p {
+  margin: 3px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
 }
 
 .station-fact {
@@ -712,13 +774,19 @@
   }
 
   .multi-filter,
-  .nearest-command {
+  .nearest-command,
+  .distance-field {
     flex: 1 1 130px;
   }
 
   .multi-filter summary,
-  .nearest-command {
+  .nearest-command,
+  .distance-field {
     width: 100%;
+  }
+
+  .distance-field {
+    justify-content: space-between;
   }
 
   .filter-popover {

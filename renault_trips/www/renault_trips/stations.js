@@ -7,6 +7,8 @@ const LIST_LIMIT = 40;
 const DETAIL_CACHE_MS = 30 * 60 * 1000;
 const CONNECTOR_FILTER_STORAGE = "zoe-stations-disabled-connectors";
 const OPERATOR_FILTER_STORAGE = "zoe-stations-disabled-operators";
+const CHEAPEST_DISTANCE_STORAGE = "zoe-stations-cheapest-distance-km";
+const DEFAULT_CHEAPEST_DISTANCE_KM = 50;
 
 const I18N = {
   lv: {
@@ -15,9 +17,16 @@ const I18N = {
     enableAll: "Ieslēgt visus",
     filterCount: "{enabled}/{total}",
     findNearest: "Tuvākās",
+    maxDistance: "Maks. attālums",
+    findCheapest: "Tuvākā lētākā",
     locating: "Meklēju tuvākās atbilstošās stacijas...",
+    findingCheapest: "Meklēju lētāko staciju norādītajā attālumā...",
     nearestFound: "Atrastas {count} atbilstošas stacijas; tuvākā ir {distance} km.",
+    cheapestFound: "Lētākā zināmā cena {price}; stacija ir {distance} km attālumā.",
     noMatchingStations: "Nav staciju ar izvēlētajiem spraudņiem un operatoriem.",
+    noStationsInRange: "Norādītajā attālumā nav izvēlētajiem filtriem atbilstošu staciju.",
+    noPricedStations: "Norādītajā attālumā nav staciju ar zināmu salīdzināmu cenu.",
+    invalidDistance: "Ievadi maksimālo attālumu no 1 līdz 500 km.",
     googleDirections: "Google Maps",
     wazeDirections: "Waze",
     occupiedSince: "Aizņemts kopš",
@@ -25,6 +34,7 @@ const I18N = {
     timeUnavailable: "Laiks nav pieejams",
     priceLoading: "Ielādēju cenu",
     operator: "Operators",
+    description: "Apraksts un piekļuve",
     plugNumber: "Spraudnis {number}",
     title: "Uzlādes stacijas",
     subtitle: "Elektrum Drive, Mobilly, e-mobi un PlugShare",
@@ -81,9 +91,16 @@ const I18N = {
     enableAll: "Enable all",
     filterCount: "{enabled}/{total}",
     findNearest: "Nearest",
+    maxDistance: "Max distance",
+    findCheapest: "Nearest cheapest",
     locating: "Finding the nearest matching stations...",
+    findingCheapest: "Finding the cheapest station within the selected distance...",
     nearestFound: "Found {count} matching stations; the nearest is {distance} km away.",
+    cheapestFound: "The lowest known price is {price}; the station is {distance} km away.",
     noMatchingStations: "No stations match the selected plugs and operators.",
+    noStationsInRange: "No station matching the selected filters is within that distance.",
+    noPricedStations: "No station with a known comparable price is within that distance.",
+    invalidDistance: "Enter a maximum distance from 1 to 500 km.",
     googleDirections: "Google Maps",
     wazeDirections: "Waze",
     occupiedSince: "Occupied since",
@@ -91,6 +108,7 @@ const I18N = {
     timeUnavailable: "Time unavailable",
     priceLoading: "Loading price",
     operator: "Operator",
+    description: "Description and access",
     plugNumber: "Plug {number}",
     title: "Charging stations",
     subtitle: "Elektrum Drive, Mobilly, e-mobi, and PlugShare",
@@ -172,6 +190,8 @@ const powerFilterEl = document.getElementById("powerFilter");
 const availableOnlyEl = document.getElementById("availableOnly");
 const reloadEl = document.getElementById("reload");
 const nearestEl = document.getElementById("nearest");
+const cheapestEl = document.getElementById("cheapest");
+const cheapestDistanceEl = document.getElementById("cheapestDistance");
 const connectorOptionsEl = document.getElementById("connectorOptions");
 const operatorOptionsEl = document.getElementById("operatorOptions");
 const connectorFilterLabelEl = document.getElementById("connectorFilterLabel");
@@ -186,6 +206,8 @@ const localFilterEls = [
   document.getElementById("connectorFilterMenu"),
   document.getElementById("operatorFilterMenu"),
   nearestEl,
+  cheapestDistanceEl.closest(".distance-field"),
+  cheapestEl,
   availableOnlyEl.closest("label"),
   document.getElementById("locate"),
   reloadEl,
@@ -222,6 +244,25 @@ function storeSet(key, values) {
     window.localStorage.setItem(key, JSON.stringify([...values].sort()));
   } catch (_error) {
     // Filtering still works when storage is unavailable in a restricted iframe.
+  }
+}
+
+function readStoredNumber(key, fallback) {
+  try {
+    const raw = window.localStorage.getItem(key);
+    if (raw == null || !raw.trim()) return fallback;
+    const value = Number(raw);
+    return Number.isFinite(value) ? value : fallback;
+  } catch (_error) {
+    return fallback;
+  }
+}
+
+function storeNumber(key, value) {
+  try {
+    window.localStorage.setItem(key, String(value));
+  } catch (_error) {
+    // The control remains usable when storage is unavailable in a restricted iframe.
   }
 }
 
@@ -312,6 +353,8 @@ function stationOffers(station) {
     provider_group: providerGroup(station),
     id: station.id,
     operator: station.operator,
+    description: station.description,
+    descriptions: station.descriptions,
     price_c_per_kwh: station.price_c_per_kwh,
     price_value: station.price_value,
     price_unit: station.price_unit,
@@ -319,6 +362,35 @@ function stationOffers(station) {
     availability: station.availability,
     live_data_available: station.live_data_available,
   }];
+}
+
+function stationDescriptions(station) {
+  const excluded = new Set(
+    [station.name, station.address, station.city]
+      .filter(Boolean)
+      .map((value) => String(value).trim().toLocaleLowerCase(language === "lv" ? "lv-LV" : "en-GB")),
+  );
+  const values = [
+    ...(Array.isArray(station.descriptions) ? station.descriptions : []),
+    station.description,
+    ...stationOffers(station).flatMap((offer) => [
+      ...(Array.isArray(offer.descriptions) ? offer.descriptions : []),
+      offer.description,
+    ]),
+  ];
+  const seen = new Set();
+  const result = [];
+  for (const value of values) {
+    if (typeof value !== "string") continue;
+    for (const line of value.split(/\r?\n/)) {
+      const text = line.replaceAll(/\s+/g, " ").trim();
+      const normalized = text.toLocaleLowerCase(language === "lv" ? "lv-LV" : "en-GB");
+      if (!text || excluded.has(normalized) || seen.has(normalized)) continue;
+      seen.add(normalized);
+      result.push(text);
+    }
+  }
+  return result;
 }
 
 function providerLabel(provider) {
@@ -491,6 +563,27 @@ function priceSummary(station, group = selectedProvider) {
     .join(" · ");
 }
 
+function comparableOfferPrice(offer) {
+  const directKwh = Number(offer?.price_c_per_kwh);
+  if (Number.isFinite(directKwh) && directKwh > 0) {
+    return { value: directKwh, unit: "kWh", offer };
+  }
+  const value = Number(offer?.price_value);
+  if (!Number.isFinite(value) || value <= 0) return null;
+  const unit = String(offer?.price_unit || "").toLowerCase().replaceAll(/[^a-z]/g, "");
+  if (unit.includes("kwh")) return { value, unit: "kWh", offer };
+  if (unit.includes("min")) return { value, unit: "min", offer };
+  return null;
+}
+
+function stationComparablePrices(station) {
+  return stationOffers(station)
+    .filter((offer) => selectedProvider === "all"
+      || (offer.provider_group || offer.provider) === selectedProvider)
+    .map(comparableOfferPrice)
+    .filter(Boolean);
+}
+
 function providerPriceRows(station) {
   const offers = stationOffers(station)
     .filter((offer) => selectedProvider === "all" || (offer.provider_group || offer.provider) === selectedProvider);
@@ -549,6 +642,7 @@ function renderMarkers() {
     marker.bindPopup(`
       <strong>${escapeHtml(station.name)}</strong>
       <span>${escapeHtml(station.address || "")}</span>
+      ${stationDescriptions(station)[0] ? `<span>${escapeHtml(stationDescriptions(station)[0])}</span>` : ""}
       <span>${escapeHtml(stationOperator(station))}</span>
       <span>${escapeHtml(priceSummary(station))}</span>
       <div class="map-connector-list">${connectorRows || `<span>${escapeHtml(t("unknown"))}</span>`}</div>
@@ -646,7 +740,12 @@ function applyFilters() {
     if (minimumPower > 0 && Number(station.max_power_kw || 0) < minimumPower) return false;
     if (availableOnly && station.availability !== "available") return false;
     if (!query) return true;
-    return [station.name, station.address, station.city, station.description]
+    return [
+      station.name,
+      station.address,
+      station.city,
+      ...stationDescriptions(station),
+    ]
       .filter(Boolean)
       .join(" ")
       .toLocaleLowerCase(language === "lv" ? "lv-LV" : "en-GB")
@@ -673,7 +772,7 @@ function offerWithDetail(offer, detail) {
   for (const key of [
     "price_c_per_kwh", "price_value", "price_unit", "price_formatted",
     "price_source", "availability", "available_connectors", "occupied_connectors",
-    "live_data_available", "connector_live_data_available",
+    "live_data_available", "connector_live_data_available", "description", "descriptions",
   ]) {
     if (detail?.[key] !== undefined && detail?.[key] !== null) result[key] = detail[key];
   }
@@ -721,19 +820,20 @@ function renderDetail(station, { loading = false, error = false } = {}) {
   const availability = availabilityClass(station.availability);
   const address = [station.address, station.city].filter(Boolean).join(", ");
   const destination = `${station.latitude},${station.longitude}`;
-  const mapsUrl = `https://www.google.com/maps/dir/?api=1&travelmode=driving&destination=${encodeURIComponent(destination)}`;
+  const mapsUrl = `https://www.google.com/maps/dir/?api=1&travelmode=driving&dir_action=navigate&destination=${encodeURIComponent(destination)}`;
   const wazeUrl = `https://www.waze.com/ul?ll=${encodeURIComponent(destination)}&navigate=yes&zoom=17`;
   const locationUrl = `https://www.google.com/maps?q=${encodeURIComponent(`${station.latitude},${station.longitude}`)}`;
   const shareText = t("stationShare", { name: station.name, address, url: locationUrl });
-  const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(shareText)}`;
+  const whatsappUrl = `https://api.whatsapp.com/send?text=${encodeURIComponent(shareText)}`;
   const price = priceSummary(station);
+  const descriptions = stationDescriptions(station);
   const visibleGroups = providerGroups(station)
     .filter((group) => selectedProvider === "all" || group === selectedProvider);
   stationDetailEl.innerHTML = `
     <div class="station-heading">
       <div>
         <h2>${escapeHtml(station.name)}</h2>
-        <p>${escapeHtml(address || station.description || "")}</p>
+        <p>${escapeHtml(address)}</p>
       </div>
       <span class="provider-badges">${visibleGroups.map((group) => `<span class="provider-badge ${escapeHtml(group)}">${escapeHtml(providerLabel(group))}</span>`).join("")}</span>
     </div>
@@ -743,6 +843,12 @@ function renderDetail(station, { loading = false, error = false } = {}) {
       <div class="station-fact"><span>${escapeHtml(t("price"))}</span><strong>${escapeHtml(price)}</strong></div>
       <div class="station-fact"><span>${escapeHtml(t("operator"))}</span><strong>${escapeHtml(stationOperator(station))}</strong></div>
     </div>
+    ${descriptions.length ? `
+      <div class="station-description">
+        <strong>${escapeHtml(t("description"))}</strong>
+        ${descriptions.map((description) => `<p>${escapeHtml(description)}</p>`).join("")}
+      </div>
+    ` : ""}
     <div class="provider-price-list">${providerPriceRows(station)}</div>
     <div class="connector-list">
       ${connectors.length ? connectors.map((connector) => `
@@ -755,15 +861,15 @@ function renderDetail(station, { loading = false, error = false } = {}) {
       `).join("") : `<div class="connector-row"><strong>${escapeHtml(t("connectors"))}</strong><span>-</span><span>-</span><span class="connector-status">${escapeHtml(t("unknown"))}</span></div>`}
     </div>
     <div class="station-actions">
-      <a class="station-action" href="${escapeHtml(mapsUrl)}" target="_blank" rel="noopener noreferrer">
+      <a class="station-action" href="${escapeHtml(mapsUrl)}" data-external-url="${escapeHtml(mapsUrl)}" target="_blank" rel="noopener noreferrer">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 10c0 5-8 12-8 12S4 15 4 10a8 8 0 1 1 16 0Z"/><circle cx="12" cy="10" r="2"/></svg>
         ${escapeHtml(t("googleDirections"))}
       </a>
-      <a class="station-action waze" href="${escapeHtml(wazeUrl)}" target="_blank" rel="noopener noreferrer">
+      <a class="station-action waze" href="${escapeHtml(wazeUrl)}" data-external-url="${escapeHtml(wazeUrl)}" target="_blank" rel="noopener noreferrer">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 15a8 8 0 1 1 3 3l-3 2v-5Z"/><circle cx="10" cy="11" r=".5"/><circle cx="15" cy="11" r=".5"/><path d="M10 15c1.5 1 3.5 1 5 0"/></svg>
         ${escapeHtml(t("wazeDirections"))}
       </a>
-      <a class="station-action whatsapp" href="${escapeHtml(whatsappUrl)}" target="_blank" rel="noopener noreferrer">
+      <a class="station-action whatsapp" href="${escapeHtml(whatsappUrl)}" data-external-url="${escapeHtml(whatsappUrl)}" target="_blank" rel="noopener noreferrer">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11.5a8 8 0 0 1-11.8 7L4 20l1.5-4A8 8 0 1 1 20 11.5Z"/><path d="M8.5 8.5c1 3 2 4 5 5"/></svg>
         ${escapeHtml(t("whatsapp"))}
       </a>
@@ -824,15 +930,18 @@ function browserLocation() {
   });
 }
 
+async function resolveSearchOrigin() {
+  return vehicleLocation
+    ? { lat: vehicleLocation.latitude, lng: vehicleLocation.longitude }
+    : await browserLocation() || map.getCenter();
+}
+
 async function showNearestStations() {
   nearestEl.disabled = true;
   statusEl.classList.remove("warn");
   statusEl.textContent = t("locating");
   try {
-    listOrigin = vehicleLocation
-      ? { lat: vehicleLocation.latitude, lng: vehicleLocation.longitude }
-      : await browserLocation()
-        || map.getCenter();
+    listOrigin = await resolveSearchOrigin();
     applyFilters();
     if (!filteredStations.length) {
       statusEl.classList.add("warn");
@@ -856,6 +965,76 @@ async function showNearestStations() {
   } finally {
     nearestEl.disabled = false;
   }
+}
+
+async function showCheapestStation() {
+  const maxDistance = Number(cheapestDistanceEl.value);
+  if (!Number.isFinite(maxDistance) || maxDistance < 1 || maxDistance > 500) {
+    statusEl.classList.add("warn");
+    statusEl.textContent = t("invalidDistance");
+    return;
+  }
+  storeNumber(CHEAPEST_DISTANCE_STORAGE, maxDistance);
+  cheapestEl.disabled = true;
+  cheapestDistanceEl.disabled = true;
+  statusEl.classList.remove("warn");
+  statusEl.textContent = t("findingCheapest");
+  try {
+    listOrigin = await resolveSearchOrigin();
+    applyFilters();
+    const nearby = filteredStations
+      .map((station) => ({ station, distance: distanceKm(station, listOrigin) }))
+      .filter(({ distance }) => Number.isFinite(distance) && distance <= maxDistance);
+    if (!nearby.length) {
+      statusEl.classList.add("warn");
+      statusEl.textContent = t("noStationsInRange");
+      return;
+    }
+    const priced = nearby.flatMap(({ station, distance }) => (
+      stationComparablePrices(station).map((price) => ({ station, distance, ...price }))
+    ));
+    const comparable = priced.some((item) => item.unit === "kWh")
+      ? priced.filter((item) => item.unit === "kWh")
+      : priced.filter((item) => item.unit === "min");
+    if (!comparable.length) {
+      statusEl.classList.add("warn");
+      statusEl.textContent = t("noPricedStations");
+      return;
+    }
+    comparable.sort((left, right) => left.value - right.value || left.distance - right.distance);
+    const winner = comparable[0];
+    map.flyTo([winner.station.latitude, winner.station.longitude], 15, { duration: 0.55 });
+    await selectStation(winner.station, false);
+    markerByKey.get(stationKey(winner.station))?.openPopup();
+    statusEl.textContent = t("cheapestFound", {
+      price: priceLabel(winner.offer),
+      distance: formatNumber(winner.distance, winner.distance < 10 ? 1 : 0),
+    });
+    stationDetailEl.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  } finally {
+    cheapestEl.disabled = false;
+    cheapestDistanceEl.disabled = false;
+  }
+}
+
+function openExternalUrl(url) {
+  try {
+    const targetDocument = window.top?.document;
+    if (targetDocument?.body) {
+      const link = targetDocument.createElement("a");
+      link.href = url;
+      link.target = "_blank";
+      link.rel = "noopener noreferrer";
+      link.hidden = true;
+      targetDocument.body.appendChild(link);
+      link.click();
+      link.remove();
+      return;
+    }
+  } catch (_error) {
+    // Fall back to the current browsing context when top-level access is restricted.
+  }
+  window.open(url, "_blank", "noopener,noreferrer");
 }
 
 function renderVehicleLocation() {
@@ -927,6 +1106,23 @@ availableOnlyEl.addEventListener("change", applyFilters);
 reloadEl.addEventListener("click", loadStations);
 document.getElementById("locate").addEventListener("click", showVehicleLocation);
 nearestEl.addEventListener("click", showNearestStations);
+cheapestEl.addEventListener("click", showCheapestStation);
+cheapestDistanceEl.value = String(Math.min(
+  500,
+  Math.max(1, readStoredNumber(CHEAPEST_DISTANCE_STORAGE, DEFAULT_CHEAPEST_DISTANCE_KM)),
+));
+cheapestDistanceEl.addEventListener("change", () => {
+  const value = Number(cheapestDistanceEl.value);
+  if (Number.isFinite(value) && value >= 1 && value <= 500) {
+    storeNumber(CHEAPEST_DISTANCE_STORAGE, value);
+  }
+});
+stationDetailEl.addEventListener("click", (event) => {
+  const link = event.target.closest("[data-external-url]");
+  if (!link) return;
+  event.preventDefault();
+  openExternalUrl(link.dataset.externalUrl);
+});
 document.getElementById("enableAllConnectors").addEventListener("click", () => {
   disabledConnectorTypes.clear();
   storeSet(CONNECTOR_FILTER_STORAGE, disabledConnectorTypes);

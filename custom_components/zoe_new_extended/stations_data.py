@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import html
 import math
 import re
 from collections.abc import Mapping
@@ -24,6 +25,34 @@ OCCUPIED_STATUSES = frozenset(
         "suspendedev",
         "suspendedevse",
     }
+)
+DESCRIPTION_KEYS = (
+    "description",
+    "instructions",
+    "instruction",
+    "accessInstructions",
+    "accessInstruction",
+    "access_instructions",
+    "accessComments",
+    "access_comments",
+    "accessInfo",
+    "access_info",
+    "additionalInformation",
+    "additional_information",
+    "additionalInfo",
+    "additional_info",
+    "directions",
+    "locationDescription",
+    "location_description",
+    "remarks",
+    "remark",
+    "comments",
+    "comment",
+    "notes",
+    "note",
+    "openingHours",
+    "opening_hours",
+    "hours",
 )
 
 
@@ -56,6 +85,14 @@ def normalize_elektrum_station(
         None,
     )
     operator = _elektrum_operator(station, translation)
+    name = translation.get("name") or fallback_name or station.get("address")
+    description = _station_description(
+        translation,
+        station,
+        *(point for point in station.get("chargingPoints", []) if isinstance(point, Mapping)),
+        language=language,
+        exclude=(name, station.get("address"), station.get("city")),
+    )
     fallback_price = _operator_fallback_price(operator)
     if fallback_price:
         for connector in connectors:
@@ -65,8 +102,9 @@ def normalize_elektrum_station(
         "provider": "elektrum",
         "provider_group": "elektrum",
         "id": str(station_id),
-        "name": translation.get("name") or fallback_name or station.get("address"),
-        "description": translation.get("description"),
+        "name": name,
+        "description": description,
+        "descriptions": _merge_descriptions(description),
         "address": station.get("address"),
         "city": station.get("city"),
         "country": station.get("country"),
@@ -139,6 +177,14 @@ def normalize_mobilly_station(site: dict[str, Any]) -> dict[str, Any] | None:
             )
 
     operator = _mobilly_operator(site)
+    name = site.get("name") or site.get("description") or f"Mobilly {site_id}"
+    address = site.get("description")
+    description = _station_description(
+        details if isinstance(details, Mapping) else None,
+        site,
+        language="lv",
+        exclude=(name, address),
+    )
     fallback_price = _operator_fallback_price(operator)
     if fallback_price:
         for connector in connectors:
@@ -150,9 +196,10 @@ def normalize_mobilly_station(site: dict[str, Any]) -> dict[str, Any] | None:
         "provider_group": "mobilly",
         "id": str(site_id),
         "uid": site.get("uid"),
-        "name": site.get("name") or site.get("description") or f"Mobilly {site_id}",
-        "description": site.get("description"),
-        "address": site.get("description"),
+        "name": name,
+        "description": description,
+        "descriptions": _merge_descriptions(description),
+        "address": address,
         "city": None,
         "country": None,
         "latitude": latitude,
@@ -236,13 +283,21 @@ def normalize_emobi_station(feature: dict[str, Any]) -> dict[str, Any] | None:
     address_data = properties.get("address")
     address_data = address_data if isinstance(address_data, Mapping) else {}
     station_status = _normalize_live_status(properties.get("status"))
+    name = properties.get("name") or f"e-mobi {station_id}"
+    description = _station_description(
+        properties,
+        address_data,
+        language="lv",
+        exclude=(name, address_data.get("street"), address_data.get("city")),
+    )
     result = {
         "provider": "emobi" if is_csdd else "emobi_elektrum",
         "provider_group": "emobi" if is_csdd else "elektrum",
         "id": str(station_id),
         "uid": properties.get("uuid"),
-        "name": properties.get("name") or f"e-mobi {station_id}",
-        "description": None,
+        "name": name,
+        "description": description,
+        "descriptions": _merge_descriptions(description),
         "address": address_data.get("street"),
         "city": address_data.get("city"),
         "country": "Latvia",
@@ -422,6 +477,16 @@ def merge_mobilly_station_detail(
         "live_data_requires_mobile_session": False,
         "detail_source": "mobilly_app",
     }
+    detail_description = _station_description(
+        detail,
+        language="lv",
+        exclude=(station.get("name"), station.get("address"), station.get("city")),
+    )
+    result["descriptions"] = _merge_descriptions(
+        station.get("descriptions"), station.get("description"), detail_description
+    )
+    if detail_description:
+        result["description"] = detail_description
     detail_price = _extract_price(detail)
     if detail_price:
         price = detail_price
@@ -471,6 +536,9 @@ def deduplicate_stations(
         )
         if duplicate_index is None:
             station["source_providers"] = [station.get("provider")]
+            station["descriptions"] = _merge_descriptions(
+                station.get("descriptions"), station.get("description")
+            )
             station["provider_offers"] = _merge_provider_offers(
                 station.get("provider_offers"), [_provider_offer(station)]
             )
@@ -510,6 +578,14 @@ def deduplicate_stations(
             station.get("provider_offers"),
             [_provider_offer(station)],
         )
+        merged["descriptions"] = _merge_descriptions(
+            existing.get("descriptions"),
+            existing.get("description"),
+            station.get("descriptions"),
+            station.get("description"),
+        )
+        if not merged.get("description") and merged["descriptions"]:
+            merged["description"] = merged["descriptions"][0]
         merged["provider_groups"] = [
             offer["provider_group"] for offer in merged["provider_offers"]
         ]
@@ -624,6 +700,10 @@ def _provider_offer(station: Mapping[str, Any]) -> dict[str, Any]:
         "provider_group": provider_group,
         "id": str(station.get("id") or ""),
         "operator": station.get("operator"),
+        "description": station.get("description"),
+        "descriptions": _merge_descriptions(
+            station.get("descriptions"), station.get("description")
+        ),
         "price_c_per_kwh": station.get("price_c_per_kwh"),
         "price_value": station.get("price_value"),
         "price_unit": station.get("price_unit"),
@@ -655,8 +735,24 @@ def _merge_provider_offers(*sources: Any) -> list[dict[str, Any]]:
                 continue
             offer["provider_group"] = group
             existing = offers_by_group.get(group)
-            if existing is None or _offer_quality(offer) > _offer_quality(existing):
+            if existing is None:
                 offers_by_group[group] = offer
+                continue
+            primary, secondary = (
+                (offer, existing)
+                if _offer_quality(offer) > _offer_quality(existing)
+                else (existing, offer)
+            )
+            merged = dict(primary)
+            merged["descriptions"] = _merge_descriptions(
+                primary.get("descriptions"),
+                primary.get("description"),
+                secondary.get("descriptions"),
+                secondary.get("description"),
+            )
+            if not merged.get("description") and merged["descriptions"]:
+                merged["description"] = merged["descriptions"][0]
+            offers_by_group[group] = merged
     return sorted(
         offers_by_group.values(),
         key=lambda offer: (order.get(str(offer["provider_group"]), 99), str(offer["provider_group"])),
@@ -835,6 +931,78 @@ def _normalize_price_unit(value: Any) -> str | None:
 
 def _first_value(value: Mapping[str, Any], *keys: str) -> Any:
     return next((value[key] for key in keys if value.get(key) is not None), None)
+
+
+def _station_description(
+    *sources: Any,
+    language: str = "lv",
+    exclude: tuple[Any, ...] = (),
+) -> str | None:
+    """Collect user-facing station notes without treating the address as a note."""
+    fragments: list[str] = []
+    for source in sources:
+        if not isinstance(source, Mapping):
+            continue
+        for key in DESCRIPTION_KEYS:
+            if key in source:
+                fragments.extend(_description_fragments(source.get(key), language))
+    excluded = {
+        _normalized_description(value)
+        for value in exclude
+        if _normalized_description(value)
+    }
+    descriptions = _merge_descriptions(fragments)
+    descriptions = [
+        value for value in descriptions if _normalized_description(value) not in excluded
+    ]
+    return "\n".join(descriptions) or None
+
+
+def _description_fragments(value: Any, language: str) -> list[str]:
+    if isinstance(value, str):
+        text = re.sub(r"<br\s*/?>", "\n", value, flags=re.IGNORECASE)
+        text = html.unescape(re.sub(r"<[^>]+>", " ", text))
+        return [
+            line
+            for raw_line in text.splitlines()
+            if (line := re.sub(r"\s+", " ", raw_line).strip())
+        ]
+    if isinstance(value, (list, tuple, set)):
+        return [
+            fragment
+            for item in value
+            for fragment in _description_fragments(item, language)
+        ]
+    if not isinstance(value, Mapping):
+        return []
+    for key in (language, "en", "lv", "text", "value", "label", "description"):
+        if key in value:
+            fragments = _description_fragments(value.get(key), language)
+            if fragments:
+                return fragments
+    return []
+
+
+def _merge_descriptions(*sources: Any) -> list[str]:
+    result: list[str] = []
+    seen: set[str] = set()
+    for source in sources:
+        values = source if isinstance(source, (list, tuple, set)) else [source]
+        for value in values:
+            if not isinstance(value, str):
+                continue
+            for line in value.splitlines():
+                text = re.sub(r"\s+", " ", line).strip()
+                normalized = _normalized_description(text)
+                if not text or not normalized or normalized in seen:
+                    continue
+                seen.add(normalized)
+                result.append(text)
+    return result
+
+
+def _normalized_description(value: Any) -> str:
+    return re.sub(r"\s+", " ", str(value or "").strip()).casefold()
 
 
 def _display_value(value: Any) -> Any:

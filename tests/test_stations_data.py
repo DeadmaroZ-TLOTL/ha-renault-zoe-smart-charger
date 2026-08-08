@@ -75,6 +75,8 @@ class StationsDataTest(unittest.TestCase):
         self.assertEqual(1, result["connector_count"])
         self.assertEqual(57.129, result["latitude"])
         self.assertEqual("Elektrum Drive", result["operator"])
+        self.assertEqual("24/7", result["description"])
+        self.assertEqual(["24/7"], result["descriptions"])
 
     def test_elektrum_connector_numbers_are_unique_across_charge_points(self) -> None:
         station = {
@@ -150,6 +152,8 @@ class StationsDataTest(unittest.TestCase):
             "type": "ev_charge",
             "location": {"type": "Point", "coordinates": [24.1, 56.95]},
             "siteDetails": {
+                "accessInstructions": "Enter through the courtyard gate",
+                "openingHours": "24/7",
                 "connectors": [
                     {"type": "CCS", "maxPower": 150000, "count": 2},
                     {"type": "Type 2", "maxPower": 22000, "count": 1},
@@ -166,6 +170,11 @@ class StationsDataTest(unittest.TestCase):
         self.assertTrue(all(item["count"] == 1 for item in result["connectors"]))
         self.assertEqual("unknown", result["availability"])
         self.assertTrue(result["live_data_requires_mobile_session"])
+        self.assertEqual(
+            ["Enter through the courtyard gate", "24/7"],
+            result["descriptions"],
+        )
+        self.assertNotIn("Riga", result["descriptions"])
 
     def test_extracts_mobilly_operator_from_description(self) -> None:
         result = stations_data.normalize_mobilly_station(
@@ -227,6 +236,7 @@ class StationsDataTest(unittest.TestCase):
                     "id": 58,
                     "uuid": "station-uuid",
                     "name": "ADAZI",
+                    "accessComments": "Charger is behind the barrier",
                     "companyName": "csdd",
                     "status": "Available",
                     "address": {"street": "Rigas gatve 45"},
@@ -262,6 +272,10 @@ class StationsDataTest(unittest.TestCase):
         self.assertEqual("occupied", result["connectors"][1]["status"])
         self.assertEqual("19 c/min", result["price_formatted"])
         self.assertTrue(result["connector_live_data_available"])
+        self.assertEqual(
+            "Charger is behind the barrier",
+            result["description"],
+        )
 
     def test_normalizes_elektrum_from_official_emobi_map(self) -> None:
         result = stations_data.normalize_emobi_station(
@@ -558,6 +572,45 @@ class StationsDataTest(unittest.TestCase):
         self.assertEqual(
             ["23 c/kWh", "19 c/min"],
             [offer["price_formatted"] for offer in result["provider_offers"]],
+        )
+
+    def test_preserves_descriptions_from_all_station_providers(self) -> None:
+        elektrum = {
+            "provider": "elektrum",
+            "provider_group": "elektrum",
+            "id": "e-1",
+            "operator": "e-mobi",
+            "description": "Use the north entrance",
+            "descriptions": ["Use the north entrance"],
+            "latitude": 56.95,
+            "longitude": 24.1,
+            "connectors": [{"code": "LV*CSD*E1"}],
+        }
+        mobilly = {
+            "provider": "mobilly",
+            "provider_group": "mobilly",
+            "id": "m-1",
+            "operator": "CSDD",
+            "description": "Parking is free while charging",
+            "latitude": 56.9501,
+            "longitude": 24.1001,
+            "live_data_available": True,
+            "connectors": [{"status": "available"}],
+        }
+
+        result = stations_data.deduplicate_stations([elektrum, mobilly])[0]
+
+        self.assertEqual(
+            ["Use the north entrance", "Parking is free while charging"],
+            result["descriptions"],
+        )
+        self.assertEqual(
+            ["Use the north entrance"],
+            result["provider_offers"][0]["descriptions"],
+        )
+        self.assertEqual(
+            ["Parking is free while charging"],
+            result["provider_offers"][1]["descriptions"],
         )
 
     def test_merges_same_station_when_provider_operator_names_differ(self) -> None:

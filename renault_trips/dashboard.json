@@ -80,7 +80,7 @@
       "cards": [
         {
           "type": "iframe",
-          "url": "/local/renault_trips/stations.html?v=1.2.2",
+          "url": "/local/renault_trips/stations.html?v=1.2.3",
           "aspect_ratio": "72%"
         }
       ]

@@ -58,11 +58,15 @@ The Stations view combines Elektrum Drive, Mobilly, and e-mobi catalogs and
 centers the map on the Renault location when it is available. Search,
 provider, plug-type, minimum-power, and known-availability filters run locally
 in the browser. Selecting a station shows every known connector, its physical
-number, operator price, and live state when the provider exposes it. Directions
-open in Google Maps or Waze, and the WhatsApp action opens a prefilled station
-location message for the user to send. A separate provider tab embeds the
-public PlugShare map; PlugShare locations are not merged into the local catalog
-because its station-data API requires a commercial license.
+number, operator price, provider description/access notes, and live state when
+the provider exposes it. The nearest-cheapest action accepts a maximum distance
+and respects the active provider, plug, power, availability, and operator
+filters; zero or unknown prices are excluded and per-kWh prices are never mixed
+with per-minute prices. Directions open in Google Maps or Waze, and the
+WhatsApp action opens a prefilled station location message for the user to
+send. A separate provider tab embeds the public PlugShare map; PlugShare
+locations are not merged into the local catalog because its station-data API
+requires a commercial license.
 
 ## Energy cost model
 

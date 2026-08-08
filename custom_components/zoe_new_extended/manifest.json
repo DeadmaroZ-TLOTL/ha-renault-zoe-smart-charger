@@ -4,6 +4,7 @@
   "after_dependencies": ["nordpool", "renault"],
   "codeowners": ["@DeadmaroZ-TLOTL"],
   "config_flow": true,
+  "dependencies": ["http"],
   "documentation": "https://github.com/DeadmaroZ-TLOTL/ha-renault-zoe-smart-charger",
   "integration_type": "hub",
   "iot_class": "cloud_polling",

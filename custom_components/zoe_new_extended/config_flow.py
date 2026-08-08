@@ -317,14 +317,14 @@ class ZoeNewExtendedConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 class ZoeNewExtendedOptionsFlow(config_entries.OptionsFlow):
     """Configure smart charging and its selected Home Assistant entities."""
 
-    def _option_or_helper(self, key, entity_id, default):
+    def _option_or_helper(self, key, entity_id, default, *, prefer_helper=False):
         """Return a saved option, otherwise preserve the current helper value."""
-        if key in self.config_entry.options:
+        if key in self.config_entry.options and not prefer_helper:
             return self.config_entry.options[key]
 
         state = self.hass.states.get(entity_id)
         if state is None or state.state in {"unknown", "unavailable"}:
-            return default
+            return self.config_entry.options.get(key, default)
         if isinstance(default, bool):
             return state.state == "on"
         if isinstance(default, float):
@@ -570,6 +570,9 @@ class ZoeNewExtendedOptionsFlow(config_entries.OptionsFlow):
     def _save_charging_accounts(self, accounts):
         """Store secrets in config-entry data, outside ordinary options."""
         self._update_charging_accounts(accounts)
+        self.hass.async_create_task(
+            self.hass.config_entries.async_reload(self.config_entry.entry_id)
+        )
         return self.async_create_entry(
             title="",
             data=dict(self.config_entry.options),
@@ -1952,6 +1955,22 @@ class ZoeNewExtendedOptionsFlow(config_entries.OptionsFlow):
     async def async_step_smart_charging(self, user_input=None):
         """Configure allowed charging zones and Nord Pool area."""
         if user_input is not None:
+            smart_enabled = bool(
+                user_input.get(
+                    CONF_ZOE_SMART_CHARGING_ENABLED,
+                    DEFAULT_ZOE_SMART_CHARGING_ENABLED,
+                )
+            )
+            current_state = self.hass.states.get("input_boolean.zoe_smart_charging")
+            if current_state is not None and (
+                current_state.state == "on"
+            ) != smart_enabled:
+                await self.hass.services.async_call(
+                    "input_boolean",
+                    "turn_on" if smart_enabled else "turn_off",
+                    {"entity_id": "input_boolean.zoe_smart_charging"},
+                    blocking=True,
+                )
             return self._create_merged_entry(user_input)
 
         allowed_zones = self.config_entry.options.get(CONF_ALLOWED_ZONES, [])
@@ -1968,31 +1987,37 @@ class ZoeNewExtendedOptionsFlow(config_entries.OptionsFlow):
             CONF_ZOE_SMART_CHARGING_ENABLED,
             "input_boolean.zoe_smart_charging",
             DEFAULT_ZOE_SMART_CHARGING_ENABLED,
+            prefer_helper=True,
         )
         max_price_enabled = self._option_or_helper(
             CONF_ZOE_MAX_PRICE_ENABLED,
             "input_boolean.zoe_max_price_enabled",
             DEFAULT_ZOE_MAX_PRICE_ENABLED,
+            prefer_helper=True,
         )
         target_mode = self._option_or_helper(
             CONF_ZOE_CHARGE_TARGET_MODE,
             "input_select.zoe_charge_target_mode",
             DEFAULT_ZOE_CHARGE_TARGET_MODE,
+            prefer_helper=True,
         )
         target_percent = self._option_or_helper(
             CONF_ZOE_CHARGE_TARGET_PERCENT,
             "input_number.zoe_charge_target",
             DEFAULT_ZOE_CHARGE_TARGET_PERCENT,
+            prefer_helper=True,
         )
         range_target = self._option_or_helper(
             CONF_ZOE_CHARGE_RANGE_TARGET_KM,
             "input_number.zoe_charge_range_target",
             DEFAULT_ZOE_CHARGE_RANGE_TARGET_KM,
+            prefer_helper=True,
         )
         max_energy_price = self._option_or_helper(
             CONF_ZOE_MAX_ENERGY_PRICE,
             "input_number.zoe_max_energy_price",
             DEFAULT_ZOE_MAX_ENERGY_PRICE,
+            prefer_helper=True,
         )
         return self.async_show_form(
             step_id="smart_charging",
