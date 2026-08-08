@@ -66,10 +66,14 @@ used by the included Nord Pool smart charger package.
   at 6 A and use Tuya Local only. The controls are disabled while the local
   charger connection is unavailable.
 
-The command workaround follows the behavior proposed in
-[renault-api pull request #2202](https://github.com/hacf-fr/renault-api/pull/2202).
-When that fix is released and used by Home Assistant, the compatibility patch
-in this integration can be removed.
+Immediate charging uses the current X102VE KCM start action. Stopping uses the
+same KCM charge-schedule action as MyRenault: it installs a one-minute schedule
+24 hours ahead, which moves the vehicle out of instant charging. This is used
+because both KCM `pause` and the legacy KCA `stop` action fail to stop this Zoe
+in practice. The original delayed-start workaround is retained in
+[renault-api pull request #2202](https://github.com/hacf-fr/renault-api/pull/2202)
+for upstream discussion, while this integration uses the physically verified
+schedule method.
 
 ## Installation
 
@@ -158,7 +162,9 @@ Renault entities and installation path.
 
 - Renault can accept a cloud command before the vehicle receives it. The
   command status sensor reports both API acceptance and later vehicle state.
-- The stop workaround schedules charging 24 hours ahead because the current
-  `X102VE` pause endpoint is accepted but does not stop the car in practice.
+- The stop workaround activates a one-minute weekly schedule 24 hours ahead.
+  The next explicit start command returns the car to instant charging. Renault
+  KCM `pause` is accepted but does not stop this `X102VE`, and KCA `stop` is
+  rejected as an invalid payload.
 - Renault and the Renault diamond are trademarks of Renault Group. Brand
   images are the assets already maintained by Home Assistant Brands.

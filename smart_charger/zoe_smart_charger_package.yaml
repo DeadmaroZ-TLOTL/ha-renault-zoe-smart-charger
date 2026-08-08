@@ -277,10 +277,13 @@ automation:
     description: >-
       Charge in the cheapest eligible 15-minute intervals before the deadline.
       If the target can no longer be reached by the deadline, use the earliest
-      later intervals below the configured price cap. Select Renault Always
-      mode before a planned start, and also when smart charging is disabled or
-      the current location is not allowed. While the current Nord Pool price is
-      below 0.01 c/kWh, charge continuously without waiting for a cheaper slot.
+      later intervals below the configured price cap. The X102VE KCM start
+      command selects instant charging; a future KCM schedule reliably stops
+      it between planned intervals. Renault Always mode is also selected when
+      smart charging is disabled or the current location is not allowed. While
+      the current Nord Pool price is below 0.01 c/kWh, charge continuously.
+      A failed stop is retried after 15 minutes; rate limits and failed starts
+      retain a one-hour backoff.
     triggers:
       - trigger: time_pattern
         minutes: /5
@@ -319,6 +322,10 @@ automation:
           cap_on: "{{ is_state('input_boolean.zoe_max_price_enabled', 'on') }}"
           cap: "{{ states('input_number.zoe_max_energy_price') | float(100) }}"
           current_price: "{{ states(price_entity) | float(999) }}"
+          command_state: "{{ states('sensor.renault_zoe_new_charge_command') }}"
+          last_command: >-
+            {{ state_attr('sensor.renault_zoe_new_charge_command', 'last_command')
+               | default('', true) }}
           cheap_price_threshold: 0.01
           ready: "{{ states('input_datetime.zoe_ready_by') }}"
       - variables:
@@ -329,10 +336,17 @@ automation:
           slots_needed: >-
             {{ (needed | float / (power | float * 0.25)) | round(0, 'ceil') | int
                if power | float > 0 else 999 }}
-          cooldown_ok: >-
-            {{ as_timestamp(now()) - as_timestamp(states('input_datetime.zoe_last_charge_command'), 0) >= 600 }}
+          command_backoff_seconds: >-
+            {{ 3600 if command_state == 'rate_limited' or
+                       (last_command == 'start' and command_state in ['timeout', 'error'])
+               else 900 }}
+          command_age_seconds: >-
+            {{ as_timestamp(now()) -
+               as_timestamp(states('input_datetime.zoe_last_charge_command'), 0) }}
           continuous_low_price: >-
             {{ current_price | float(999) < cheap_price_threshold | float(0.01) }}
+      - variables:
+          cooldown_ok: "{{ command_age_seconds | float >= command_backoff_seconds | float }}"
       - variables:
           selected_now: >-
             {% set slots = (state_attr(price_entity, 'raw_today') or []) +
@@ -387,6 +401,13 @@ automation:
             {% elif not location_ok %}Waiting for an allowed location
             {% elif not plugged %}Waiting for plug
             {% elif soc | float >= target | float %}Target reached
+            {% elif command_state == 'rate_limited' %}Renault API rate limit; retry paused for one hour
+            {% elif charging and not should_charge and command_state == 'stopping' and not cooldown_ok %}
+              Stop sent; waiting for Renault confirmation
+            {% elif charging and not should_charge and command_state in ['timeout', 'error'] and not cooldown_ok %}
+              Stop not confirmed; automatic retry in
+              {{ [((command_backoff_seconds | float - command_age_seconds | float) / 60)
+                    | round(0, 'ceil') | int, 1] | max }} min
             {% elif continuous_low_price %}Charging continuously below 0.01 c/kWh
             {% elif should_charge %}Charging in selected price window
             {% else %}Waiting for a cheaper selected interval
@@ -394,20 +415,11 @@ automation:
       - choose:
           - conditions: "{{ should_charge and not charging and cooldown_ok }}"
             sequence:
-              - if:
-                  - condition: template
-                    value_template: >-
-                      {{ states('select.renault_zoe_new_charging_mode') !=
-                         'always' }}
-                then:
-                  - action: select.select_option
-                    target:
-                      entity_id: select.renault_zoe_new_charging_mode
-                    data:
-                      option: always
-                  - action: homeassistant.update_entity
-                    target:
-                      entity_id: sensor.battery
+              - action: input_datetime.set_datetime
+                target:
+                  entity_id: input_datetime.zoe_last_charge_command
+                data:
+                  datetime: "{{ now().strftime('%Y-%m-%d %H:%M:%S') }}"
               - if:
                   - condition: template
                     value_template: >-
@@ -418,23 +430,18 @@ automation:
                   - action: button.press
                     target:
                       entity_id: button.start_charge
-              - action: input_datetime.set_datetime
-                target:
-                  entity_id: input_datetime.zoe_last_charge_command
-                data:
-                  datetime: "{{ now().strftime('%Y-%m-%d %H:%M:%S') }}"
           - conditions: >-
               {{ smart_on and location_ok and plugged and charging and cooldown_ok and
                   (soc | float >= target | float or not should_charge) }}
             sequence:
-              - action: button.press
-                target:
-                  entity_id: button.stop_charge
               - action: input_datetime.set_datetime
                 target:
                   entity_id: input_datetime.zoe_last_charge_command
                 data:
                   datetime: "{{ now().strftime('%Y-%m-%d %H:%M:%S') }}"
+              - action: button.press
+                target:
+                  entity_id: button.stop_charge
     mode: single
     max_exceeded: silent
 

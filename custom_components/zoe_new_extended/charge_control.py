@@ -20,9 +20,23 @@ from homeassistant.core import HomeAssistant, callback
 from homeassistant.exceptions import HomeAssistantError
 
 MODEL_CODE = "X102VE"
-STOP_DELAY = timedelta(hours=24)
 CONFIRM_TIMEOUT = 15 * 60
+CONFIRM_CHECK_INTERVAL = 30
+STOP_DELAY = timedelta(hours=24)
+STOP_SCHEDULE_DURATION = 1
+CHARGE_SCHEDULE_DAYS = (
+    "monday",
+    "tuesday",
+    "wednesday",
+    "thursday",
+    "friday",
+    "saturday",
+    "sunday",
+)
 KCM_CHARGE_START = EndpointDefinition("/kcm/v1/vehicles/{vin}/charge/start", mode="kcm")
+KCM_CHARGE_SCHEDULE = EndpointDefinition(
+    "/kcm/v1/vehicles/{vin}/charge/schedule", mode="kcm"
+)
 
 
 def find_zoe_new(hass: HomeAssistant) -> Any | None:
@@ -57,6 +71,7 @@ class ZoeNewChargeControl:
         self.last_vehicle_state: str | None = None
         self.last_error: str | None = None
         self.delayed_until: str | None = None
+        self.stop_method: str | None = None
 
         previous = getattr(vehicle, "_zoe_new_extended_charge_control", None)
         if previous is not None:
@@ -81,7 +96,31 @@ class ZoeNewChargeControl:
         for listener in tuple(self._listeners):
             listener()
 
-    def _payload(self, when: datetime | None = None) -> dict[str, Any]:
+    def _payload(self, command: str, when: datetime | None = None) -> dict[str, Any]:
+        if command == "stop":
+            if when is None:
+                raise ValueError("A future schedule is required to stop charging")
+            when = when.astimezone(timezone.utc).replace(second=0, microsecond=0)
+            schedules: list[dict[str, Any]] = []
+            for schedule_id in range(1, 6):
+                schedule: dict[str, Any] = {
+                    "id": str(schedule_id),
+                    "activated": schedule_id == 1,
+                    **{day: None for day in CHARGE_SCHEDULE_DAYS},
+                }
+                if schedule_id == 1:
+                    schedule[CHARGE_SCHEDULE_DAYS[when.weekday()]] = {
+                        "startTime": when.strftime("T%H:%MZ"),
+                        "duration": STOP_SCHEDULE_DURATION,
+                    }
+                schedules.append(schedule)
+            return {
+                "data": {
+                    "type": "ChargeSchedule",
+                    "attributes": {"schedules": schedules},
+                }
+            }
+
         attributes: dict[str, Any] = {"action": "start"}
         if when is not None:
             attributes["startDateTime"] = when.astimezone(timezone.utc).strftime(
@@ -102,7 +141,7 @@ class ZoeNewChargeControl:
         return await self._async_send(command, when)
 
     async def async_stop(self) -> KamereonVehicleChargingStartActionData:
-        """Stop charging by moving the native delayed start 24 hours ahead."""
+        """Stop charging by moving X102VE into a future KCM schedule."""
         return await self._async_send("stop", datetime.now(timezone.utc) + STOP_DELAY)
 
     async def _async_send(
@@ -112,13 +151,21 @@ class ZoeNewChargeControl:
         self.last_command_at = datetime.now(timezone.utc).isoformat()
         self.last_command_id = None
         self.last_error = None
-        self.delayed_until = when.isoformat() if command == "stop" and when else None
-        self.state = "starting" if command == "start" else "stopping"
+        self.delayed_until = (
+            when.isoformat() if command in ("delay", "stop") and when else None
+        )
+        self.stop_method = "kcm_schedule" if command == "stop" else None
+        self.state = {
+            "start": "starting",
+            "delay": "scheduling",
+            "stop": "stopping",
+        }[command]
         self._notify()
 
         try:
+            endpoint = KCM_CHARGE_SCHEDULE if command == "stop" else KCM_CHARGE_START
             response = await self.vehicle._vehicle._set_vehicle_data(
-                KCM_CHARGE_START, self._payload(when)
+                endpoint, self._payload(command, when)
             )
         except RenaultException as err:
             self.last_error = str(err)
@@ -134,11 +181,14 @@ class ZoeNewChargeControl:
         data = response.raw_data.get("data", {})
         self.last_command_id = data.get("id")
         self._start_confirmation(command)
+        schema = (
+            schemas.KamereonVehicleChargeScheduleActionDataSchema
+            if command == "stop"
+            else schemas.KamereonVehicleChargingStartActionDataSchema
+        )
         return cast(
             KamereonVehicleChargingStartActionData,
-            response.get_attributes(
-                schemas.KamereonVehicleChargingStartActionDataSchema
-            ),
+            response.get_attributes(schema),
         )
 
     @callback
@@ -164,7 +214,8 @@ class ZoeNewChargeControl:
             update_event.set()
 
         unsubscribe = coordinator.async_add_listener(handle_coordinator_update)
-        deadline = asyncio.get_running_loop().time() + CONFIRM_TIMEOUT
+        loop = asyncio.get_running_loop()
+        deadline = loop.time() + CONFIRM_TIMEOUT
 
         try:
             while True:
@@ -194,13 +245,16 @@ class ZoeNewChargeControl:
                     self._notify()
                     return
 
-                remaining = deadline - asyncio.get_running_loop().time()
+                remaining = deadline - loop.time()
                 if remaining <= 0:
                     break
                 try:
-                    await asyncio.wait_for(update_event.wait(), timeout=remaining)
+                    await asyncio.wait_for(
+                        update_event.wait(),
+                        timeout=min(CONFIRM_CHECK_INTERVAL, remaining),
+                    )
                 except TimeoutError:
-                    break
+                    continue
                 update_event.clear()
 
             self.state = "timeout"
@@ -220,6 +274,7 @@ class ZoeNewChargeControl:
             "last_vehicle_state": self.last_vehicle_state,
             "last_error": self.last_error,
             "delayed_until": self.delayed_until,
+            "stop_method": self.stop_method,
         }
 
     @callback
