@@ -8,6 +8,7 @@
     mileage: { en: "Mileage", lv: "Nobraukums" },
     cenas: { en: "Costs", lv: "Cenas" },
     info: { en: "Info", lv: "Info" },
+    stations: { en: "Stations", lv: "Stacijas" },
     immax: { en: "IMMAX", lv: "IMMAX" },
   };
   const KNOWN_LABELS = new Set(

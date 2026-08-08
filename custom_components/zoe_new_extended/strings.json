@@ -20,6 +20,7 @@
           "smart_charging": "Renault smart charging",
           "cost_model": "Energy cost model",
           "charging_accounts": "Charging accounts",
+          "renault_account": "Renault account login",
           "immax_setpoints": "IMMAX setpoints",
           "immax_entities": "IMMAX entity sources"
         }
@@ -69,19 +70,73 @@
           "account_action": "Account action"
         }
       },
+      "renault_account": {
+        "title": "Renault account login",
+        "description": "Choose the official Renault config entry that should be signed in again. Credentials and login tokens remain owned by the official Renault integration.",
+        "data": {
+          "renault_entry_selection": "Renault account"
+        }
+      },
+      "renault_credentials": {
+        "title": "Sign in to Renault account",
+        "description": "Enter the credentials for the selected official Renault config entry. The password and refreshed login token are saved only in that Renault entry.",
+        "data": {
+          "renault_locale": "Country / locale",
+          "renault_username": "Username",
+          "renault_password": "Password"
+        }
+      },
+      "renault_kamereon": {
+        "title": "Select Renault account",
+        "description": "This login has more than one My Renault account. Select the account used by this Home Assistant entry.",
+        "data": {
+          "renault_kamereon_account_id": "My Renault account"
+        }
+      },
       "mobilly_account": {
         "title": "Mobilly account",
-        "description": "{mode} a Mobilly account. Both Transactions and Invoice transactions are synchronized. Leave the password empty while editing to keep the saved password.",
+        "description": "{mode} a Mobilly account. Enter a phone number for app history and live data; web username/password are optional and add older statement history. Leave the password empty while editing to keep the saved password.",
         "data": {
           "name": "Account name",
           "enabled": "Enabled",
           "username": "Phone number / username",
-          "password": "Password"
+          "password": "Password",
+          "mobile_phone": "Mobile app phone number"
+        }
+      },
+      "mobilly_mobile": {
+        "title": "Link Mobilly app",
+        "description": "Send a Mobilly verification code for {account_name}. The app session is used for live connector availability and prices.",
+        "data": {
+          "mobile_phone": "Mobile phone number"
+        }
+      },
+      "mobilly_otp": {
+        "title": "Confirm Mobilly app",
+        "description": "Enter the SMS code sent to the phone ending in {phone_suffix}.",
+        "data": {
+          "otp_code": "SMS code"
+        }
+      },
+      "elektrum_mobile_login": {
+        "title": "Log in to Elektrum Drive",
+        "description": "Complete the verification at {captcha_url}, then use its one-time solution to send an SMS code for {account_name}. The CAPTCHA solution and SMS code are never stored.",
+        "data": {
+          "phone": "Phone number",
+          "country_code": "Country calling code",
+          "captcha_solution": "FriendlyCaptcha solution"
+        }
+      },
+      "elektrum_mobile_verify": {
+        "title": "Confirm Elektrum Drive login",
+        "description": "Enter the SMS code sent to the phone ending in {phone_suffix}.",
+        "data": {
+          "sms_code": "SMS code"
         }
       },
       "elektrum_account": {
         "title": "Elektrum Drive account",
-        "description": "{mode} an Elektrum Drive app account. Leave the access token and device ID empty while editing to keep their saved values. An account without a token is saved as awaiting authentication.",
+        "description": "{mode} an Elektrum Drive app account. Leave the access token and device ID empty while editing to keep their saved values. If a postpaid agreement is already visible in the official app, use that app profile's access token and device ID instead of linking the agreement again.",
         "data": {
           "name": "Account name",
           "enabled": "Enabled",
@@ -89,6 +144,28 @@
           "country_code": "Country calling code",
           "access_token": "App access token",
           "device_uuid": "App device ID"
+        }
+      },
+      "elektrum_link_agreement": {
+        "title": "Link Elektrum agreement",
+        "description": "Start secure Smart-ID verification for the {account_name} postpaid agreement. The personal code is sent once to Elektrum over HTTPS and is never stored by Home Assistant.",
+        "data": {
+          "personal_code": "Personal code"
+        }
+      },
+      "elektrum_smart_id": {
+        "title": "Confirm with Smart-ID",
+        "description": "Approve the Smart-ID request that shows verification code {verification_code}. Then confirm below and continue.",
+        "data": {
+          "verification_code": "Smart-ID verification code",
+          "confirm": "I approved the Smart-ID request"
+        }
+      },
+      "elektrum_select_agreement": {
+        "title": "Select Elektrum agreement",
+        "description": "Choose the postpaid agreement whose exact charging transactions should be synchronized.",
+        "data": {
+          "agreement_selection": "Agreement"
         }
       },
       "remove_charging_account": {
@@ -155,9 +232,39 @@
     },
     "error": {
       "account_removal_not_confirmed": "Confirm account removal before continuing.",
-      "mobilly_credentials_required": "Mobilly username and password are required.",
+      "elektrum_agreement_link_failed": "Elektrum did not switch the account to the selected postpaid agreement.",
+      "elektrum_agreement_required": "Select an Elektrum agreement.",
+      "elektrum_authorization_failed": "Smart-ID succeeded, but Elektrum could not attach the agreement to this Drive app profile. If the agreement already appears in the official app, import that app profile's access token and device ID instead.",
+      "elektrum_connection_failed": "Could not connect to the Elektrum Drive service.",
+      "elektrum_captcha_required": "Complete the Elektrum FriendlyCaptcha and provide its valid one-time solution.",
+      "elektrum_linked_session_required": "The new app session belongs to an unlinked Elektrum profile. The existing linked Drive session was kept.",
+      "elektrum_no_agreements": "Elektrum did not return any postpaid agreements for this person.",
+      "elektrum_phone_invalid": "Enter a valid Elektrum Drive phone number and country calling code.",
+      "elektrum_personal_code_invalid": "Enter a valid 11-digit Latvian personal code.",
+      "elektrum_personal_code_required": "Enter the personal code used for the Elektrum agreement.",
+      "elektrum_session_expired": "The Elektrum Drive app session has expired. Update this account's access token first.",
+      "elektrum_smart_id_failed": "Smart-ID verification failed or was declined. Start the agreement link again.",
+      "elektrum_smart_id_complete_failed": "Elektrum did not complete the verified Smart-ID session. Start the agreement link again.",
+      "elektrum_smart_id_not_confirmed": "Approve the Smart-ID request before continuing.",
+      "elektrum_smart_id_pending": "Smart-ID is still waiting for approval. Approve it and continue again.",
+      "elektrum_smart_id_start_failed": "Elektrum could not start Smart-ID verification. Check the personal code and try again.",
+      "elektrum_sms_code_required": "Enter the Elektrum Drive SMS code.",
+      "elektrum_sms_start_failed": "Elektrum Drive could not send the SMS code. Complete a fresh CAPTCHA and try again.",
+      "elektrum_sms_verify_failed": "Elektrum Drive rejected the SMS code. Request a fresh code and try again.",
+      "mobilly_credentials_required": "Enter both Mobilly web credentials or a phone number for app authentication.",
+      "mobilly_mobile_connection_failed": "Could not connect to the Mobilly app service.",
+      "mobilly_otp_failed": "Mobilly rejected the SMS code. Request a new code and try again.",
+      "mobilly_otp_required": "Enter the Mobilly SMS code.",
+      "mobilly_otp_start_failed": "Mobilly could not send an SMS code to this number.",
+      "mobilly_phone_invalid": "Enter the Mobilly phone number in international format.",
+      "renault_connection_failed": "Could not connect to Renault. Try again later.",
+      "renault_invalid_credentials": "Renault rejected the username or password.",
+      "renault_no_account": "Renault returned no My Renault account for this login.",
       "soc_resume_must_exceed_stop": "Battery SOC resume threshold must be higher than the stop threshold.",
       "solar_max_must_reach_min": "Maximum solar charging power must be at least the minimum power."
+    },
+    "abort": {
+      "renault_account_not_found": "No official Renault config entry was found. Add the Renault integration first."
     }
   },
   "entity": {

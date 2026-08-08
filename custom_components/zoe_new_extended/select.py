@@ -12,6 +12,8 @@ from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from homeassistant.helpers.restore_state import RestoreEntity
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
+from .device_info import SOURCE_ZOE_API, source_device_info
+
 MODEL_CODE = "X102VE"
 OPTIONS = ("always", "delayed", "scheduled")
 MODE_TO_OPTION = {
@@ -73,7 +75,7 @@ class ZoeNewChargingModeSelect(CoordinatorEntity, RestoreEntity, SelectEntity):
         """Initialize the select from the charging-settings coordinator."""
         super().__init__(vehicle.coordinators["charging_settings"])
         self.vehicle = vehicle
-        self._attr_device_info = vehicle.device_info
+        self._attr_device_info = source_device_info(vehicle, SOURCE_ZOE_API)
         self._attr_unique_id = (
             f"{vehicle.details.vin}_zoe_new_extended_charging_mode".lower()
         )

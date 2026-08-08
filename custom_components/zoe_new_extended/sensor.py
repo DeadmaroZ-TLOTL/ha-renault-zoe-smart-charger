@@ -90,6 +90,14 @@ from .const import (
     DOMAIN,
 )
 from .elektrum_drive import ElektrumDriveCoordinator
+from .device_info import (
+    SOURCE_CHARGING_ACCOUNTS,
+    SOURCE_IMMAX,
+    SOURCE_NORDPOOL,
+    SOURCE_SMART_CHARGING,
+    SOURCE_ZOE_API,
+    source_device_info,
+)
 from .extras import (
     ZoeNewCloudExtrasCoordinator,
     active_contracts,
@@ -457,7 +465,9 @@ class ZoeNewChargingAccountsSensor(CoordinatorEntity, SensorEntity):
         control: ZoeNewChargeControl,
     ) -> None:
         super().__init__(coordinator)
-        self._attr_device_info = control.vehicle.device_info
+        self._attr_device_info = source_device_info(
+            control.vehicle, SOURCE_CHARGING_ACCOUNTS
+        )
         self._attr_unique_id = (
             f"{control.vehicle.details.vin}_charging_accounts".lower()
         )
@@ -502,7 +512,9 @@ class ZoeNewCostSettingsSensor(SensorEntity):
     ) -> None:
         """Initialize the cost settings sensor."""
         self.config_entry = config_entry
-        self._attr_device_info = control.vehicle.device_info
+        self._attr_device_info = source_device_info(
+            control.vehicle, SOURCE_SMART_CHARGING
+        )
         self._attr_unique_id = (
             f"{control.vehicle.details.vin}_cost_settings".lower()
         )
@@ -609,7 +621,9 @@ class ZoeNewImmaxProxySensor(SensorEntity):
         """Initialize a configurable source proxy."""
         self.config_entry = config_entry
         self.entity_description = description
-        self._attr_device_info = control.vehicle.device_info
+        self._attr_device_info = source_device_info(
+            control.vehicle, SOURCE_IMMAX
+        )
         self._attr_unique_id = (
             f"{control.vehicle.details.vin}_{description.key}".lower()
         )
@@ -730,7 +744,9 @@ class ZoeNordPoolPriceSensor(CoordinatorEntity, SensorEntity):
     ) -> None:
         """Initialize the selected-area price sensor."""
         super().__init__(coordinator)
-        self._attr_device_info = control.vehicle.device_info
+        self._attr_device_info = source_device_info(
+            control.vehicle, SOURCE_NORDPOOL
+        )
         self._attr_unique_id = (
             f"{control.vehicle.details.vin}_zoe_new_nord_pool_price".lower()
         )
@@ -768,7 +784,9 @@ class _ZoeNewElektrumSensor(CoordinatorEntity, SensorEntity):
         unique_id_suffix: str,
     ) -> None:
         super().__init__(coordinator)
-        self._attr_device_info = control.vehicle.device_info
+        self._attr_device_info = source_device_info(
+            control.vehicle, SOURCE_CHARGING_ACCOUNTS
+        )
         self._attr_unique_id = (
             f"{control.vehicle.details.vin}_{unique_id_suffix}".lower()
         )
@@ -989,7 +1007,9 @@ class ZoeNewChargeCommandSensor(SensorEntity):
     def __init__(self, control: ZoeNewChargeControl) -> None:
         """Initialize the sensor."""
         self.control = control
-        self._attr_device_info = control.vehicle.device_info
+        self._attr_device_info = source_device_info(
+            control.vehicle, SOURCE_ZOE_API
+        )
         self._attr_unique_id = (
             f"{control.vehicle.details.vin}_zoe_new_charge_command".lower()
         )
@@ -1022,7 +1042,9 @@ class _ZoeNewRawStatusSensor(CoordinatorEntity, SensorEntity):
         """Initialize from the Renault battery coordinator."""
         super().__init__(control.vehicle.coordinators["battery"])
         self.control = control
-        self._attr_device_info = control.vehicle.device_info
+        self._attr_device_info = source_device_info(
+            control.vehicle, SOURCE_ZOE_API
+        )
 
 
 class ZoeNewApiLastUpdatedSensor(CoordinatorEntity, SensorEntity):
@@ -1038,7 +1060,9 @@ class ZoeNewApiLastUpdatedSensor(CoordinatorEntity, SensorEntity):
         """Initialize from the Renault battery coordinator."""
         coordinator = control.vehicle.coordinators["battery"]
         super().__init__(coordinator)
-        self._attr_device_info = control.vehicle.device_info
+        self._attr_device_info = source_device_info(
+            control.vehicle, SOURCE_ZOE_API
+        )
         self._attr_unique_id = (
             f"{control.vehicle.details.vin}_zoe_new_api_last_updated".lower()
         )
@@ -1129,7 +1153,9 @@ class _ZoeNewCloudExtrasSensor(CoordinatorEntity, SensorEntity):
     ) -> None:
         """Initialize a cloud extras sensor."""
         super().__init__(coordinator)
-        self._attr_device_info = control.vehicle.device_info
+        self._attr_device_info = source_device_info(
+            control.vehicle, SOURCE_ZOE_API
+        )
         self._attr_unique_id = (
             f"{control.vehicle.details.vin}_{unique_id_suffix}".lower()
         )

@@ -41,6 +41,12 @@ from .const import (
     ZOE_LOCATION_ENTITY_ID,
 )
 from .elektrum_drive import ElektrumDriveCoordinator
+from .device_info import (
+    SOURCE_CHARGING_ACCOUNTS,
+    SOURCE_IMMAX,
+    SOURCE_SMART_CHARGING,
+    source_device_info,
+)
 
 ATTR_IN_ZONES = "in_zones"
 
@@ -120,7 +126,9 @@ class ZoeNewAtElektrumStationSensor(CoordinatorEntity, BinarySensorEntity):
         vehicle: Any,
     ) -> None:
         super().__init__(coordinator)
-        self._attr_device_info = vehicle.device_info
+        self._attr_device_info = source_device_info(
+            vehicle, SOURCE_CHARGING_ACCOUNTS
+        )
         self._attr_unique_id = (
             f"{vehicle.details.vin}_zoe_new_at_elektrum_station".lower()
         )
@@ -166,7 +174,7 @@ class ZoeNewImmaxProxyBinarySensor(BinarySensorEntity):
         """Initialize a configurable binary source proxy."""
         self.config_entry = config_entry
         self.entity_description = description
-        self._attr_device_info = vehicle.device_info
+        self._attr_device_info = source_device_info(vehicle, SOURCE_IMMAX)
         self._attr_unique_id = f"{vehicle.details.vin}_{description.key}".lower()
         self._attr_suggested_object_id = description.key
 
@@ -243,7 +251,9 @@ class ZoeNewLocationAllowedSensor(BinarySensorEntity):
     def __init__(self, config_entry: ConfigEntry, vehicle: Any) -> None:
         """Initialize the location guard."""
         self.config_entry = config_entry
-        self._attr_device_info = vehicle.device_info
+        self._attr_device_info = source_device_info(
+            vehicle, SOURCE_SMART_CHARGING
+        )
         self._attr_unique_id = (
             f"{vehicle.details.vin}_smart_charging_location_allowed".lower()
         )

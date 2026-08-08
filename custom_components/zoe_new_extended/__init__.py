@@ -52,6 +52,7 @@ from .extras import ZoeNewCloudExtrasCoordinator
 from .elektrum_drive import ElektrumDriveCoordinator
 from .nordpool import NordPoolPriceCoordinator
 from .status_refresh import ZoeNewStatusRefresh
+from .stations import async_register_station_views
 
 RETRY_SECONDS = 15
 PLATFORMS = (
@@ -356,6 +357,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         "charging_accounts_coordinator": charging_accounts_coordinator,
         "extras_coordinator": extras_coordinator,
     }
+    async_register_station_views(hass, entry)
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     await _async_sync_charging_setpoints(hass, entry)
 
@@ -386,6 +388,19 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         runtime["cancel_reconcile"]()
         runtime["cancel_setpoint_sync"]()
     return True
+
+
+async def async_remove_config_entry_device(
+    hass: HomeAssistant,
+    config_entry: ConfigEntry,
+    device_entry: dr.DeviceEntry,
+) -> bool:
+    """Allow removal only after every entity has left the device."""
+    entity_registry = er.async_get(hass)
+    return not any(
+        registry_entry.device_id == device_entry.id
+        for registry_entry in entity_registry.entities.values()
+    )
 
 
 async def async_remove_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:

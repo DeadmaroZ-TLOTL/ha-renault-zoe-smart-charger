@@ -26,9 +26,23 @@ used by the included Nord Pool smart charger package.
 - Nord Pool country/price area, Renault planner targets, price cap, energy cost
   model, and IMMAX setpoints in the integration options.
 - Any number of Mobilly and Elektrum Drive accounts. Exact completed-session
-  energy and cost are merged across accounts, including both Mobilly statement
-  pages, with Elektrum app transactions taking priority over overlapping
-  Mobilly rows so one charge is never counted twice.
+  energy and cost are merged across both Mobilly statement pages and monthly
+  Elektrum app transactions. One physical Elektrum charge split into several
+  Renault API rows is shown once with the provider's exact energy and amount.
+- One-time Elektrum postpaid-agreement linking in integration options. The
+  personal code is sent directly to Elektrum over HTTPS for Smart-ID approval
+  and is never stored by Home Assistant.
+- Renault account sign-in in the same options menu. It uses Renault's official
+  Home Assistant client and updates only the selected official Renault config
+  entry; credentials and refreshed tokens are never copied into this helper.
+- A responsive **Stations** map combining Elektrum Drive, Mobilly, and e-mobi
+  catalogs, plus an embedded PlugShare map. It includes provider, plug-type,
+  power, and availability filters; connector models and physical plug numbers;
+  provider prices and live state when available; Google Maps and Waze
+  navigation; and WhatsApp sharing.
+- Extended entities are attached to the dedicated **Renault Zoe ... Zoe New
+  API** source device. Existing entity IDs stay unchanged, and empty duplicate
+  vehicle devices can be removed safely after registry reconciliation.
 - Local Renault icon and logo on Home Assistant 2026.3 or newer.
 - Optional Nord Pool planner, switchable SOC/range target, maximum spot price, deadline,
   estimated cost, and adaptive charging model.
@@ -69,9 +83,16 @@ Open **Zoe New Extended > Configure > Renault smart charging** to select the
 planner's Nord Pool country, targets, price cap, and allowed zones. Use
 **Energy cost model** for delivery price, VAT, usable capacity, efficiency, and
 fallback consumption. **Charging accounts** adds, edits, disables, or removes
-multiple Mobilly and Elektrum Drive accounts. Account secrets stay in the Home
+multiple Mobilly and Elektrum Drive accounts. After authenticating an Elektrum
+app account, choose **Link Elektrum agreement**, enter the agreement holder's
+personal code, approve Smart-ID, and select an agreement when several exist.
+The personal code is discarded immediately. Account secrets stay in the Home
 Assistant config-entry store and are not exposed as entity attributes or saved
-in this repository. **IMMAX setpoints** stores the charger controller limits
+in this repository. **Renault account login** signs the selected official
+Renault entry in again with country/locale, username, and password. It uses the
+same Renault API client as Home Assistant Core and stores the resulting
+credentials and token only in the official Renault entry.
+**IMMAX setpoints** stores the charger controller limits
 and synchronizes them to the included helpers. Use **IMMAX entity sources** to
 select the charger controls, phase measurements, grid export, battery flow,
 solar production, vehicle SOC, and price entities. Charger control and current
@@ -111,11 +132,21 @@ Read [`immax_smart_charger/README.md`](immax_smart_charger/README.md), select
 the source entities in the integration options, and verify their live values
 before enabling either smart mode.
 
-## Renault Trips
+## Renault Dashboard
 
-The optional automatic trip page and the complete dashboard export are in
-[`renault_trips`](renault_trips). The page calculates trips from Recorder
-history and does not need manual start or stop buttons.
+The optional full-screen dashboard and its complete export are in
+[`renault_trips`](renault_trips). Charging, Trips, Mileage, Costs, Info,
+Stations, and the optional IMMAX view share one responsive visual system. Trips
+are calculated from Recorder history and do not need manual start/stop buttons.
+The Stations view uses authenticated integration API endpoints and must run
+inside Home Assistant. PlugShare is displayed through its public embedded map
+because its station-data API requires a separate commercial license.
+
+Elektrum station details include live connector state and current public
+tariff when the provider page is reachable. Mobilly exposes location,
+connector model/count, and maximum power publicly; live Mobilly occupancy and
+tariff require a mobile-app session and are marked unavailable rather than
+guessed.
 
 Read [`renault_trips/README.md`](renault_trips/README.md) for the expected
 Renault entities and installation path.

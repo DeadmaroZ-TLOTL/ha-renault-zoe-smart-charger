@@ -130,6 +130,78 @@ class MobillyDataTest(unittest.TestCase):
         self.assertEqual(2, len(elektrum))
         self.assertTrue(all(item["provider_reported_cost"] for item in elektrum))
 
+    def test_parses_app_ev_transaction_cost_in_cents(self) -> None:
+        payload = {
+            "data": {
+                "transactions": [
+                    {
+                        "id": "mobile-1",
+                        "type": "EV_CHARGING",
+                        "serviceName": "EV charging",
+                        "serviceProviderName": "Mobilly network",
+                        "comment": "11.8kWh",
+                        "cost": 76,
+                        "startTime": "2026-08-07T16:12:25Z",
+                        "status": "completed",
+                    },
+                    {
+                        "id": "parking-1",
+                        "type": "PARKING",
+                        "cost": 100,
+                        "startTime": "2026-08-07T15:00:00Z",
+                    },
+                ]
+            }
+        }
+
+        records = mobilly_data.parse_app_transactions(payload)
+
+        self.assertEqual(1, len(records))
+        self.assertEqual(0.76, records[0]["cost_eur"])
+        self.assertEqual(11.8, records[0]["energy_kwh"])
+        self.assertIsNone(records[0]["station_name"])
+        self.assertEqual(records[0]["start"], records[0]["end"])
+        self.assertTrue(records[0]["end_inferred"])
+
+    def test_app_session_enriches_history_interval_and_energy(self) -> None:
+        history = mobilly_data.parse_app_transactions(
+            {
+                "transactions": [
+                    {
+                        "id": "mobile-2",
+                        "type": "EV_CHARGING",
+                        "serviceProviderName": "Mobilly",
+                        "cost": 250,
+                        "startTime": "2026-08-07T16:12:25Z",
+                    }
+                ]
+            }
+        )
+        sessions = mobilly_data.parse_app_charge_sessions(
+            {
+                "data": {
+                    "sessions": [
+                        {
+                            "transactionId": "mobile-2",
+                            "providerName": "Mobilly",
+                            "stationName": "Charging station",
+                            "startedAt": "2026-08-07T16:12:25Z",
+                            "endedAt": "2026-08-07T16:29:18Z",
+                            "energyKwh": 13.17,
+                        }
+                    ]
+                }
+            }
+        )
+
+        merged = mobilly_data.merge_app_transactions(history, sessions)
+
+        self.assertEqual(1, len(merged))
+        self.assertEqual("2026-08-07T16:29:18+00:00", merged[0]["end"])
+        self.assertFalse(merged[0]["end_inferred"])
+        self.assertEqual(13.17, merged[0]["energy_kwh"])
+        self.assertEqual(2.5, merged[0]["total_cost_eur"])
+
 
 if __name__ == "__main__":
     unittest.main()

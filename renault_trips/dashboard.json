@@ -10,7 +10,7 @@
       "cards": [
         {
           "type": "iframe",
-          "url": "/local/renault_trips/control.html?page=charging&v=1.2.7",
+          "url": "/local/renault_trips/control.html?page=charging&v=1.2.10",
           "aspect_ratio": "72%"
         }
       ]
@@ -73,6 +73,20 @@
     },
     {
       "type": "panel",
+      "title": "Stations",
+      "path": "stations",
+      "icon": "mdi:map-marker-multiple-outline",
+      "show_icon_and_title": true,
+      "cards": [
+        {
+          "type": "iframe",
+          "url": "/local/renault_trips/stations.html?v=1.2.2",
+          "aspect_ratio": "72%"
+        }
+      ]
+    },
+    {
+      "type": "panel",
       "title": "IMMAX",
       "path": "immax",
       "icon": "mdi:ev-plug-type2",
@@ -80,7 +94,7 @@
       "cards": [
         {
           "type": "iframe",
-          "url": "/local/renault_trips/control.html?page=immax&v=1.2.7",
+          "url": "/local/renault_trips/control.html?page=immax&v=1.2.10",
           "aspect_ratio": "72%"
         }
       ]

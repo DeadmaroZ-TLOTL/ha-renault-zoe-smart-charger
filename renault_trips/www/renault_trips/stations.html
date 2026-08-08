@@ -1,0 +1,152 @@
+<!doctype html>
+<html lang="lv">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Charging stations</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <link rel="stylesheet" href="./shared-theme.css?v=2.2.0" />
+  <link rel="stylesheet" href="./stations.css?v=1.2.2" />
+</head>
+<body>
+  <main class="app stations-app">
+    <header class="topbar">
+      <div class="title-wrap">
+        <span class="title-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24"><path d="M9 11h6M12 8v6M6 22v-5M18 22v-5M5 17h14l-1-8H6l-1 8Z"/><path d="M8 9V5a4 4 0 0 1 8 0v4"/></svg>
+        </span>
+        <div>
+          <h1 data-i18n="title">Uzlādes stacijas</h1>
+          <p id="subtitle" data-i18n="subtitle">Elektrum Drive, Mobilly, e-mobi un PlugShare</p>
+        </div>
+      </div>
+      <div class="filters station-filters">
+        <label class="search-field">
+          <span class="sr-only" data-i18n="search">Meklēt</span>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg>
+          <input id="search" type="search" placeholder="Meklēt vietu vai adresi" autocomplete="off" />
+        </label>
+        <select id="powerFilter" aria-label="Minimālā jauda">
+          <option value="0" data-i18n="allPowers">Visas jaudas</option>
+          <option value="11">11+ kW</option>
+          <option value="22">22+ kW</option>
+          <option value="50">50+ kW</option>
+          <option value="100">100+ kW</option>
+        </select>
+        <details id="connectorFilterMenu" class="multi-filter">
+          <summary>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 3v6M12 3v6M6 9h8v3a4 4 0 0 1-4 4v5M16 7h3v6h-3z"/></svg>
+            <span id="connectorFilterLabel" data-i18n="plugFilters">Spraudņi</span>
+          </summary>
+          <div class="filter-popover">
+            <div class="filter-popover-heading">
+              <strong data-i18n="plugFilters">Spraudņi</strong>
+              <button id="enableAllConnectors" type="button" data-i18n="enableAll">Ieslēgt visus</button>
+            </div>
+            <div id="connectorOptions" class="filter-options"></div>
+          </div>
+        </details>
+        <details id="operatorFilterMenu" class="multi-filter">
+          <summary>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 21V8l8-5 8 5v13M8 21v-7h8v7M7 10h.01M12 10h.01M17 10h.01"/></svg>
+            <span id="operatorFilterLabel" data-i18n="operatorFilters">Operatori</span>
+          </summary>
+          <div class="filter-popover operator-popover">
+            <div class="filter-popover-heading">
+              <strong data-i18n="operatorFilters">Operatori</strong>
+              <button id="enableAllOperators" type="button" data-i18n="enableAll">Ieslēgt visus</button>
+            </div>
+            <div id="operatorOptions" class="filter-options"></div>
+          </div>
+        </details>
+        <button id="nearest" class="secondary nearest-command" type="button">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 10c0 5-8 12-8 12S4 15 4 10a8 8 0 1 1 16 0Z"/><circle cx="12" cy="10" r="2"/></svg>
+          <span data-i18n="findNearest">Tuvākās</span>
+        </button>
+        <a class="icon-command settings-link" href="/config/integrations/integration/zoe_new_extended" target="_top" title="Iestatījumi" data-i18n-title="settings" aria-label="Iestatījumi">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06-2.83 2.83-.06-.06A1.7 1.7 0 0 0 15 19.4a1.7 1.7 0 0 0-1 .6 1.7 1.7 0 0 0-.4 1.1V21h-4v-.09A1.7 1.7 0 0 0 8.55 19.4a1.7 1.7 0 0 0-1.88.34l-.06.06-2.83-2.83.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-.6-1 1.7 1.7 0 0 0-1.1-.4H3v-4h.09A1.7 1.7 0 0 0 4.6 8.55a1.7 1.7 0 0 0-.34-1.88l-.06-.06 2.83-2.83.06.06A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-.6 1.7 1.7 0 0 0 .4-1.1V3h4v.09A1.7 1.7 0 0 0 15.45 4.6a1.7 1.7 0 0 0 1.88-.34l.06-.06 2.83 2.83-.06.06A1.7 1.7 0 0 0 19.4 9c.15.37.36.7.64.98.3.28.68.43 1.07.43H21v4h-.09A1.7 1.7 0 0 0 19.4 15Z"/></svg>
+        </a>
+        <button id="locate" class="icon-command" type="button" title="Rādīt auto atrašanās vietu" data-i18n-title="locate" aria-label="Rādīt auto atrašanās vietu">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M19 5l-2 2M7 17l-2 2"/></svg>
+        </button>
+        <button id="reload" class="primary" type="button">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 1 0-2.35 5.65"/><path d="M20 4v7h-7"/></svg>
+          <span data-i18n="refresh">Atjaunot</span>
+        </button>
+      </div>
+    </header>
+
+    <div class="provider-tabs" role="tablist" aria-label="Pakalpojuma sniedzējs">
+      <button class="provider-tab active" type="button" data-provider="all" role="tab" aria-selected="true" data-i18n="allProviders">Visi</button>
+      <button class="provider-tab" type="button" data-provider="elektrum" role="tab" aria-selected="false">Elektrum Drive</button>
+      <button class="provider-tab" type="button" data-provider="mobilly" role="tab" aria-selected="false">Mobilly</button>
+      <button class="provider-tab" type="button" data-provider="emobi" role="tab" aria-selected="false">e-mobi</button>
+      <button class="provider-tab" type="button" data-provider="plugshare" role="tab" aria-selected="false">PlugShare</button>
+      <label class="availability-toggle">
+        <input id="availableOnly" type="checkbox" />
+        <span data-i18n="availableOnly">Tikai zināmi brīvas</span>
+      </label>
+    </div>
+
+    <div id="localStationsView">
+      <div id="status" class="status" data-i18n="loading">Ielādēju stacijas...</div>
+
+      <section id="metrics" class="metrics station-metrics" aria-label="Kopsavilkums"></section>
+
+      <section class="station-layout">
+        <article class="panel station-map-panel">
+          <div class="panel-header">
+            <div>
+              <h2 data-i18n="map">Karte</h2>
+              <span id="mapSubtitle"></span>
+            </div>
+            <div class="map-legend" aria-label="Kartes apzīmējumi">
+              <span><i class="legend-dot elektrum"></i>Elektrum</span>
+              <span><i class="legend-dot mobilly"></i>Mobilly</span>
+              <span><i class="legend-dot emobi"></i>e-mobi</span>
+              <span><i class="legend-dot available"></i><span data-i18n="available">Brīva</span></span>
+            </div>
+          </div>
+          <div id="map" aria-label="Uzlādes staciju karte"></div>
+        </article>
+
+        <aside class="panel station-browser">
+          <section id="stationDetail" class="station-detail" aria-live="polite">
+            <div class="empty-state">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 11h6M12 8v6M6 22v-5M18 22v-5M5 17h14l-1-8H6l-1 8Z"/><path d="M8 9V5a4 4 0 0 1 8 0v4"/></svg>
+              <strong data-i18n="selectStation">Izvēlies staciju kartē vai sarakstā</strong>
+              <span data-i18n="selectStationHint">Pēc izvēles tiks nolasīts aktuālais savienotāju statuss un cena.</span>
+            </div>
+          </section>
+          <section class="nearby-section">
+            <div class="panel-header compact">
+              <div>
+                <h2 data-i18n="nearby">Tuvākās kartes centram</h2>
+                <span id="listSubtitle"></span>
+              </div>
+            </div>
+            <div id="stationList" class="station-list"></div>
+          </section>
+        </aside>
+      </section>
+    </div>
+
+    <section id="plugsharePanel" class="panel plugshare-panel" hidden>
+      <div class="panel-header plugshare-header">
+        <div>
+          <h2 data-i18n="plugshareMap">PlugShare karte</h2>
+        </div>
+        <a id="openPlugShare" class="secondary plugshare-open" href="https://www.plugshare.com/" target="_blank" rel="noopener noreferrer">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 3h7v7M21 3l-9 9"/><path d="M18 13v7H4V6h7"/></svg>
+          <span data-i18n="openPlugShare">Atvērt PlugShare</span>
+        </a>
+      </div>
+      <iframe id="plugshareFrame" class="plugshare-frame" title="PlugShare" allow="geolocation" loading="lazy"></iframe>
+    </section>
+  </main>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="./dashboard-tabs.js?v=1.2.0"></script>
+  <script src="./stations.js?v=1.2.2"></script>
+</body>
+</html>

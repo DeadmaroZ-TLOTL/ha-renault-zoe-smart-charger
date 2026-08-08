@@ -1,11 +1,22 @@
 """Config flow for Zoe New Extended."""
 
+import asyncio
+import json
+import logging
+
 from uuid import uuid4
 
+from aiohttp import ClientError, ClientSession, ClientTimeout, CookieJar
 import voluptuous as vol
 
+from renault_api.const import AVAILABLE_LOCALES
+from renault_api.gigya.exceptions import GigyaException
+
 from homeassistant import config_entries
+from homeassistant.components.renault.const import RenaultConfigurationKeys
+from homeassistant.components.renault.renault_hub import RenaultHub
 from homeassistant.core import callback
+from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.selector import (
     BooleanSelector,
     EntitySelector,
@@ -39,6 +50,8 @@ from .const import (
     CONF_DELIVERY_PRICE_EXCL_VAT,
     CONF_ELEKTRUM_DRIVE_ENABLED,
     CONF_ELEKTRUM_ACCESS_TOKEN,
+    CONF_ELEKTRUM_AGREEMENT_ID,
+    CONF_ELEKTRUM_AGREEMENT_NUMBER,
     CONF_ELEKTRUM_COUNTRY_CODE,
     CONF_ELEKTRUM_DEVICE_UUID,
     CONF_ELEKTRUM_PHONE,
@@ -88,7 +101,10 @@ from .const import (
     CONF_IMMAX_TOTAL_LOAD_ENTITY,
     CONF_IMMAX_TOTAL_POWER_LIMIT,
     CONF_LOCATION_CONTROL_ENABLED,
+    CONF_MOBILLY_ACCESS_TOKEN,
     CONF_MOBILLY_PASSWORD,
+    CONF_MOBILLY_PHONE,
+    CONF_MOBILLY_REFRESH_TOKEN,
     CONF_MOBILLY_USERNAME,
     CONF_NORDPOOL_AREA,
     CONF_ZOE_CHARGE_RANGE_TARGET_KM,
@@ -159,6 +175,75 @@ from .const import (
     DOMAIN,
     NORDPOOL_AREAS,
 )
+from .elektrum_auth import (
+    authentication_complete_personal_code,
+    authenticated_personal_code,
+    extract_authentication_token,
+    personal_code_candidates,
+    personal_code_format,
+    verification_code,
+)
+from .elektrum_login import (
+    elektrum_login_token,
+    elektrum_mobile_headers,
+    elektrum_sms_form,
+    elektrum_verify_form,
+    normalize_elektrum_phone,
+)
+from .charging_accounts_data import elektrum_token_can_replace
+from .mobilly_auth import (
+    MOBILLY_AUTH_URL,
+    mobilly_access_token,
+    mobilly_app_headers,
+    mobilly_refresh_token,
+    mobilly_token_credentials,
+    normalize_mobilly_phone,
+)
+
+_LOGGER = logging.getLogger(__name__)
+
+ELEKTRUM_API_URL = "https://eup.elektrum.lv/api/v3"
+ELEKTRUM_AUTHENTICATION_URL = (
+    "https://eup.elektrum.lv/lv/authentication?countryCode=lv"
+)
+ELEKTRUM_AUTHENTICATION_COMPLETE_URL = (
+    "https://eup.elektrum.lv/lv/authentication/complete"
+)
+ELEKTRUM_IDENTITY_URL = "https://id.elektrum.lv/api/v1/authentication"
+ELEKTRUM_HEADERS = elektrum_mobile_headers()
+ELEKTRUM_WEB_HEADERS = {
+    "Accept": "text/html,application/xhtml+xml,application/json",
+    "Accept-Language": "lv-LV,lv;q=0.9,en;q=0.8",
+    "User-Agent": (
+        "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 "
+        "(KHTML, like Gecko) Chrome/131.0 Mobile Safari/537.36"
+    ),
+}
+ELEKTRUM_REQUEST_TIMEOUT = ClientTimeout(total=20)
+ELEKTRUM_AGREEMENT_PROFILE_TYPE = 3
+ELEKTRUM_PERSONAL_CODE = "personal_code"
+ELEKTRUM_AGREEMENT_SELECTION = "agreement_selection"
+ELEKTRUM_SMART_ID_CONFIRM = "confirm"
+ELEKTRUM_SMART_ID_CODE = "verification_code"
+ELEKTRUM_SMART_ID_POLL_ATTEMPTS = 6
+ELEKTRUM_SMART_ID_POLL_INTERVAL = 2
+ELEKTRUM_CAPTCHA_SOLUTION = "captcha_solution"
+ELEKTRUM_SMS_CODE = "sms_code"
+RENAULT_ENTRY_SELECTION = "renault_entry_selection"
+RENAULT_LOCALE = "renault_locale"
+RENAULT_USERNAME = "renault_username"
+RENAULT_PASSWORD = "renault_password"
+RENAULT_KAMEREON_ACCOUNT_ID = "renault_kamereon_account_id"
+MOBILLY_OTP_CODE = "otp_code"
+
+
+def _normalize_elektrum_personal_code(value):
+    """Match the digits-only value submitted by the Elektrum Android app."""
+    return "".join(
+        character
+        for character in str(value or "")
+        if character.isascii() and character.isdigit()
+    )
 
 IMMAX_REQUIRED_ENTITY_FIELDS = (
     (CONF_IMMAX_CHARGER_SWITCH_ENTITY, DEFAULT_IMMAX_CHARGER_SWITCH_ENTITY, "switch"),
@@ -258,6 +343,7 @@ class ZoeNewExtendedOptionsFlow(config_entries.OptionsFlow):
                 "smart_charging",
                 "cost_model",
                 "charging_accounts",
+                "renault_account",
                 "immax_setpoints",
                 "immax_entities",
             ],
@@ -300,6 +386,179 @@ class ZoeNewExtendedOptionsFlow(config_entries.OptionsFlow):
             ),
         )
 
+    async def async_step_renault_account(self, user_input=None):
+        """Select the official Renault account to sign in again."""
+        entries = self.hass.config_entries.async_entries("renault")
+        if not entries:
+            return self.async_abort(reason="renault_account_not_found")
+
+        if len(entries) == 1:
+            entry_id = entries[0].entry_id
+        elif user_input is not None:
+            entry_id = str(user_input[RENAULT_ENTRY_SELECTION])
+        else:
+            options = [
+                {
+                    "value": entry.entry_id,
+                    "label": str(
+                        entry.data.get("username")
+                        or entry.title
+                        or entry.entry_id
+                    ),
+                }
+                for entry in entries
+            ]
+            return self.async_show_form(
+                step_id="renault_account",
+                data_schema=vol.Schema(
+                    {
+                        vol.Required(RENAULT_ENTRY_SELECTION): SelectSelector(
+                            SelectSelectorConfig(
+                                options=options,
+                                mode=SelectSelectorMode.DROPDOWN,
+                            )
+                        )
+                    }
+                ),
+            )
+
+        if not any(entry.entry_id == entry_id for entry in entries):
+            return self.async_abort(reason="renault_account_not_found")
+        self._renault_entry_id = entry_id
+        return await self.async_step_renault_credentials()
+
+    def _renault_entry(self):
+        """Return the Renault config entry selected by this options flow."""
+        entry_id = getattr(self, "_renault_entry_id", None)
+        return next(
+            (
+                entry
+                for entry in self.hass.config_entries.async_entries("renault")
+                if entry.entry_id == entry_id
+            ),
+            None,
+        )
+
+    async def async_step_renault_credentials(self, user_input=None):
+        """Authenticate through the same client as the core Renault flow."""
+        entry = self._renault_entry()
+        if entry is None:
+            return self.async_abort(reason="renault_account_not_found")
+
+        errors = {}
+        if user_input is not None:
+            locale = str(user_input[RENAULT_LOCALE])
+            username = str(user_input[RENAULT_USERNAME]).strip()
+            password = str(user_input[RENAULT_PASSWORD])
+            hub = RenaultHub(self.hass, locale)
+            try:
+                login_success = await hub.attempt_login(username, password)
+            except (ClientError, GigyaException):
+                errors["base"] = "renault_connection_failed"
+            except Exception:  # pragma: no cover - defensive cloud boundary
+                _LOGGER.exception("Unexpected Renault login error")
+                errors["base"] = "unknown"
+            else:
+                if login_success and hub.login_token:
+                    account_ids = await hub.get_account_ids()
+                    if not account_ids:
+                        errors["base"] = "renault_no_account"
+                    else:
+                        self._renault_login_hub = hub
+                        self._renault_login_data = {
+                            RenaultConfigurationKeys.LOCALE: locale,
+                            RenaultConfigurationKeys.USERNAME: username,
+                            RenaultConfigurationKeys.PASSWORD: password,
+                            RenaultConfigurationKeys.LOGIN_TOKEN: hub.login_token,
+                            **AVAILABLE_LOCALES[locale],
+                        }
+                        current_account_id = entry.data.get(
+                            RenaultConfigurationKeys.KAMEREON_ACCOUNT_ID
+                        )
+                        if current_account_id in account_ids:
+                            return await self._async_finish_renault_login(
+                                current_account_id
+                            )
+                        if len(account_ids) == 1:
+                            return await self._async_finish_renault_login(
+                                account_ids[0]
+                            )
+                        self._renault_account_ids = list(account_ids)
+                        return await self.async_step_renault_kamereon()
+                else:
+                    errors["base"] = "renault_invalid_credentials"
+
+        locale = str(
+            entry.data.get(RenaultConfigurationKeys.LOCALE) or "en_GB"
+        )
+        if locale not in AVAILABLE_LOCALES:
+            locale = next(iter(AVAILABLE_LOCALES))
+        username = str(
+            entry.data.get(RenaultConfigurationKeys.USERNAME) or ""
+        )
+        return self.async_show_form(
+            step_id="renault_credentials",
+            data_schema=vol.Schema(
+                {
+                    vol.Required(RENAULT_LOCALE, default=locale): SelectSelector(
+                        SelectSelectorConfig(
+                            options=list(AVAILABLE_LOCALES),
+                            mode=SelectSelectorMode.DROPDOWN,
+                        )
+                    ),
+                    vol.Required(
+                        RENAULT_USERNAME, default=username
+                    ): TextSelector(),
+                    vol.Required(RENAULT_PASSWORD): TextSelector(
+                        TextSelectorConfig(type=TextSelectorType.PASSWORD)
+                    ),
+                }
+            ),
+            errors=errors,
+        )
+
+    async def async_step_renault_kamereon(self, user_input=None):
+        """Choose an account when Renault returns more than one."""
+        account_ids = list(getattr(self, "_renault_account_ids", []))
+        if not account_ids:
+            return self.async_abort(reason="renault_account_not_found")
+        if user_input is not None:
+            account_id = str(user_input[RENAULT_KAMEREON_ACCOUNT_ID])
+            if account_id not in account_ids:
+                return self.async_abort(reason="renault_account_not_found")
+            return await self._async_finish_renault_login(account_id)
+        return self.async_show_form(
+            step_id="renault_kamereon",
+            data_schema=vol.Schema(
+                {
+                    vol.Required(RENAULT_KAMEREON_ACCOUNT_ID): SelectSelector(
+                        SelectSelectorConfig(
+                            options=account_ids,
+                            mode=SelectSelectorMode.DROPDOWN,
+                        )
+                    )
+                }
+            ),
+        )
+
+    async def _async_finish_renault_login(self, account_id):
+        """Update and reload the selected official Renault config entry."""
+        entry = self._renault_entry()
+        data = getattr(self, "_renault_login_data", None)
+        if entry is None or not isinstance(data, dict):
+            return self.async_abort(reason="renault_account_not_found")
+        updated_data = {
+            **entry.data,
+            **data,
+            RenaultConfigurationKeys.KAMEREON_ACCOUNT_ID: account_id,
+        }
+        self.hass.config_entries.async_update_entry(entry, data=updated_data)
+        await self.hass.config_entries.async_reload(entry.entry_id)
+        return self.async_create_entry(
+            title="",
+            data=dict(self.config_entry.options),
+        )
+
     @property
     def _charging_accounts(self):
         """Return copies of configured account records."""
@@ -310,13 +569,17 @@ class ZoeNewExtendedOptionsFlow(config_entries.OptionsFlow):
 
     def _save_charging_accounts(self, accounts):
         """Store secrets in config-entry data, outside ordinary options."""
-        data = dict(self.config_entry.data)
-        data[CONF_CHARGING_ACCOUNTS] = accounts
-        self.hass.config_entries.async_update_entry(self.config_entry, data=data)
+        self._update_charging_accounts(accounts)
         return self.async_create_entry(
             title="",
             data=dict(self.config_entry.options),
         )
+
+    def _update_charging_accounts(self, accounts):
+        """Update charging-account secrets while keeping the options flow open."""
+        data = dict(self.config_entry.data)
+        data[CONF_CHARGING_ACCOUNTS] = accounts
+        self.hass.config_entries.async_update_entry(self.config_entry, data=data)
 
     def _selected_account(self):
         selected_id = getattr(self, "_selected_account_id", None)
@@ -332,11 +595,21 @@ class ZoeNewExtendedOptionsFlow(config_entries.OptionsFlow):
     async def async_step_charging_accounts(self, user_input=None):
         """Add, edit, or remove any number of charging accounts."""
         accounts = self._charging_accounts
+        is_lv = str(self.hass.config.language).lower().startswith("lv")
         actions = [
-            {"value": "add:mobilly", "label": "Add Mobilly account"},
+            {
+                "value": "add:mobilly",
+                "label": (
+                    "Pievienot Mobilly kontu" if is_lv else "Add Mobilly account"
+                ),
+            },
             {
                 "value": "add:elektrum_drive",
-                "label": "Add Elektrum Drive account",
+                "label": (
+                    "Pievienot Elektrum Drive kontu"
+                    if is_lv
+                    else "Add Elektrum Drive account"
+                ),
             },
         ]
         for account in accounts:
@@ -344,19 +617,61 @@ class ZoeNewExtendedOptionsFlow(config_entries.OptionsFlow):
             name = account.get(CONF_ACCOUNT_NAME) or account.get(CONF_ACCOUNT_TYPE)
             account_type = account.get(CONF_ACCOUNT_TYPE)
             enabled = account.get(CONF_ACCOUNT_ENABLED, True)
-            state = "enabled" if enabled else "disabled"
+            state = (
+                ("ieslēgts" if enabled else "izslēgts")
+                if is_lv
+                else ("enabled" if enabled else "disabled")
+            )
             actions.extend(
                 (
                     {
                         "value": f"edit:{account_id}",
-                        "label": f"Edit {name} ({account_type}, {state})",
+                        "label": (
+                            f"Rediģēt {name} ({account_type}, {state})"
+                            if is_lv
+                            else f"Edit {name} ({account_type}, {state})"
+                        ),
                     },
                     {
                         "value": f"remove:{account_id}",
-                        "label": f"Remove {name}",
+                        "label": (
+                            f"Noņemt {name}" if is_lv else f"Remove {name}"
+                        ),
                     },
                 )
             )
+            if account_type == ACCOUNT_TYPE_ELEKTRUM_DRIVE:
+                actions.append(
+                    {
+                        "value": f"link:{account_id}",
+                        "label": (
+                            f"Piesaistīt Elektrum Drive līgumu kontam {name}"
+                            if is_lv
+                            else f"Link Elektrum Drive agreement for {name}"
+                        ),
+                    }
+                )
+                actions.append(
+                    {
+                        "value": f"login:{account_id}",
+                        "label": (
+                            f"Pieslēgt Elektrum Drive lietotni kontam {name}"
+                            if is_lv
+                            else f"Log in to Elektrum Drive app for {name}"
+                        ),
+                    }
+                )
+            if account_type == ACCOUNT_TYPE_MOBILLY:
+                actions.append(
+                    {
+                        "value": f"mobile:{account_id}",
+                        "label": (
+                            f"Piesaistīt Mobilly lietotni kontam {name}"
+                            if is_lv
+                            else f"Link Mobilly app for {name}"
+                        ),
+                    }
+                )
 
         if user_input is not None:
             action, _, account_id = user_input[CONF_ACCOUNT_ACTION].partition(":")
@@ -368,6 +683,12 @@ class ZoeNewExtendedOptionsFlow(config_entries.OptionsFlow):
             self._selected_account_id = account_id
             if action == "remove":
                 return await self.async_step_remove_charging_account()
+            if action == "link":
+                return await self.async_step_elektrum_link_agreement()
+            if action == "login":
+                return await self.async_step_elektrum_mobile_login()
+            if action == "mobile":
+                return await self.async_step_mobilly_mobile()
             selected = self._selected_account()
             if selected and selected.get(CONF_ACCOUNT_TYPE) == ACCOUNT_TYPE_MOBILLY:
                 return await self.async_step_mobilly_account()
@@ -397,7 +718,15 @@ class ZoeNewExtendedOptionsFlow(config_entries.OptionsFlow):
             password = str(user_input.get(CONF_MOBILLY_PASSWORD) or "")
             if not password and account is not None:
                 password = str(account.get(CONF_MOBILLY_PASSWORD) or "")
-            if not username or not password:
+            phone = normalize_mobilly_phone(
+                user_input.get(CONF_MOBILLY_PHONE)
+                or (account or {}).get(CONF_MOBILLY_PHONE)
+            )
+            if phone and len(phone) < 10:
+                errors["base"] = "mobilly_phone_invalid"
+            elif bool(username) != bool(password):
+                errors["base"] = "mobilly_credentials_required"
+            elif not (username and password) and not phone:
                 errors["base"] = "mobilly_credentials_required"
             else:
                 updated = {
@@ -414,6 +743,18 @@ class ZoeNewExtendedOptionsFlow(config_entries.OptionsFlow):
                     CONF_MOBILLY_USERNAME: username,
                     CONF_MOBILLY_PASSWORD: password,
                 }
+                if phone:
+                    updated[CONF_MOBILLY_PHONE] = phone
+                if (
+                    account is not None
+                    and phone == account.get(CONF_MOBILLY_PHONE)
+                ):
+                    for key in (
+                        CONF_MOBILLY_ACCESS_TOKEN,
+                        CONF_MOBILLY_REFRESH_TOKEN,
+                    ):
+                        if account.get(key):
+                            updated[key] = account[key]
                 accounts = self._charging_accounts
                 if account is None:
                     accounts.append(updated)
@@ -424,6 +765,12 @@ class ZoeNewExtendedOptionsFlow(config_entries.OptionsFlow):
                         else item
                         for item in accounts
                     ]
+                if phone and not updated.get(CONF_MOBILLY_ACCESS_TOKEN):
+                    self._update_charging_accounts(accounts)
+                    self._selected_account_id = updated[CONF_ACCOUNT_ID]
+                    return await self.async_step_mobilly_mobile(
+                        {CONF_MOBILLY_PHONE: phone}
+                    )
                 return self._save_charging_accounts(accounts)
 
         return self.async_show_form(
@@ -438,13 +785,17 @@ class ZoeNewExtendedOptionsFlow(config_entries.OptionsFlow):
                         CONF_ACCOUNT_ENABLED,
                         default=(account or {}).get(CONF_ACCOUNT_ENABLED, True),
                     ): BooleanSelector(),
-                    vol.Required(
+                    vol.Optional(
                         CONF_MOBILLY_USERNAME,
                         default=(account or {}).get(CONF_MOBILLY_USERNAME, ""),
                     ): TextSelector(TextSelectorConfig()),
                     vol.Optional(CONF_MOBILLY_PASSWORD): TextSelector(
                         TextSelectorConfig(type=TextSelectorType.PASSWORD)
                     ),
+                    vol.Optional(
+                        CONF_MOBILLY_PHONE,
+                        default=(account or {}).get(CONF_MOBILLY_PHONE, ""),
+                    ): TextSelector(TextSelectorConfig()),
                 }
             ),
             errors=errors,
@@ -453,13 +804,379 @@ class ZoeNewExtendedOptionsFlow(config_entries.OptionsFlow):
             },
         )
 
+    async def async_step_mobilly_mobile(self, user_input=None):
+        """Start Mobilly's app SMS authentication for live station data."""
+        account = self._selected_account()
+        if account is None or account.get(CONF_ACCOUNT_TYPE) != ACCOUNT_TYPE_MOBILLY:
+            return await self.async_step_charging_accounts()
+
+        errors = {}
+        default_phone = normalize_mobilly_phone(
+            account.get(CONF_MOBILLY_PHONE)
+            or account.get(CONF_MOBILLY_USERNAME)
+        )
+        if user_input is not None:
+            phone = normalize_mobilly_phone(user_input.get(CONF_MOBILLY_PHONE))
+            if len(phone) < 10:
+                errors["base"] = "mobilly_phone_invalid"
+            else:
+                session = async_get_clientsession(self.hass)
+                try:
+                    async with session.post(
+                        f"{MOBILLY_AUTH_URL}/otp-session/start",
+                        headers=mobilly_app_headers(),
+                        json={"phoneNumber": phone},
+                        timeout=ELEKTRUM_REQUEST_TIMEOUT,
+                    ) as response:
+                        await response.read()
+                        status = response.status
+                except (ClientError, TimeoutError):
+                    errors["base"] = "mobilly_mobile_connection_failed"
+                else:
+                    if status >= 400:
+                        _LOGGER.warning(
+                            "Mobilly OTP start failed with HTTP %s", status
+                        )
+                        errors["base"] = "mobilly_otp_start_failed"
+                    else:
+                        self._mobilly_pending_phone = phone
+                        return await self.async_step_mobilly_otp()
+
+        return self.async_show_form(
+            step_id="mobilly_mobile",
+            data_schema=vol.Schema(
+                {
+                    vol.Required(
+                        CONF_MOBILLY_PHONE,
+                        default=default_phone,
+                    ): TextSelector(TextSelectorConfig())
+                }
+            ),
+            errors=errors,
+            description_placeholders={
+                "account_name": str(account.get(CONF_ACCOUNT_NAME) or "Mobilly")
+            },
+        )
+
+    async def async_step_mobilly_otp(self, user_input=None):
+        """Exchange the Mobilly SMS code for a refreshable app session."""
+        account = self._selected_account()
+        phone = normalize_mobilly_phone(
+            getattr(self, "_mobilly_pending_phone", "")
+        )
+        if account is None or not phone:
+            return await self.async_step_mobilly_mobile()
+
+        errors = {}
+        if user_input is not None:
+            otp = "".join(
+                character
+                for character in str(user_input.get(MOBILLY_OTP_CODE) or "")
+                if character.isdigit()
+            )
+            if not otp:
+                errors["base"] = "mobilly_otp_required"
+            else:
+                session = async_get_clientsession(self.hass)
+                try:
+                    async with session.post(
+                        f"{MOBILLY_AUTH_URL}/token/otp",
+                        headers=mobilly_app_headers(),
+                        json=mobilly_token_credentials(
+                            phone,
+                            otp,
+                            grant_type="otp",
+                        )["tokenCredentials"],
+                        timeout=ELEKTRUM_REQUEST_TIMEOUT,
+                    ) as response:
+                        payload = await self._async_elektrum_response_payload(
+                            response
+                        )
+                        status = response.status
+                except (ClientError, TimeoutError):
+                    errors["base"] = "mobilly_mobile_connection_failed"
+                else:
+                    access_token = mobilly_access_token(payload)
+                    refresh_token = mobilly_refresh_token(payload)
+                    if status >= 400 or not access_token:
+                        _LOGGER.warning(
+                            "Mobilly OTP exchange failed with HTTP %s", status
+                        )
+                        errors["base"] = "mobilly_otp_failed"
+                    else:
+                        updated = dict(account)
+                        updated[CONF_MOBILLY_PHONE] = phone
+                        updated[CONF_MOBILLY_ACCESS_TOKEN] = access_token
+                        if refresh_token:
+                            updated[CONF_MOBILLY_REFRESH_TOKEN] = refresh_token
+                        accounts = [
+                            updated
+                            if item.get(CONF_ACCOUNT_ID)
+                            == account.get(CONF_ACCOUNT_ID)
+                            else item
+                            for item in self._charging_accounts
+                        ]
+                        self._mobilly_pending_phone = ""
+                        return self._save_charging_accounts(accounts)
+
+        return self.async_show_form(
+            step_id="mobilly_otp",
+            data_schema=vol.Schema(
+                {
+                    vol.Required(MOBILLY_OTP_CODE): TextSelector(
+                        TextSelectorConfig(type=TextSelectorType.PASSWORD)
+                    )
+                }
+            ),
+            errors=errors,
+            description_placeholders={"phone_suffix": phone[-4:]},
+        )
+
+    async def async_step_elektrum_mobile_login(self, user_input=None):
+        """Send the official Elektrum Drive app SMS verification code."""
+        account = self._selected_account()
+        if (
+            account is None
+            or account.get(CONF_ACCOUNT_TYPE) != ACCOUNT_TYPE_ELEKTRUM_DRIVE
+        ):
+            return await self.async_step_charging_accounts()
+
+        errors = {}
+        country_code = str(
+            (account or {}).get(CONF_ELEKTRUM_COUNTRY_CODE)
+            or DEFAULT_ELEKTRUM_COUNTRY_CODE
+        ).lstrip("+")
+        default_phone = normalize_elektrum_phone(
+            account.get(CONF_ELEKTRUM_PHONE), country_code
+        )
+        if user_input is not None:
+            country_code = "".join(
+                character
+                for character in str(
+                    user_input.get(CONF_ELEKTRUM_COUNTRY_CODE) or country_code
+                )
+                if character.isdigit()
+            )
+            phone = normalize_elektrum_phone(
+                user_input.get(CONF_ELEKTRUM_PHONE), country_code
+            )
+            captcha_solution = str(
+                user_input.get(ELEKTRUM_CAPTCHA_SOLUTION) or ""
+            ).strip()
+            device_uuid = str(
+                account.get(CONF_ELEKTRUM_DEVICE_UUID) or uuid4()
+            )
+            if len(phone) < 8 or not country_code:
+                errors["base"] = "elektrum_phone_invalid"
+            elif len(captcha_solution) < 20 or captcha_solution.startswith("."):
+                errors["base"] = "elektrum_captcha_required"
+            else:
+                session = async_get_clientsession(self.hass)
+                try:
+                    async with session.post(
+                        f"{ELEKTRUM_API_URL}/auth/sms",
+                        headers={
+                            **ELEKTRUM_HEADERS,
+                            "Content-Type": "application/x-www-form-urlencoded",
+                        },
+                        data=elektrum_sms_form(
+                            phone,
+                            country_code,
+                            device_uuid,
+                            captcha_solution,
+                        ),
+                        timeout=ELEKTRUM_REQUEST_TIMEOUT,
+                    ) as response:
+                        payload = await self._async_elektrum_response_payload(
+                            response
+                        )
+                        status = response.status
+                except (ClientError, TimeoutError):
+                    errors["base"] = "elektrum_connection_failed"
+                else:
+                    if status >= 400:
+                        _LOGGER.warning(
+                            "Elektrum Drive SMS login failed with HTTP %s "
+                            "(API error %s)",
+                            status,
+                            self._elektrum_error_code(payload),
+                        )
+                        errors["base"] = "elektrum_sms_start_failed"
+                    else:
+                        self._elektrum_login_phone = phone
+                        self._elektrum_login_country_code = country_code
+                        self._elektrum_login_device_uuid = device_uuid
+                        return await self.async_step_elektrum_mobile_verify()
+
+        return self.async_show_form(
+            step_id="elektrum_mobile_login",
+            data_schema=vol.Schema(
+                {
+                    vol.Required(
+                        CONF_ELEKTRUM_PHONE,
+                        default=default_phone,
+                    ): TextSelector(TextSelectorConfig()),
+                    vol.Required(
+                        CONF_ELEKTRUM_COUNTRY_CODE,
+                        default=country_code,
+                    ): TextSelector(TextSelectorConfig()),
+                    vol.Required(ELEKTRUM_CAPTCHA_SOLUTION): TextSelector(
+                        TextSelectorConfig(type=TextSelectorType.PASSWORD)
+                    ),
+                }
+            ),
+            errors=errors,
+            description_placeholders={
+                "account_name": str(account.get(CONF_ACCOUNT_NAME) or ""),
+                "captcha_url": "https://eup.elektrum.lv/lv/captcha",
+            },
+        )
+
+    async def async_step_elektrum_mobile_verify(self, user_input=None):
+        """Exchange the Elektrum Drive SMS code for an app session."""
+        account = self._selected_account()
+        phone = str(getattr(self, "_elektrum_login_phone", "") or "")
+        country_code = str(
+            getattr(self, "_elektrum_login_country_code", "") or ""
+        )
+        device_uuid = str(
+            getattr(self, "_elektrum_login_device_uuid", "") or ""
+        )
+        if account is None or not phone or not country_code or not device_uuid:
+            return await self.async_step_elektrum_mobile_login()
+
+        errors = {}
+        if user_input is not None:
+            sms_code = "".join(
+                character
+                for character in str(user_input.get(ELEKTRUM_SMS_CODE) or "")
+                if character.isdigit()
+            )
+            if not sms_code:
+                errors["base"] = "elektrum_sms_code_required"
+            else:
+                session = async_get_clientsession(self.hass)
+                try:
+                    async with session.post(
+                        f"{ELEKTRUM_API_URL}/auth/verify",
+                        headers={
+                            **ELEKTRUM_HEADERS,
+                            "Content-Type": "application/x-www-form-urlencoded",
+                        },
+                        data=elektrum_verify_form(
+                            phone,
+                            sms_code,
+                            country_code,
+                            device_uuid,
+                        ),
+                        timeout=ELEKTRUM_REQUEST_TIMEOUT,
+                    ) as response:
+                        payload = await self._async_elektrum_response_payload(
+                            response
+                        )
+                        status = response.status
+                    access_token = elektrum_login_token(payload)
+                    profile_payload = {}
+                    profile_status = 599
+                    if status < 400 and access_token:
+                        profile_payload, profile_status = (
+                            await self._async_elektrum_api_raw(
+                                "GET", "user", access_token
+                            )
+                        )
+                except (ClientError, TimeoutError):
+                    errors["base"] = "elektrum_connection_failed"
+                else:
+                    if status >= 400 or not access_token:
+                        _LOGGER.warning(
+                            "Elektrum Drive SMS verification failed with "
+                            "HTTP %s (API error %s)",
+                            status,
+                            self._elektrum_error_code(payload),
+                        )
+                        errors["base"] = "elektrum_sms_verify_failed"
+                    elif profile_status >= 400:
+                        errors["base"] = "elektrum_connection_failed"
+                    else:
+                        current_payload = None
+                        previous_token = str(
+                            account.get(CONF_ELEKTRUM_ACCESS_TOKEN) or ""
+                        )
+                        if previous_token:
+                            try:
+                                current_payload, current_status = (
+                                    await self._async_elektrum_api_raw(
+                                        "GET", "user", previous_token
+                                    )
+                                )
+                                if current_status >= 400:
+                                    current_payload = None
+                            except (ClientError, TimeoutError):
+                                current_payload = None
+                        if not elektrum_token_can_replace(
+                            current_payload,
+                            profile_payload,
+                            saved_agreement=bool(
+                                account.get(CONF_ELEKTRUM_AGREEMENT_ID)
+                            ),
+                        ):
+                            errors["base"] = "elektrum_linked_session_required"
+                        else:
+                            updated = dict(account)
+                            updated[CONF_ELEKTRUM_PHONE] = phone
+                            updated[CONF_ELEKTRUM_COUNTRY_CODE] = country_code
+                            updated[CONF_ELEKTRUM_DEVICE_UUID] = device_uuid
+                            updated[CONF_ELEKTRUM_ACCESS_TOKEN] = access_token
+                            agreements = self._elektrum_agreements(profile_payload)
+                            selected = next(
+                                (
+                                    item
+                                    for item in agreements
+                                    if item.get("selected")
+                                ),
+                                agreements[0] if len(agreements) == 1 else None,
+                            )
+                            if selected is not None:
+                                updated[CONF_ELEKTRUM_AGREEMENT_ID] = str(
+                                    selected["id"]
+                                )
+                                updated[CONF_ELEKTRUM_AGREEMENT_NUMBER] = str(
+                                    selected.get("number") or ""
+                                )
+                            accounts = [
+                                updated
+                                if item.get(CONF_ACCOUNT_ID)
+                                == account.get(CONF_ACCOUNT_ID)
+                                else item
+                                for item in self._charging_accounts
+                            ]
+                            self._elektrum_login_phone = ""
+                            self._elektrum_login_country_code = ""
+                            self._elektrum_login_device_uuid = ""
+                            return self._save_charging_accounts(accounts)
+
+        return self.async_show_form(
+            step_id="elektrum_mobile_verify",
+            data_schema=vol.Schema(
+                {
+                    vol.Required(ELEKTRUM_SMS_CODE): TextSelector(
+                        TextSelectorConfig(type=TextSelectorType.PASSWORD)
+                    )
+                }
+            ),
+            errors=errors,
+            description_placeholders={"phone_suffix": phone[-4:]},
+        )
+
     async def async_step_elektrum_account(self, user_input=None):
         """Add or edit one Elektrum Drive account and its app token."""
         account = self._selected_account()
+        errors = {}
         if user_input is not None:
-            access_token = str(
+            submitted_token = str(
                 user_input.get(CONF_ELEKTRUM_ACCESS_TOKEN) or ""
             ).strip()
+            access_token = submitted_token
             if not access_token and account is not None:
                 access_token = str(
                     account.get(CONF_ELEKTRUM_ACCESS_TOKEN) or ""
@@ -473,38 +1190,83 @@ class ZoeNewExtendedOptionsFlow(config_entries.OptionsFlow):
                 )
             if not device_uuid:
                 device_uuid = str(uuid4())
-            updated = {
-                CONF_ACCOUNT_ID: (
-                    account.get(CONF_ACCOUNT_ID) if account else uuid4().hex
-                ),
-                CONF_ACCOUNT_TYPE: ACCOUNT_TYPE_ELEKTRUM_DRIVE,
-                CONF_ACCOUNT_NAME: str(
-                    user_input.get(CONF_ACCOUNT_NAME) or "Elektrum Drive"
-                ).strip(),
-                CONF_ACCOUNT_ENABLED: bool(
-                    user_input.get(CONF_ACCOUNT_ENABLED, True)
-                ),
-                CONF_ELEKTRUM_PHONE: str(
-                    user_input.get(CONF_ELEKTRUM_PHONE) or ""
-                ).strip(),
-                CONF_ELEKTRUM_COUNTRY_CODE: str(
-                    user_input.get(CONF_ELEKTRUM_COUNTRY_CODE)
-                    or DEFAULT_ELEKTRUM_COUNTRY_CODE
-                ).lstrip("+"),
-                CONF_ELEKTRUM_ACCESS_TOKEN: access_token,
-                CONF_ELEKTRUM_DEVICE_UUID: device_uuid,
-            }
-            accounts = self._charging_accounts
-            if account is None:
-                accounts.append(updated)
-            else:
-                accounts = [
-                    updated
-                    if item.get(CONF_ACCOUNT_ID) == account.get(CONF_ACCOUNT_ID)
-                    else item
-                    for item in accounts
-                ]
-            return self._save_charging_accounts(accounts)
+            previous_token = str(
+                (account or {}).get(CONF_ELEKTRUM_ACCESS_TOKEN) or ""
+            )
+            token_changed = bool(submitted_token) and submitted_token != previous_token
+            if token_changed:
+                try:
+                    candidate_payload, candidate_status = (
+                        await self._async_elektrum_api_raw(
+                            "GET", "user", submitted_token
+                        )
+                    )
+                    current_payload = None
+                    if previous_token:
+                        current_payload, current_status = (
+                            await self._async_elektrum_api_raw(
+                                "GET", "user", previous_token
+                            )
+                        )
+                        if current_status >= 400:
+                            current_payload = None
+                except (ClientError, TimeoutError):
+                    errors["base"] = "elektrum_connection_failed"
+                else:
+                    if candidate_status == 401:
+                        errors["base"] = "elektrum_session_expired"
+                    elif candidate_status >= 400:
+                        errors["base"] = "elektrum_connection_failed"
+                    elif not elektrum_token_can_replace(
+                        current_payload,
+                        candidate_payload,
+                        saved_agreement=bool(
+                            (account or {}).get(CONF_ELEKTRUM_AGREEMENT_ID)
+                        ),
+                    ):
+                        errors["base"] = "elektrum_linked_session_required"
+
+            if not errors:
+                updated = {
+                    CONF_ACCOUNT_ID: (
+                        account.get(CONF_ACCOUNT_ID) if account else uuid4().hex
+                    ),
+                    CONF_ACCOUNT_TYPE: ACCOUNT_TYPE_ELEKTRUM_DRIVE,
+                    CONF_ACCOUNT_NAME: str(
+                        user_input.get(CONF_ACCOUNT_NAME) or "Elektrum Drive"
+                    ).strip(),
+                    CONF_ACCOUNT_ENABLED: bool(
+                        user_input.get(CONF_ACCOUNT_ENABLED, True)
+                    ),
+                    CONF_ELEKTRUM_PHONE: str(
+                        user_input.get(CONF_ELEKTRUM_PHONE) or ""
+                    ).strip(),
+                    CONF_ELEKTRUM_COUNTRY_CODE: str(
+                        user_input.get(CONF_ELEKTRUM_COUNTRY_CODE)
+                        or DEFAULT_ELEKTRUM_COUNTRY_CODE
+                    ).lstrip("+"),
+                    CONF_ELEKTRUM_ACCESS_TOKEN: access_token,
+                    CONF_ELEKTRUM_DEVICE_UUID: device_uuid,
+                }
+                if account is not None:
+                    for key in (
+                        CONF_ELEKTRUM_AGREEMENT_ID,
+                        CONF_ELEKTRUM_AGREEMENT_NUMBER,
+                    ):
+                        if account.get(key):
+                            updated[key] = account[key]
+                accounts = self._charging_accounts
+                if account is None:
+                    accounts.append(updated)
+                else:
+                    accounts = [
+                        updated
+                        if item.get(CONF_ACCOUNT_ID)
+                        == account.get(CONF_ACCOUNT_ID)
+                        else item
+                        for item in accounts
+                    ]
+                return self._save_charging_accounts(accounts)
 
         return self.async_show_form(
             step_id="elektrum_account",
@@ -542,6 +1304,7 @@ class ZoeNewExtendedOptionsFlow(config_entries.OptionsFlow):
             description_placeholders={
                 "mode": "edit" if account else "add",
             },
+            errors=errors,
         )
 
     async def async_step_remove_charging_account(self, user_input=None):
@@ -569,6 +1332,614 @@ class ZoeNewExtendedOptionsFlow(config_entries.OptionsFlow):
                 "account_name": str(account.get(CONF_ACCOUNT_NAME) or ""),
             },
         )
+
+    async def async_step_elektrum_link_agreement(self, user_input=None):
+        """Start Elektrum's required Smart-ID agreement authorization."""
+        account = self._selected_account()
+        if (
+            account is None
+            or account.get(CONF_ACCOUNT_TYPE) != ACCOUNT_TYPE_ELEKTRUM_DRIVE
+        ):
+            return await self.async_step_charging_accounts()
+
+        pending_error = getattr(self, "_elektrum_link_error", None)
+        self._elektrum_link_error = None
+        errors = {"base": pending_error} if pending_error else {}
+        if user_input is not None:
+            personal_code = _normalize_elektrum_personal_code(
+                user_input.get(ELEKTRUM_PERSONAL_CODE)
+            )
+            if not personal_code:
+                errors["base"] = "elektrum_personal_code_required"
+            elif len(personal_code) != 11:
+                errors["base"] = "elektrum_personal_code_invalid"
+            else:
+                try:
+                    payload, status, identity_token = (
+                        await self._async_start_elektrum_smart_id(personal_code)
+                    )
+                except (ClientError, TimeoutError):
+                    errors["base"] = "elektrum_connection_failed"
+                else:
+                    code = verification_code(payload)
+                    if status >= 400:
+                        _LOGGER.warning(
+                            "Elektrum Smart-ID authorization failed with "
+                            "HTTP %s (API error %s)",
+                            status,
+                            self._elektrum_error_code(payload),
+                        )
+                        errors["base"] = "elektrum_smart_id_start_failed"
+                    elif not identity_token or not code:
+                        errors["base"] = "elektrum_smart_id_start_failed"
+                    else:
+                        self._elektrum_identity_token = identity_token
+                        self._elektrum_pending_personal_code = personal_code
+                        self._elektrum_verification_code = code
+                        return await self.async_step_elektrum_smart_id()
+
+        return self.async_show_form(
+            step_id="elektrum_link_agreement",
+            data_schema=vol.Schema(
+                {
+                    vol.Required(ELEKTRUM_PERSONAL_CODE): TextSelector(
+                        TextSelectorConfig(type=TextSelectorType.PASSWORD)
+                    )
+                }
+            ),
+            errors=errors,
+            description_placeholders={
+                "account_name": str(account.get(CONF_ACCOUNT_NAME) or "")
+            },
+        )
+
+    async def async_step_elektrum_smart_id(self, user_input=None):
+        """Wait for Smart-ID, then authorize and discover postpaid agreements."""
+        account = self._selected_account()
+        identity_token = str(
+            getattr(self, "_elektrum_identity_token", "") or ""
+        )
+        code = str(getattr(self, "_elektrum_verification_code", "") or "")
+        if account is None or not identity_token or not code:
+            return await self.async_step_elektrum_link_agreement()
+
+        errors = {}
+        if user_input is not None:
+            if not user_input.get(ELEKTRUM_SMART_ID_CONFIRM):
+                errors["base"] = "elektrum_smart_id_not_confirmed"
+            else:
+                try:
+                    payload, status = await self._async_poll_elektrum_smart_id(
+                        identity_token
+                    )
+                except (ClientError, TimeoutError):
+                    errors["base"] = "elektrum_connection_failed"
+                else:
+                    if status == 202:
+                        errors["base"] = "elektrum_smart_id_pending"
+                    elif status >= 400:
+                        _LOGGER.warning(
+                            "Elektrum Smart-ID poll failed with HTTP %s "
+                            "(API error %s)",
+                            status,
+                            self._elektrum_error_code(payload),
+                        )
+                        errors["base"] = "elektrum_smart_id_failed"
+                    else:
+                        personal_code = authenticated_personal_code(payload)
+                        try:
+                            completed_code, complete_status = (
+                                await self._async_complete_elektrum_smart_id()
+                            )
+                        except (ClientError, TimeoutError):
+                            completed_code = ""
+                            complete_status = 599
+                        if not completed_code:
+                            _LOGGER.warning(
+                                "Elektrum Smart-ID completion did not return "
+                                "the verified callback (HTTP %s); using the "
+                                "successfully authenticated Smart-ID request",
+                                complete_status,
+                            )
+
+                        personal_code = (
+                            completed_code
+                            or personal_code
+                            or getattr(
+                                self,
+                                "_elektrum_pending_personal_code",
+                                "",
+                            )
+                            or ""
+                        )
+                        _LOGGER.debug(
+                            "Elektrum Smart-ID returned a verified callback (%s)",
+                            personal_code_format(personal_code),
+                        )
+                        await self._async_clear_elektrum_smart_id()
+                        if not personal_code_candidates(personal_code):
+                            self._elektrum_link_error = (
+                                "elektrum_smart_id_failed"
+                            )
+                            return await self.async_step_elektrum_link_agreement()
+
+                        agreements, error = (
+                            await self._async_discover_elektrum_agreements(
+                                account,
+                                personal_code,
+                            )
+                        )
+                        if error:
+                            self._elektrum_link_error = error
+                            return await self.async_step_elektrum_link_agreement()
+
+                        self._elektrum_pending_agreements = agreements
+                        if len(agreements) == 1:
+                            return await self._async_select_elektrum_agreement(
+                                agreements[0]
+                            )
+                        return await self.async_step_elektrum_select_agreement()
+
+        return self.async_show_form(
+            step_id="elektrum_smart_id",
+            data_schema=vol.Schema(
+                {
+                    vol.Required(
+                        ELEKTRUM_SMART_ID_CODE,
+                        default=code,
+                    ): SelectSelector(
+                        SelectSelectorConfig(
+                            options=[code],
+                            mode=SelectSelectorMode.DROPDOWN,
+                        )
+                    ),
+                    vol.Required(
+                        ELEKTRUM_SMART_ID_CONFIRM,
+                        default=True,
+                    ): BooleanSelector()
+                }
+            ),
+            errors=errors,
+            description_placeholders={"verification_code": code},
+        )
+
+    async def _async_clear_elektrum_smart_id(self):
+        """Discard all short-lived identity data held by this options flow."""
+        self._elektrum_identity_token = ""
+        self._elektrum_pending_personal_code = ""
+        self._elektrum_verification_code = ""
+        self._elektrum_auth_cookie_header = ""
+        session = getattr(self, "_elektrum_auth_session", None)
+        self._elektrum_auth_session = None
+        if session is not None and not session.closed:
+            await session.close()
+
+    async def _async_discover_elektrum_agreements(
+        self,
+        account,
+        personal_code,
+    ):
+        """Use an identity-confirmed code to discover Elektrum agreements."""
+        payload = {}
+        status = 400
+        try:
+            candidates = personal_code_candidates(personal_code)
+            for candidate_index, candidate in enumerate(candidates):
+                payload, status = await self._async_elektrum_api_request(
+                    account,
+                    "PUT",
+                    "user/authorize",
+                    json_body={"personalCode": candidate},
+                )
+                if status < 400 or status == 401:
+                    break
+                _LOGGER.warning(
+                    "Elektrum agreement authorization rejected candidate %s/%s "
+                    "(%s) "
+                    "personal-code format with HTTP %s (API error %s)",
+                    candidate_index + 1,
+                    len(candidates),
+                    personal_code_format(candidate),
+                    status,
+                    self._elektrum_error_code(payload),
+                )
+        except (ClientError, TimeoutError):
+            return [], "elektrum_connection_failed"
+
+        if status == 401:
+            return [], "elektrum_session_expired"
+        if status >= 400:
+            _LOGGER.warning(
+                "Elektrum agreement authorization failed with HTTP %s "
+                "(API error %s)",
+                status,
+                self._elektrum_error_code(payload),
+            )
+            return [], "elektrum_authorization_failed"
+
+        agreements = self._elektrum_agreements(payload)
+        user_status = 0
+        if not agreements:
+            try:
+                user_payload, user_status = await self._async_elektrum_api_request(
+                    account,
+                    "GET",
+                    "user",
+                )
+            except (ClientError, TimeoutError):
+                user_status = 599
+                user_payload = {}
+            if user_status < 400:
+                agreements = self._elektrum_agreements(user_payload)
+
+        if agreements:
+            return agreements, None
+        return (
+            [],
+            "elektrum_connection_failed"
+            if user_status >= 500
+            else "elektrum_no_agreements",
+        )
+
+    async def async_step_elektrum_select_agreement(self, user_input=None):
+        """Select one agreement when authorization returns several."""
+        agreements = getattr(self, "_elektrum_pending_agreements", [])
+        if not agreements:
+            return await self.async_step_elektrum_link_agreement()
+
+        pending_error = getattr(self, "_elektrum_agreement_error", None)
+        self._elektrum_agreement_error = None
+        errors = {"base": pending_error} if pending_error else {}
+        if user_input is not None:
+            agreement_id = str(
+                user_input.get(ELEKTRUM_AGREEMENT_SELECTION) or ""
+            )
+            agreement = next(
+                (
+                    item
+                    for item in agreements
+                    if str(item.get("id") or "") == agreement_id
+                ),
+                None,
+            )
+            if agreement is None:
+                errors["base"] = "elektrum_agreement_required"
+            else:
+                return await self._async_select_elektrum_agreement(agreement)
+
+        options = [
+            {
+                "value": str(agreement["id"]),
+                "label": self._elektrum_agreement_label(agreement),
+            }
+            for agreement in agreements
+        ]
+        return self.async_show_form(
+            step_id="elektrum_select_agreement",
+            data_schema=vol.Schema(
+                {
+                    vol.Required(ELEKTRUM_AGREEMENT_SELECTION): SelectSelector(
+                        SelectSelectorConfig(
+                            options=options,
+                            mode=SelectSelectorMode.DROPDOWN,
+                        )
+                    )
+                }
+            ),
+            errors=errors,
+        )
+
+    async def _async_select_elektrum_agreement(self, agreement):
+        """Set the Elektrum profile to the selected postpaid agreement."""
+        account = self._selected_account()
+        if account is None:
+            return await self.async_step_charging_accounts()
+        try:
+            payload, status = await self._async_elektrum_api_request(
+                account,
+                "PATCH",
+                "user",
+                json_body={
+                    "type": ELEKTRUM_AGREEMENT_PROFILE_TYPE,
+                    "agreementId": str(agreement["id"]),
+                },
+            )
+        except ClientError:
+            self._elektrum_agreement_error = "elektrum_connection_failed"
+            return await self.async_step_elektrum_select_agreement()
+
+        profile = payload.get("data") if isinstance(payload, dict) else None
+        profile_type = profile.get("type") if isinstance(profile, dict) else None
+        verify_status = 0
+        if status < 400 and profile_type != ELEKTRUM_AGREEMENT_PROFILE_TYPE:
+            try:
+                verify_payload, verify_status = await self._async_elektrum_api_request(
+                    account,
+                    "GET",
+                    "user",
+                )
+            except ClientError:
+                verify_status = 599
+                verify_payload = {}
+            verified = (
+                verify_payload.get("data")
+                if isinstance(verify_payload, dict)
+                else None
+            )
+            profile_type = (
+                verified.get("type") if isinstance(verified, dict) else None
+            )
+
+        if status >= 400 or profile_type != ELEKTRUM_AGREEMENT_PROFILE_TYPE:
+            self._elektrum_agreement_error = (
+                "elektrum_connection_failed"
+                if status < 400 and verify_status >= 500
+                else "elektrum_agreement_link_failed"
+            )
+            return await self.async_step_elektrum_select_agreement()
+
+        updated = dict(account)
+        updated[CONF_ELEKTRUM_AGREEMENT_ID] = str(agreement["id"])
+        updated[CONF_ELEKTRUM_AGREEMENT_NUMBER] = str(
+            agreement.get("number") or ""
+        )
+        accounts = [
+            updated
+            if item.get(CONF_ACCOUNT_ID) == account.get(CONF_ACCOUNT_ID)
+            else item
+            for item in self._charging_accounts
+        ]
+        return self._save_charging_accounts(accounts)
+
+    async def _async_start_elektrum_smart_id(self, personal_code):
+        """Start the same Smart-ID flow used by the Elektrum Android app."""
+        previous_session = getattr(self, "_elektrum_auth_session", None)
+        if previous_session is not None and not previous_session.closed:
+            await previous_session.close()
+        session = ClientSession(
+            cookie_jar=CookieJar(quote_cookie=False),
+            headers=ELEKTRUM_WEB_HEADERS,
+            timeout=ELEKTRUM_REQUEST_TIMEOUT,
+        )
+        self._elektrum_auth_session = session
+        try:
+            async with session.get(ELEKTRUM_AUTHENTICATION_URL) as response:
+                page = await response.text()
+                page_status = response.status
+        except Exception:
+            await session.close()
+            self._elektrum_auth_session = None
+            raise
+        if page_status >= 400:
+            await session.close()
+            self._elektrum_auth_session = None
+            return {"error": {"code": f"auth_page_http_{page_status}"}}, page_status, ""
+
+        identity_token = extract_authentication_token(page)
+        if not identity_token:
+            await session.close()
+            self._elektrum_auth_session = None
+            return {"error": {"code": "missing_identity_token"}}, 502, ""
+        cookie_names = {cookie.key for cookie in session.cookie_jar}
+        if "elektrum_car_charging_session" not in cookie_names:
+            await session.close()
+            self._elektrum_auth_session = None
+            return {"error": {"code": "missing_auth_cookies"}}, 502, ""
+
+        headers = {
+            "Accept": "application/json",
+            "Authorization": f"Bearer {identity_token}",
+            "Content-Type": "application/json",
+            "Origin": "https://eup.elektrum.lv",
+            "Referer": ELEKTRUM_AUTHENTICATION_URL,
+        }
+        async with session.post(
+            f"{ELEKTRUM_IDENTITY_URL}/smart-id/authenticate",
+            headers=headers,
+            json={"nationalIdentityNumber": personal_code},
+        ) as response:
+            payload = await self._async_elektrum_response_payload(response)
+            status = response.status
+        if status >= 400:
+            await session.close()
+            self._elektrum_auth_session = None
+        return payload, status, identity_token
+
+    async def _async_poll_elektrum_smart_id(self, identity_token):
+        """Poll briefly for a user-approved Smart-ID authentication."""
+        session = getattr(self, "_elektrum_auth_session", None)
+        if session is None or session.closed:
+            return {"error": {"code": "missing_auth_session"}}, 503
+        headers = {
+            "Accept": "application/json",
+            "Authorization": f"Bearer {identity_token}",
+            "Content-Type": "application/json",
+            "Origin": "https://eup.elektrum.lv",
+            "Referer": ELEKTRUM_AUTHENTICATION_URL,
+        }
+        payload = {}
+        status = 202
+        for attempt in range(ELEKTRUM_SMART_ID_POLL_ATTEMPTS):
+            async with session.get(
+                f"{ELEKTRUM_IDENTITY_URL}/smart-id/poll",
+                headers=headers,
+            ) as response:
+                payload = await self._async_elektrum_response_payload(response)
+                status = response.status
+            if status != 202:
+                break
+            if attempt + 1 < ELEKTRUM_SMART_ID_POLL_ATTEMPTS:
+                await asyncio.sleep(ELEKTRUM_SMART_ID_POLL_INTERVAL)
+        return payload, status
+
+    async def _async_complete_elektrum_smart_id(self):
+        """Complete the browser callback and return Elektrum's verified code."""
+        session = getattr(self, "_elektrum_auth_session", None)
+        if session is None or session.closed:
+            return "", 502
+
+        headers = {
+            "Referer": ELEKTRUM_AUTHENTICATION_URL,
+        }
+        async with session.get(
+            ELEKTRUM_AUTHENTICATION_COMPLETE_URL,
+            headers=headers,
+        ) as response:
+            page = await response.text()
+            status = response.status
+        return authentication_complete_personal_code(page), status
+
+    @staticmethod
+    async def _async_elektrum_response_payload(response):
+        """Parse JSON while retaining a non-sensitive identifier for errors."""
+        body = await response.text()
+        try:
+            payload = json.loads(body) if body else {}
+        except (TypeError, ValueError):
+            payload = {
+                "_response": {
+                    "status": response.status,
+                    "content_type": str(response.content_type or "unknown"),
+                }
+            }
+        return payload if isinstance(payload, dict) else {}
+
+    async def _async_elektrum_api_request(
+        self,
+        account,
+        method,
+        path,
+        *,
+        json_body=None,
+    ):
+        """Call the Elektrum app API and refresh an expired token once."""
+        token = str(account.get(CONF_ELEKTRUM_ACCESS_TOKEN) or "")
+        payload, status = await self._async_elektrum_api_raw(
+            method,
+            path,
+            token,
+            json_body=json_body,
+        )
+        if status != 401:
+            return payload, status
+
+        refresh_payload, refresh_status = await self._async_elektrum_api_raw(
+            "GET",
+            "auth/refresh",
+            token,
+        )
+        refreshed_token = self._elektrum_access_token(refresh_payload)
+        if refresh_status >= 400 or not refreshed_token:
+            return payload, status
+
+        if account.get(CONF_ELEKTRUM_AGREEMENT_ID):
+            profile_payload, profile_status = await self._async_elektrum_api_raw(
+                "GET",
+                "user",
+                refreshed_token,
+            )
+            if profile_status >= 400 or not elektrum_token_can_replace(
+                None,
+                profile_payload,
+                saved_agreement=True,
+            ):
+                _LOGGER.warning(
+                    "Refusing to replace an Elektrum linked session with an "
+                    "anonymous refreshed profile"
+                )
+                return payload, status
+
+        account[CONF_ELEKTRUM_ACCESS_TOKEN] = refreshed_token
+        self._replace_charging_account(account)
+        return await self._async_elektrum_api_raw(
+            method,
+            path,
+            refreshed_token,
+            json_body=json_body,
+        )
+
+    async def _async_elektrum_api_raw(
+        self,
+        method,
+        path,
+        token,
+        *,
+        json_body=None,
+    ):
+        session = async_get_clientsession(self.hass)
+        headers = {
+            **ELEKTRUM_HEADERS,
+            "Authorization": f"Bearer {token}",
+        }
+        async with session.request(
+            method,
+            f"{ELEKTRUM_API_URL}/{path}",
+            headers=headers,
+            json=json_body,
+            timeout=ELEKTRUM_REQUEST_TIMEOUT,
+        ) as response:
+            payload = await self._async_elektrum_response_payload(response)
+        return payload if isinstance(payload, dict) else {}, response.status
+
+    def _replace_charging_account(self, updated):
+        accounts = [
+            updated
+            if item.get(CONF_ACCOUNT_ID) == updated.get(CONF_ACCOUNT_ID)
+            else item
+            for item in self._charging_accounts
+        ]
+        data = dict(self.config_entry.data)
+        data[CONF_CHARGING_ACCOUNTS] = accounts
+        self.hass.config_entries.async_update_entry(self.config_entry, data=data)
+
+    @staticmethod
+    def _elektrum_agreements(payload):
+        data = payload.get("data") if isinstance(payload, dict) else None
+        if isinstance(data, dict) and isinstance(data.get("user"), dict):
+            data = data["user"]
+        raw = data.get("agreements") if isinstance(data, dict) else None
+        if not isinstance(raw, list):
+            return []
+        return [
+            dict(item)
+            for item in raw
+            if isinstance(item, dict) and item.get("id")
+        ]
+
+    @staticmethod
+    def _elektrum_agreement_label(agreement):
+        number = str(agreement.get("number") or "Agreement")
+        agreement_type = str(agreement.get("type") or "").strip()
+        return f"{number} ({agreement_type})" if agreement_type else number
+
+    @staticmethod
+    def _elektrum_access_token(payload):
+        if not isinstance(payload, dict):
+            return ""
+        data = payload.get("data")
+        if isinstance(data, dict):
+            return str(
+                data.get("accessToken")
+                or data.get("access_token")
+                or data.get("token")
+                or ""
+            )
+        return str(payload.get("accessToken") or payload.get("token") or "")
+
+    @staticmethod
+    def _elektrum_error_code(payload):
+        """Return a non-sensitive Elektrum API error identifier for logs."""
+        if not isinstance(payload, dict):
+            return "unknown"
+        error = payload.get("error")
+        if isinstance(error, dict):
+            return str(error.get("code") or error.get("id") or "unknown")
+        response = payload.get("_response")
+        if isinstance(response, dict):
+            status = response.get("status") or "unknown"
+            content_type = response.get("content_type") or "unknown"
+            return f"http_{status}:{content_type}"
+        return str(payload.get("code") or "unknown")
 
     def _create_merged_entry(self, user_input, *, clear_missing=()):
         """Save one settings page without dropping options from another."""

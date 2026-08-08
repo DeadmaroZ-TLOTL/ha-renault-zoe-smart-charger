@@ -25,6 +25,7 @@ from .const import (
     CONF_LOCATION_CONTROL_ENABLED,
     DEFAULT_IMMAX_CHARGER_SWITCH_ENTITY,
 )
+from .device_info import SOURCE_IMMAX, SOURCE_SMART_CHARGING, source_device_info
 
 
 async def async_setup_entry(
@@ -55,7 +56,7 @@ class ZoeNewImmaxChargingSwitch(SwitchEntity):
     def __init__(self, config_entry: ConfigEntry, vehicle: Any) -> None:
         """Initialize the configurable charger switch proxy."""
         self.config_entry = config_entry
-        self._attr_device_info = vehicle.device_info
+        self._attr_device_info = source_device_info(vehicle, SOURCE_IMMAX)
         self._attr_unique_id = f"{vehicle.details.vin}_immax_charging".lower()
 
     @property
@@ -138,7 +139,9 @@ class _ZoeNewConfigSwitch(SwitchEntity):
     def __init__(self, config_entry: ConfigEntry, vehicle: Any) -> None:
         """Initialize a configuration switch."""
         self.config_entry = config_entry
-        self._attr_device_info = vehicle.device_info
+        self._attr_device_info = source_device_info(
+            vehicle, SOURCE_SMART_CHARGING
+        )
         self._vin = vehicle.details.vin
 
     def _async_update_option(self, option: str, value: bool) -> None:

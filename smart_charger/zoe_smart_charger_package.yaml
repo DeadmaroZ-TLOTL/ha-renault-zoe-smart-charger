@@ -279,7 +279,8 @@ automation:
       If the target can no longer be reached by the deadline, use the earliest
       later intervals below the configured price cap. Select Renault Always
       mode before a planned start, and also when smart charging is disabled or
-      the current location is not allowed.
+      the current location is not allowed. While the current Nord Pool price is
+      below 0.01 c/kWh, charge continuously without waiting for a cheaper slot.
     triggers:
       - trigger: time_pattern
         minutes: /5
@@ -317,7 +318,8 @@ automation:
                is_state('sensor.charge_state', 'charge_in_progress') }}
           cap_on: "{{ is_state('input_boolean.zoe_max_price_enabled', 'on') }}"
           cap: "{{ states('input_number.zoe_max_energy_price') | float(100) }}"
-          current_price: "{{ states(price_entity) | float(0) }}"
+          current_price: "{{ states(price_entity) | float(999) }}"
+          cheap_price_threshold: 0.01
           ready: "{{ states('input_datetime.zoe_ready_by') }}"
       - variables:
           deadline: >-
@@ -329,6 +331,8 @@ automation:
                if power | float > 0 else 999 }}
           cooldown_ok: >-
             {{ as_timestamp(now()) - as_timestamp(states('input_datetime.zoe_last_charge_command'), 0) >= 600 }}
+          continuous_low_price: >-
+            {{ current_price | float(999) < cheap_price_threshold | float(0.01) }}
       - variables:
           selected_now: >-
             {% set slots = (state_attr(price_entity, 'raw_today') or []) +
@@ -359,8 +363,9 @@ automation:
                deadline | float - as_timestamp(now()) <= needed | float / power | float * 3600 + 900 }}
           should_charge: >-
             {{ smart_on and location_ok and plugged and needed | float > 0 and
-               (not cap_on or current_price | float <= cap | float) and
-               (selected_now or must_charge) }}
+               (continuous_low_price or
+                ((not cap_on or current_price | float <= cap | float) and
+                 (selected_now or must_charge))) }}
       - if:
           - condition: template
             value_template: >-
@@ -382,6 +387,7 @@ automation:
             {% elif not location_ok %}Waiting for an allowed location
             {% elif not plugged %}Waiting for plug
             {% elif soc | float >= target | float %}Target reached
+            {% elif continuous_low_price %}Charging continuously below 0.01 c/kWh
             {% elif should_charge %}Charging in selected price window
             {% else %}Waiting for a cheaper selected interval
             {% endif %}
@@ -418,8 +424,8 @@ automation:
                 data:
                   datetime: "{{ now().strftime('%Y-%m-%d %H:%M:%S') }}"
           - conditions: >-
-              {{ smart_on and plugged and charging and cooldown_ok and
-                 (soc | float >= target | float or not should_charge) }}
+              {{ smart_on and location_ok and plugged and charging and cooldown_ok and
+                  (soc | float >= target | float or not should_charge) }}
             sequence:
               - action: button.press
                 target:

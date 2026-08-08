@@ -1,6 +1,10 @@
 __pycache__/
 *.py[cod]
 *.tar.gz
+*.tgz
 .pytest_cache/
 .ruff_cache/
 .venv/
+.testdeps/
+remote_snapshots/
+work/

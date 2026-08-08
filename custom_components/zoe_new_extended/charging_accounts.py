@@ -18,9 +18,13 @@ from aiohttp import (
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 
 from .charging_accounts_data import (
+    elektrum_month_keys,
+    elektrum_profile_state,
+    elektrum_token_can_replace,
     merge_account_transactions,
     parse_elektrum_transactions,
     tag_account_transactions,
@@ -34,11 +38,30 @@ from .const import (
     CONF_ACCOUNT_TYPE,
     CONF_CHARGING_ACCOUNTS,
     CONF_ELEKTRUM_ACCESS_TOKEN,
+    CONF_ELEKTRUM_AGREEMENT_ID,
     CONF_ELEKTRUM_DEVICE_UUID,
+    CONF_MOBILLY_ACCESS_TOKEN,
     CONF_MOBILLY_PASSWORD,
+    CONF_MOBILLY_PHONE,
+    CONF_MOBILLY_REFRESH_TOKEN,
     CONF_MOBILLY_USERNAME,
 )
-from .mobilly_data import merge_transactions, parse_transactions_page
+from .elektrum_login import elektrum_mobile_headers
+from .mobilly_auth import (
+    MOBILLY_API_URL,
+    MOBILLY_AUTH_URL,
+    mobilly_access_token,
+    mobilly_app_headers,
+    mobilly_refresh_token,
+    mobilly_token_credentials,
+)
+from .mobilly_data import (
+    merge_app_transactions,
+    merge_transactions,
+    parse_app_charge_sessions,
+    parse_app_transactions,
+    parse_transactions_page,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -53,12 +76,9 @@ MOBILLY_MOBILE_URL = f"{MOBILLY_BASE_URL}/lv/my/statement/payments-mobile"
 ELEKTRUM_API_URL = "https://eup.elektrum.lv/api/v3"
 REQUEST_HEADERS = {
     "Accept": "application/json,text/html;q=0.9,*/*;q=0.8",
-    "User-Agent": "HomeAssistant ZoeNewExtended/1.13",
+    "User-Agent": "HomeAssistant ZoeNewExtended/1.14",
 }
-ELEKTRUM_HEADERS = {
-    "Accept": "application/json",
-    "User-Agent": "Elektrum/2.7.1 (Language: lv; OS: Android)",
-}
+ELEKTRUM_HEADERS = elektrum_mobile_headers()
 
 
 class ChargingAccountsCoordinator(DataUpdateCoordinator[dict[str, Any]]):
@@ -75,6 +95,9 @@ class ChargingAccountsCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self.entry = entry
         self._last_transactions_by_account: dict[
             str, list[dict[str, Any]]
+        ] = {}
+        self._elektrum_month_cache: dict[
+            tuple[str, str], list[dict[str, Any]]
         ] = {}
 
     @property
@@ -131,12 +154,20 @@ class ChargingAccountsCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 ] = transactions
                 summary.update(
                     {
-                        "status": "ok",
-                        "error": None,
+                        "status": result.get("status", "ok"),
+                        "error": result.get("error"),
                         "transaction_count": len(transactions),
                         "source_counts": result.get("source_counts", {}),
                     }
                 )
+                for key in (
+                    "auth_state",
+                    "profile_type",
+                    "agreement_linked",
+                    "agreement_count",
+                ):
+                    if key in result:
+                        summary[key] = result[key]
             summary["last_refresh"] = fetched_at
             account_status.append(summary)
 
@@ -181,8 +212,79 @@ class ChargingAccountsCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     ) -> dict[str, Any]:
         username = str(account.get(CONF_MOBILLY_USERNAME) or "").strip()
         password = str(account.get(CONF_MOBILLY_PASSWORD) or "")
-        if not username or not password:
-            raise ValueError("Mobilly credentials are incomplete")
+        access_token = str(account.get(CONF_MOBILLY_ACCESS_TOKEN) or "")
+        transaction_groups: list[list[dict[str, Any]]] = []
+        source_counts: dict[str, int] = {}
+        app_error: str | None = None
+
+        if access_token:
+            try:
+                history_payload, access_token = await self._async_mobilly_get(
+                    "account/transaction-history/all",
+                    access_token,
+                    account,
+                )
+                sessions_payload, access_token = await self._async_mobilly_get(
+                    "ev-charge/sessions",
+                    access_token,
+                    account,
+                )
+                app_history = parse_app_transactions(history_payload)
+                app_sessions = parse_app_charge_sessions(sessions_payload)
+                app_transactions = merge_app_transactions(
+                    app_history,
+                    app_sessions,
+                )
+                transaction_groups.append(app_transactions)
+                source_counts.update(
+                    {
+                        "mobilly_app_transactions": len(app_history),
+                        "mobilly_app_charge_sessions": len(app_sessions),
+                    }
+                )
+            except (ClientError, PermissionError, RuntimeError, TimeoutError) as err:
+                app_error = _safe_error(err)
+                _LOGGER.warning(
+                    "Unable to refresh Mobilly app history for account %s: %s",
+                    account.get(CONF_ACCOUNT_ID),
+                    app_error,
+                )
+
+        if username and password:
+            direct, mobile = await self._async_fetch_mobilly_web(username, password)
+            transaction_groups.extend((direct, mobile))
+            source_counts.update(
+                {
+                    "payments": len(direct),
+                    "payments_mobile": len(mobile),
+                }
+            )
+        elif not transaction_groups:
+            if app_error:
+                raise PermissionError(app_error)
+            raise ValueError("Mobilly account needs web or mobile-app authentication")
+
+        transactions = merge_transactions(*transaction_groups)
+        transactions = tag_account_transactions(
+            transactions,
+            account_id=str(account[CONF_ACCOUNT_ID]),
+            account_name=str(account.get(CONF_ACCOUNT_NAME) or "Mobilly"),
+            account_type=ACCOUNT_TYPE_MOBILLY,
+        )
+        return {
+            "transactions": transactions,
+            "auth_state": "authenticated",
+            "status": "partial" if app_error else "ok",
+            "error": app_error,
+            "source_counts": source_counts,
+        }
+
+    async def _async_fetch_mobilly_web(
+        self,
+        username: str,
+        password: str,
+    ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+        """Fetch both legacy Mobilly web statements."""
 
         session = ClientSession(
             cookie_jar=CookieJar(),
@@ -260,20 +362,75 @@ class ChargingAccountsCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         mobile = parse_transactions_page(
             mobile_page, source_page="payments_mobile"
         )
-        transactions = merge_transactions(direct, mobile)
-        transactions = tag_account_transactions(
-            transactions,
-            account_id=str(account[CONF_ACCOUNT_ID]),
-            account_name=str(account.get(CONF_ACCOUNT_NAME) or "Mobilly"),
-            account_type=ACCOUNT_TYPE_MOBILLY,
+        return direct, mobile
+
+    async def _async_mobilly_get(
+        self,
+        path: str,
+        token: str,
+        account: dict[str, Any],
+    ) -> tuple[dict[str, Any], str]:
+        payload, status = await self._async_mobilly_request(path, token)
+        if status != 401:
+            if status >= 400:
+                raise RuntimeError(f"Mobilly app request failed ({status})")
+            return payload, token
+
+        refresh_token = str(account.get(CONF_MOBILLY_REFRESH_TOKEN) or "")
+        phone = str(account.get(CONF_MOBILLY_PHONE) or "")
+        if not refresh_token or not phone:
+            raise PermissionError("Mobilly app session has expired")
+        session = async_get_clientsession(self.hass)
+        async with session.post(
+            f"{MOBILLY_AUTH_URL}/token/refresh_token",
+            headers=mobilly_app_headers(),
+            json=mobilly_token_credentials(
+                phone,
+                refresh_token,
+                grant_type="refresh_token",
+            )["tokenCredentials"],
+            timeout=REQUEST_TIMEOUT,
+        ) as response:
+            try:
+                refresh_payload = await response.json(content_type=None)
+            except (TypeError, ValueError):
+                refresh_payload = {}
+            refresh_status = response.status
+        refreshed_token = mobilly_access_token(refresh_payload)
+        if refresh_status >= 400 or not refreshed_token:
+            raise PermissionError("Mobilly app session refresh failed")
+        refreshed_refresh = (
+            mobilly_refresh_token(refresh_payload) or refresh_token
         )
-        return {
-            "transactions": transactions,
-            "source_counts": {
-                "payments": len(direct),
-                "payments_mobile": len(mobile),
-            },
-        }
+        self._store_mobilly_tokens(
+            str(account.get(CONF_ACCOUNT_ID) or ""),
+            refreshed_token,
+            refreshed_refresh,
+        )
+        payload, status = await self._async_mobilly_request(
+            path,
+            refreshed_token,
+        )
+        if status >= 400:
+            raise RuntimeError(f"Mobilly app request failed ({status})")
+        return payload, refreshed_token
+
+    async def _async_mobilly_request(
+        self,
+        path: str,
+        token: str,
+    ) -> tuple[dict[str, Any], int]:
+        session = async_get_clientsession(self.hass)
+        async with session.get(
+            f"{MOBILLY_API_URL}/{path.lstrip('/')}",
+            headers=mobilly_app_headers(token),
+            timeout=REQUEST_TIMEOUT,
+        ) as response:
+            try:
+                payload = await response.json(content_type=None)
+            except (TypeError, ValueError):
+                payload = {}
+            return payload if isinstance(payload, dict) else {}, response.status
 
     async def _async_fetch_elektrum(
         self, account: dict[str, Any]
@@ -282,57 +439,179 @@ class ChargingAccountsCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         if not token:
             raise PermissionError("Elektrum Drive account needs authentication")
 
-        payload, status = await self._async_elektrum_request(
-            "transactions", token
+        account_id = str(account[CONF_ACCOUNT_ID])
+        account_name = str(
+            account.get(CONF_ACCOUNT_NAME) or "Elektrum Drive"
         )
-        if status == 401:
-            refresh_payload, refresh_status = await self._async_elektrum_request(
-                "auth/refresh", token
+        profile_payload, profile_status, token = await self._async_elektrum_get(
+            "user",
+            token,
+            account,
+        )
+        if profile_status >= 400:
+            raise PermissionError(
+                f"Elektrum Drive profile request failed ({profile_status})"
             )
-            if refresh_status >= 400:
-                raise PermissionError("Elektrum Drive session has expired")
-            refreshed_token = _access_token(refresh_payload)
-            if not refreshed_token:
-                raise PermissionError("Elektrum Drive did not return a new token")
-            token = refreshed_token
-            self._store_refreshed_token(
-                str(account[CONF_ACCOUNT_ID]),
-                token,
-                str(account.get(CONF_ELEKTRUM_DEVICE_UUID) or ""),
-            )
-            payload, status = await self._async_elektrum_request(
-                "transactions", token
-            )
-        if status >= 400:
-            raise PermissionError(f"Elektrum Drive request failed ({status})")
+        profile_state = elektrum_profile_state(profile_payload)
+        if profile_state["auth_state"] == "agreement_required":
+            return {
+                "transactions": [],
+                **profile_state,
+                "status": "action_required",
+                "error": "Elektrum postpaid agreement is not linked",
+                "source_counts": {"elektrum_drive_app": 0, "months": {}},
+            }
+        months = elektrum_month_keys(
+            datetime.now(UTC),
+            history_days=HISTORY_DAYS,
+        )
+        refresh_months = set(months[:2])
+        source_counts: dict[str, int] = {}
+        transaction_groups: list[list[dict[str, Any]]] = []
+        legacy_payload_used = False
+        for month in months:
+            cache_key = (account_id, month)
+            cached = self._elektrum_month_cache.get(cache_key)
+            if cached is not None and month not in refresh_months:
+                transaction_groups.append(cached)
+                source_counts[month] = len(cached)
+                continue
 
-        transactions = parse_elektrum_transactions(
-            payload,
-            account_id=str(account[CONF_ACCOUNT_ID]),
-            account_name=str(
-                account.get(CONF_ACCOUNT_NAME) or "Elektrum Drive"
-            ),
-        )
+            payload, status, token = await self._async_elektrum_get(
+                "transactions",
+                token,
+                account,
+                params={"date": month},
+            )
+            if status == 404:
+                # Older service releases did not support the month parameter.
+                if legacy_payload_used:
+                    break
+                payload, status, token = await self._async_elektrum_get(
+                    "transactions",
+                    token,
+                    account,
+                )
+                legacy_payload_used = True
+            if status >= 400:
+                raise PermissionError(
+                    f"Elektrum Drive request failed ({status})"
+                )
+            parsed = parse_elektrum_transactions(
+                payload,
+                account_id=account_id,
+                account_name=account_name,
+            )
+            self._elektrum_month_cache[cache_key] = parsed
+            transaction_groups.append(parsed)
+            source_counts[month] = len(parsed)
+            if legacy_payload_used:
+                break
+
+        transactions = merge_account_transactions(*transaction_groups)
         return {
             "transactions": transactions,
-            "source_counts": {"elektrum_drive_app": len(transactions)},
+            **profile_state,
+            "source_counts": {
+                "elektrum_drive_app": len(transactions),
+                "months": source_counts,
+            },
         }
 
+    async def _async_elektrum_get(
+        self,
+        path: str,
+        token: str,
+        account: dict[str, Any],
+        *,
+        params: dict[str, str] | None = None,
+    ) -> tuple[dict[str, Any], int, str]:
+        """Run one authenticated GET and transparently refresh its token."""
+        payload, status = await self._async_elektrum_request(
+            path,
+            token,
+            params=params,
+        )
+        if status != 401:
+            return payload, status, token
+
+        refresh_payload, refresh_status = await self._async_elektrum_request(
+            "auth/refresh",
+            token,
+        )
+        if refresh_status >= 400:
+            raise PermissionError("Elektrum Drive session has expired")
+        refreshed_token = _access_token(refresh_payload)
+        if not refreshed_token:
+            raise PermissionError("Elektrum Drive did not return a new token")
+        if account.get(CONF_ELEKTRUM_AGREEMENT_ID):
+            profile_payload, profile_status = await self._async_elektrum_request(
+                "user",
+                refreshed_token,
+            )
+            if profile_status >= 400 or not elektrum_token_can_replace(
+                None,
+                profile_payload,
+                saved_agreement=True,
+            ):
+                raise PermissionError(
+                    "Elektrum Drive refreshed into an unlinked app profile"
+                )
+        self._store_refreshed_token(
+            str(account[CONF_ACCOUNT_ID]),
+            refreshed_token,
+            str(account.get(CONF_ELEKTRUM_DEVICE_UUID) or ""),
+        )
+        payload, status = await self._async_elektrum_request(
+            path,
+            refreshed_token,
+            params=params,
+        )
+        return payload, status, refreshed_token
+
     async def _async_elektrum_request(
-        self, path: str, token: str
+        self,
+        path: str,
+        token: str,
+        *,
+        params: dict[str, str] | None = None,
     ) -> tuple[dict[str, Any], int]:
         headers = {**ELEKTRUM_HEADERS, "Authorization": f"Bearer {token}"}
         async with ClientSession(
             headers=headers,
             timeout=REQUEST_TIMEOUT,
         ) as session:
-            async with session.get(f"{ELEKTRUM_API_URL}/{path}") as response:
+            async with session.get(
+                f"{ELEKTRUM_API_URL}/{path}",
+                params=params,
+            ) as response:
                 status = response.status
                 try:
                     payload = await response.json(content_type=None)
                 except (TypeError, ValueError):
                     payload = {}
         return payload if isinstance(payload, dict) else {}, status
+
+    def _store_mobilly_tokens(
+        self,
+        account_id: str,
+        access_token: str,
+        refresh_token: str,
+    ) -> None:
+        accounts = self.accounts
+        changed = False
+        for account in accounts:
+            if str(account.get(CONF_ACCOUNT_ID)) != account_id:
+                continue
+            account[CONF_MOBILLY_ACCESS_TOKEN] = access_token
+            account[CONF_MOBILLY_REFRESH_TOKEN] = refresh_token
+            changed = True
+            break
+        if not changed:
+            return
+        data = dict(self.entry.data)
+        data[CONF_CHARGING_ACCOUNTS] = accounts
+        self.hass.config_entries.async_update_entry(self.entry, data=data)
 
     def _store_refreshed_token(
         self, account_id: str, token: str, device_uuid: str

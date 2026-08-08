@@ -22,6 +22,7 @@ from .const import (
     CONF_IMMAX_CHARGER_CURRENT_ENTITY,
     DEFAULT_IMMAX_CHARGER_CURRENT_ENTITY,
 )
+from .device_info import SOURCE_IMMAX, source_device_info
 
 
 async def async_setup_entry(
@@ -47,7 +48,7 @@ class ZoeNewImmaxCurrentNumber(NumberEntity):
     def __init__(self, config_entry: ConfigEntry, vehicle: Any) -> None:
         """Initialize the configurable current-number proxy."""
         self.config_entry = config_entry
-        self._attr_device_info = vehicle.device_info
+        self._attr_device_info = source_device_info(vehicle, SOURCE_IMMAX)
         self._attr_unique_id = f"{vehicle.details.vin}_immax_current".lower()
 
     @property

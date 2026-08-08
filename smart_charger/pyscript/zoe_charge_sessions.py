@@ -13,6 +13,7 @@ from homeassistant.components.recorder.history import get_significant_states
 
 from custom_components.zoe_new_extended.charging_accounts_data import (
     apply_provider_transactions,
+    combine_charge_fragments,
 )
 
 
@@ -33,7 +34,7 @@ LEGACY_PRICE_ENTITY = "sensor.nordpool_kwh_lv_eur_3_10_021"
 COST_SETTINGS_ENTITY = "sensor.renault_zoe_new_cost_settings"
 CHARGING_ACCOUNTS_ENTITY = "sensor.renault_zoe_new_charging_accounts"
 EXACT_PROVIDER_PRICE_SOURCES = {"elektrum_drive_app", "mobilly"}
-PYSCRIPT_REVISION = "multi_account_exact_costs_v1"
+PYSCRIPT_REVISION = "combined_charge_fragments_v2"
 
 _refresh_in_progress = False
 
@@ -899,6 +900,7 @@ async def zoe_charge_sessions_update():
             meaningful_sessions,
             settings,
         )
+        meaningful_sessions = combine_charge_fragments(meaningful_sessions)
         provider_transactions = _provider_transactions()
         meaningful_sessions = apply_provider_transactions(
             meaningful_sessions,

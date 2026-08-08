@@ -6,6 +6,7 @@ import html
 from html.parser import HTMLParser
 import json
 import math
+import re
 from typing import Any
 
 
@@ -83,6 +84,9 @@ def parse_connector_page(page: str) -> dict[str, Any]:
         return {
             "connector_id": connector.get("id"),
             "code": connector.get("code"),
+            # This sequence is scoped to one charging point and is not a
+            # station-wide physical plug number.
+            "connector_sequence": connector.get("sequence"),
             "station_address": connector.get("stationAddress"),
             "status": connector.get("status"),
             "connector_type": connector_type.get("name"),
@@ -97,8 +101,8 @@ def parse_connector_page(page: str) -> dict[str, Any]:
 
 def station_connectors(station: dict[str, Any]) -> list[dict[str, Any]]:
     """Flatten the public station API connector list."""
-    connectors = []
-    for point in station.get("chargingPoints", []):
+    connectors: list[dict[str, Any]] = []
+    for point_index, point in enumerate(station.get("chargingPoints", []), 1):
         for connector in point.get("connectors", []):
             code = connector.get("code")
             if not code:
@@ -106,12 +110,60 @@ def station_connectors(station: dict[str, Any]) -> list[dict[str, Any]]:
             connectors.append(
                 {
                     "code": code,
+                    "connector_sequence": connector.get("sequence"),
+                    "charging_point_id": point.get("id"),
+                    "charging_point_name": point.get("name"),
+                    "charging_point_number": point_index,
                     "connector_type": connector.get("type"),
                     "current_type": connector.get("currentType"),
                     "power_kw": _power_kw(connector.get("chargingPowerType")),
                 }
             )
+
+    display_numbers = _station_connector_numbers(connectors)
+    for connector, display_number in zip(
+        connectors, display_numbers, strict=True
+    ):
+        connector["connector_number"] = display_number
     return connectors
+
+
+def _station_connector_numbers(
+    connectors: list[dict[str, Any]],
+) -> list[int]:
+    """Return unique physical numbers while preserving trustworthy API data."""
+    sequences = [
+        _positive_int(item.get("connector_sequence")) for item in connectors
+    ]
+    if all(sequence is not None for sequence in sequences) and len(
+        set(sequences)
+    ) == len(sequences):
+        return [int(sequence) for sequence in sequences]
+
+    # Common Elektrum EVSE codes end in a station-wide number followed by the
+    # connector model, for example ``...002TP2``.
+    code_numbers = [
+        _connector_code_number(item.get("code")) for item in connectors
+    ]
+    if all(number is not None for number in code_numbers) and len(
+        set(code_numbers)
+    ) == len(code_numbers):
+        return [int(number) for number in code_numbers]
+
+    return list(range(1, len(connectors) + 1))
+
+
+def _connector_code_number(value: Any) -> int | None:
+    match = re.search(r"(\d{1,4})(?=[A-Z]+\d*$)", str(value or "").upper())
+    return _positive_int(match.group(1)) if match else None
+
+
+def _positive_int(value: Any) -> int | None:
+    try:
+        number = int(value)
+    except (TypeError, ValueError):
+        return None
+    return number if number > 0 else None
 
 
 def station_coordinates(station: dict[str, Any]) -> tuple[float, float] | None:

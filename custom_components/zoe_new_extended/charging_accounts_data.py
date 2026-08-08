@@ -12,6 +12,76 @@ from typing import Any
 ELEKTRUM_SOURCE = "elektrum_drive"
 MOBILLY_SOURCE = "mobilly"
 _ELEKTRUM_MATCH_SECONDS = 20 * 60
+_CHARGE_FRAGMENT_GAP_SECONDS = 30 * 60
+
+
+def elektrum_profile_state(payload: Mapping[str, Any]) -> dict[str, Any]:
+    """Return a sanitized Elektrum profile/authentication state."""
+    data = payload.get("data")
+    if not isinstance(data, Mapping):
+        return {
+            "auth_state": "unknown",
+            "profile_type": None,
+            "agreement_linked": False,
+        }
+    profile_type = _as_int(data.get("type"))
+    agreements = data.get("agreements")
+    agreement_items = agreements if isinstance(agreements, list) else []
+    agreement_linked = profile_type == 3 or any(
+        isinstance(item, Mapping) and bool(item.get("selected"))
+        for item in agreement_items
+    )
+    return {
+        "auth_state": (
+            "agreement_linked"
+            if agreement_linked
+            else "agreement_required"
+            if profile_type == 0
+            else "authenticated"
+        ),
+        "profile_type": profile_type,
+        "agreement_linked": agreement_linked,
+        "agreement_count": len(agreement_items),
+    }
+
+
+def elektrum_token_can_replace(
+    current_payload: Mapping[str, Any] | None,
+    candidate_payload: Mapping[str, Any],
+    *,
+    saved_agreement: bool = False,
+) -> bool:
+    """Prevent an anonymous app profile from replacing a linked session."""
+    candidate = elektrum_profile_state(candidate_payload)
+    if candidate["auth_state"] == "unknown":
+        return False
+    current = elektrum_profile_state(current_payload or {})
+    must_remain_linked = saved_agreement or current["agreement_linked"]
+    return not must_remain_linked or candidate["agreement_linked"]
+
+
+def elektrum_month_keys(
+    reference: datetime,
+    *,
+    history_days: int,
+) -> list[str]:
+    """Return newest-first calendar months covering a history window."""
+    reference_utc = (
+        reference.replace(tzinfo=UTC)
+        if reference.tzinfo is None
+        else reference.astimezone(UTC)
+    )
+    oldest = reference_utc - timedelta(days=max(0, history_days))
+    year = reference_utc.year
+    month = reference_utc.month
+    result: list[str] = []
+    while (year, month) >= (oldest.year, oldest.month):
+        result.append(f"{year:04d}-{month:02d}")
+        month -= 1
+        if month == 0:
+            year -= 1
+            month = 12
+    return result
 
 
 def parse_elektrum_transactions(
@@ -161,11 +231,11 @@ def apply_provider_transactions(
     """Apply exact provider energy and cost to matching Renault sessions.
 
     Renault can split one physical charge into several API rows. When that
-    happens, the exact provider totals are allocated proportionally while the
-    sum remains equal to the provider transaction.
+    happens, expose one combined session with the provider's exact totals.
+    Keeping one row prevents a single paid charge from looking like multiple
+    sessions and avoids rounding the provider total across fragments.
     """
     result = [dict(session) for session in sessions]
-    assigned: set[int] = set()
     provider_records = sorted(
         (dict(item) for item in transactions),
         key=lambda item: item.get("end") or "",
@@ -174,95 +244,310 @@ def apply_provider_transactions(
         candidates = [
             index
             for index, session in enumerate(result)
-            if index not in assigned and _interval_matches(session, transaction)
+            if _interval_matches(session, transaction)
         ]
         if not candidates:
             continue
 
-        weights = [_session_weight(result[index]) for index in candidates]
-        total_weight = sum(weights)
-        if total_weight <= 0:
-            weights = [1.0] * len(candidates)
-            total_weight = float(len(candidates))
+        fragments = [result[index] for index in candidates]
+        combined = _combine_provider_sessions(fragments, transaction)
+        result = [
+            session for index, session in enumerate(result) if index not in candidates
+        ]
+        result.append(combined)
 
-        exact_energy = _as_float(transaction.get("energy_kwh"))
-        exact_cost = _as_float(
-            transaction.get("total_cost_eur", transaction.get("cost_eur"))
-        )
-        exact_rate = (
-            exact_cost / exact_energy * 100.0
-            if exact_cost is not None and exact_energy and exact_energy > 0
-            else _as_float(transaction.get("total_rate_c_per_kwh"))
-        )
-        allocated_energy_total = 0.0
-        allocated_cost_total = 0.0
-        for position, index in enumerate(candidates):
-            fraction = weights[position] / total_weight
-            session = result[index]
-            is_last = position == len(candidates) - 1
-            allocated_energy = None
-            if exact_energy is not None:
-                allocated_energy = round(
-                    exact_energy - allocated_energy_total
-                    if is_last
-                    else exact_energy * fraction,
-                    3,
+    return sorted(
+        result,
+        key=lambda item: item.get("end") or item.get("start") or "",
+        reverse=True,
+    )
+
+
+def combine_charge_fragments(
+    sessions: Iterable[Mapping[str, Any]],
+    *,
+    max_gap_seconds: int = _CHARGE_FRAGMENT_GAP_SECONDS,
+) -> list[dict[str, Any]]:
+    """Combine stop/restart fragments belonging to one physical charge.
+
+    Renault creates a new API row after a remote stop and subsequent restart.
+    Adjacent rows are combined only when SOC is continuous and their known
+    station/provider identity agrees, which keeps unrelated charges separate.
+    """
+    chronological = sorted(
+        (dict(item) for item in sessions),
+        key=lambda item: item.get("start") or item.get("end") or "",
+    )
+    groups: list[list[dict[str, Any]]] = []
+    for session in chronological:
+        if groups and _fragments_match(
+            groups[-1][-1], session, max_gap_seconds=max_gap_seconds
+        ):
+            groups[-1].append(session)
+        else:
+            groups.append([session])
+
+    result = [
+        _combine_charge_fragment_group(group) if len(group) > 1 else group[0]
+        for group in groups
+    ]
+    return sorted(
+        result,
+        key=lambda item: item.get("end") or item.get("start") or "",
+        reverse=True,
+    )
+
+
+def _fragments_match(
+    earlier: Mapping[str, Any],
+    later: Mapping[str, Any],
+    *,
+    max_gap_seconds: int,
+) -> bool:
+    earlier_end = _parse_datetime(earlier.get("end"))
+    later_start = _parse_datetime(later.get("start"))
+    if earlier_end is None or later_start is None:
+        return False
+    gap_seconds = (later_start - earlier_end).total_seconds()
+    if gap_seconds < 0 or gap_seconds > max_gap_seconds:
+        return False
+
+    earlier_soc = _as_float(earlier.get("end_soc"))
+    later_soc = _as_float(later.get("start_soc"))
+    if (
+        earlier_soc is None
+        or later_soc is None
+        or abs(earlier_soc - later_soc) > 1.0
+    ):
+        return False
+
+    earlier_identity = _charge_location_identity(earlier)
+    later_identity = _charge_location_identity(later)
+    return not (
+        earlier_identity
+        and later_identity
+        and earlier_identity != later_identity
+    )
+
+
+def _charge_location_identity(session: Mapping[str, Any]) -> str:
+    for key in ("station_id", "station_name", "station_address", "provider"):
+        value = _normalize(session.get(key))
+        if value:
+            return value
+    source = str(session.get("price_source") or "")
+    if source in {"elektrum_drive", "elektrum_drive_app", "mobilly"}:
+        return source
+    return ""
+
+
+def _combine_charge_fragment_group(
+    fragments: list[dict[str, Any]],
+) -> dict[str, Any]:
+    first = fragments[0]
+    last = fragments[-1]
+    combined = dict(first)
+    start = first.get("start")
+    end = last.get("end")
+    start_time = _parse_datetime(start)
+    end_time = _parse_datetime(end)
+    active_duration = sum(
+        _as_float(item.get("duration_min")) or 0.0 for item in fragments
+    )
+    elapsed_duration = (
+        max(0.0, (end_time - start_time).total_seconds() / 60.0)
+        if start_time is not None and end_time is not None
+        else active_duration
+    )
+    start_soc = _as_float(first.get("start_soc"))
+    end_soc = _as_float(last.get("end_soc"))
+    battery_energy = sum(
+        _as_float(item.get("estimated_battery_energy_kwh")) or 0.0
+        for item in fragments
+    )
+    grid_values = [_as_float(item.get("grid_energy_kwh")) for item in fragments]
+    cost_values = [_as_float(item.get("total_cost_eur")) for item in fragments]
+    grid_energy = (
+        sum(value for value in grid_values if value is not None)
+        if all(value is not None for value in grid_values)
+        else None
+    )
+    total_cost = (
+        sum(value for value in cost_values if value is not None)
+        if all(value is not None for value in cost_values)
+        else None
+    )
+    rate = (
+        total_cost / grid_energy * 100.0
+        if total_cost is not None and grid_energy and grid_energy > 0
+        else None
+    )
+    field_source = next(
+        (item for item in fragments if _charge_location_identity(item)), first
+    )
+    combined.update(
+        {
+            "start": start,
+            "end": end,
+            "duration_min": round(elapsed_duration),
+            "active_duration_min": round(active_duration),
+            "pause_duration_min": round(max(0.0, elapsed_duration - active_duration)),
+            "start_soc": start_soc,
+            "end_soc": end_soc,
+            "soc_gained": (
+                round(max(0.0, end_soc - start_soc), 1)
+                if start_soc is not None and end_soc is not None
+                else round(
+                    sum(_as_float(item.get("soc_gained")) or 0.0 for item in fragments),
+                    1,
                 )
-                allocated_energy_total += allocated_energy
-            allocated_cost = None
-            if exact_cost is not None:
-                allocated_cost = round(
-                    exact_cost - allocated_cost_total
-                    if is_last
-                    else exact_cost * fraction,
-                    4,
-                )
-                allocated_cost_total += allocated_cost
-            if allocated_energy is not None:
-                session["grid_energy_kwh"] = allocated_energy
-                session["energy_source"] = "provider_meter"
-            if allocated_cost is not None:
-                session["total_cost_eur"] = allocated_cost
-                session["spot_cost_eur"] = None
-                session["delivery_cost_eur"] = None
-            if exact_rate is not None:
-                session["total_rate_c_per_kwh"] = round(exact_rate, 3)
-            session.update(
+            ),
+            "estimated_battery_energy_kwh": round(battery_energy, 2),
+            "grid_energy_kwh": round(grid_energy, 2) if grid_energy is not None else None,
+            "total_cost_eur": round(total_cost, 4) if total_cost is not None else None,
+            "total_rate_c_per_kwh": round(rate, 3) if rate is not None else None,
+            "status": last.get("status"),
+            "combined_charge": True,
+            "combined_fragment_count": len(fragments),
+            "renault_session_fragments": [
                 {
-                    "price_source": transaction.get("price_source"),
-                    "price_entity": (
-                        "sensor.renault_zoe_new_charging_accounts"
-                    ),
-                    "price_coverage_percent": 100.0,
-                    "station_name": transaction.get("station_name")
-                    or transaction.get("provider"),
-                    "station_address": transaction.get("station_address"),
-                    "provider": transaction.get("provider"),
-                    "provider_transaction_id": transaction.get(
-                        "transaction_id"
-                    ),
-                    "provider_account_id": transaction.get("account_id"),
-                    "provider_account_name": transaction.get("account_name"),
-                    "provider_reported_cost": transaction.get(
-                        "provider_reported_cost", exact_cost is not None
-                    ),
-                    "provider_reported_energy": transaction.get(
-                        "provider_reported_energy", exact_energy is not None
-                    ),
-                    "provider_total_grid_energy_kwh": exact_energy,
-                    "provider_total_cost_eur": exact_cost,
-                    "provider_allocation_fraction": round(fraction, 6),
-                    "provider_split_session_count": len(candidates),
-                    "transaction_status": transaction.get(
-                        "transaction_status"
-                    ),
-                    "alternate_sources": transaction.get(
-                        "alternate_sources", []
-                    ),
+                    "start": item.get("start"),
+                    "end": item.get("end"),
+                    "start_soc": item.get("start_soc"),
+                    "end_soc": item.get("end_soc"),
+                }
+                for item in fragments
+            ],
+        }
+    )
+    for key in (
+        "station_id",
+        "station_name",
+        "station_address",
+        "station_city",
+        "provider",
+        "connector_code",
+        "price_source",
+        "price_entity",
+    ):
+        if field_source.get(key) is not None:
+            combined[key] = field_source[key]
+    return combined
+
+
+def _combine_provider_sessions(
+    sessions: list[dict[str, Any]], transaction: Mapping[str, Any]
+) -> dict[str, Any]:
+    """Combine Renault fragments and attach one exact provider transaction."""
+    chronological = sorted(sessions, key=lambda item: item.get("start") or "")
+    first = chronological[0]
+    last = chronological[-1]
+    combined = dict(first)
+    source_fragments = []
+    for item in chronological:
+        nested = item.get("renault_session_fragments")
+        if isinstance(nested, list) and nested:
+            source_fragments.extend(dict(fragment) for fragment in nested)
+        else:
+            source_fragments.append(
+                {
+                    "start": item.get("start"),
+                    "end": item.get("end"),
+                    "start_soc": item.get("start_soc"),
+                    "end_soc": item.get("end_soc"),
                 }
             )
-            assigned.add(index)
-    return result
+
+    start = transaction.get("start") or first.get("start")
+    end = (
+        last.get("end")
+        if transaction.get("end_inferred")
+        else transaction.get("end") or last.get("end")
+    )
+    start_time = _parse_datetime(start)
+    end_time = _parse_datetime(end)
+    duration = _as_float(transaction.get("duration_minutes"))
+    if duration is None and start_time is not None and end_time is not None:
+        duration = max(0.0, (end_time - start_time).total_seconds() / 60.0)
+
+    start_soc = _as_float(first.get("start_soc"))
+    end_soc = _as_float(last.get("end_soc"))
+    soc_gained = (
+        max(0.0, end_soc - start_soc)
+        if start_soc is not None and end_soc is not None
+        else sum(_as_float(item.get("soc_gained")) or 0.0 for item in chronological)
+    )
+    estimated_battery = sum(
+        _as_float(item.get("estimated_battery_energy_kwh")) or 0.0
+        for item in chronological
+    )
+    recovered_values = [
+        _as_float(item.get("energy_recovered_kwh")) for item in chronological
+    ]
+    recovered_energy = (
+        sum(value for value in recovered_values if value is not None)
+        if any(value is not None for value in recovered_values)
+        else None
+    )
+
+    exact_energy = _as_float(transaction.get("energy_kwh"))
+    exact_cost = _as_float(
+        transaction.get("total_cost_eur", transaction.get("cost_eur"))
+    )
+    exact_rate = (
+        exact_cost / exact_energy * 100.0
+        if exact_cost is not None and exact_energy and exact_energy > 0
+        else _as_float(transaction.get("total_rate_c_per_kwh"))
+    )
+
+    combined.update(
+        {
+            "start": start,
+            "end": end,
+            "duration_min": round(duration) if duration is not None else None,
+            "start_soc": round(start_soc, 1) if start_soc is not None else None,
+            "end_soc": round(end_soc, 1) if end_soc is not None else None,
+            "soc_gained": round(soc_gained, 1),
+            "estimated_battery_energy_kwh": round(estimated_battery, 2),
+            "energy_recovered_kwh": (
+                round(recovered_energy, 2) if recovered_energy is not None else None
+            ),
+            "status": last.get("status"),
+            "grid_energy_kwh": exact_energy,
+            "energy_source": "provider_meter" if exact_energy is not None else None,
+            "spot_cost_eur": None,
+            "delivery_cost_eur": None,
+            "total_cost_eur": exact_cost,
+            "total_rate_c_per_kwh": (
+                round(exact_rate, 3) if exact_rate is not None else None
+            ),
+            "price_source": transaction.get("price_source"),
+            "price_entity": "sensor.renault_zoe_new_charging_accounts",
+            "price_coverage_percent": 100.0,
+            "station_name": transaction.get("station_name")
+            or transaction.get("provider"),
+            "station_address": transaction.get("station_address"),
+            "provider": transaction.get("provider"),
+            "provider_transaction_id": transaction.get("transaction_id"),
+            "provider_account_id": transaction.get("account_id"),
+            "provider_account_name": transaction.get("account_name"),
+            "provider_reported_cost": transaction.get(
+                "provider_reported_cost", exact_cost is not None
+            ),
+            "provider_reported_energy": transaction.get(
+                "provider_reported_energy", exact_energy is not None
+            ),
+            "provider_total_grid_energy_kwh": exact_energy,
+            "provider_total_cost_eur": exact_cost,
+            "provider_allocation_fraction": 1.0,
+            "provider_split_session_count": len(source_fragments),
+            "provider_combined_session": len(source_fragments) > 1,
+            "renault_session_fragments": source_fragments,
+            "transaction_status": transaction.get("transaction_status"),
+            "alternate_sources": transaction.get("alternate_sources", []),
+        }
+    )
+    return combined
 
 
 def _deduplicate_same_source(

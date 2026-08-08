@@ -24,6 +24,7 @@ from .const import (
     ZOE_LOCATION_ENTITY_ID,
 )
 from .elektrum_drive_data import (
+    ACTIVE_CONNECTOR_STATUSES,
     nearest_station,
     parse_connector_page,
     price_after_discount,
@@ -31,6 +32,7 @@ from .elektrum_drive_data import (
     station_connectors,
     station_coordinates,
 )
+from .stations_data import normalize_elektrum_station
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -38,13 +40,26 @@ STATIONS_URL = "https://www.elektrum.lv/api/electro-car-charging-stations"
 DIRECT_CONNECTOR_URL = "https://direct.elektrumdrive.com/lv/qr"
 UPDATE_INTERVAL = timedelta(minutes=2)
 STATION_CACHE_SECONDS = 6 * 60 * 60
+CONNECTOR_CACHE_SECONDS = 30 * 60
+DIRECT_RATE_LIMIT_SECONDS = 60 * 60
 MATCH_RADIUS_M = 300.0
 REQUEST_TIMEOUT = ClientTimeout(total=25)
-REQUEST_HEADERS = {
-    "Accept": "application/json,text/html;q=0.9,*/*;q=0.8",
-    "User-Agent": (
-        "Mozilla/5.0 (compatible; HomeAssistant ZoeNewExtended/1.12)"
+WEB_USER_AGENT = (
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+    "AppleWebKit/537.36 (KHTML, like Gecko) "
+    "Chrome/138.0.0.0 Safari/537.36"
+)
+STATION_HEADERS = {
+    "Accept": "application/json",
+    "Referer": "https://www.elektrum.lv/",
+    "User-Agent": WEB_USER_AGENT,
+}
+DIRECT_HEADERS = {
+    "Accept": (
+        "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
     ),
+    "Referer": "https://direct.elektrumdrive.com/lv/",
+    "User-Agent": WEB_USER_AGENT,
 }
 
 
@@ -62,6 +77,10 @@ class ElektrumDriveCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self.entry = entry
         self._stations: list[dict[str, Any]] = []
         self._stations_loaded_at = 0.0
+        self._connector_cache: dict[str, tuple[float, dict[str, Any]]] = {}
+        self._connector_status_since: dict[str, tuple[str, str]] = {}
+        self._connector_semaphore = asyncio.Semaphore(2)
+        self._direct_blocked_until = 0.0
 
     @property
     def enabled(self) -> bool:
@@ -90,8 +109,12 @@ class ElektrumDriveCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             return self._empty_data(fetched_at, enabled=False)
 
         tracker = self.hass.states.get(ZOE_LOCATION_ENTITY_ID)
-        latitude = _as_float(tracker.attributes.get(ATTR_LATITUDE)) if tracker else None
-        longitude = _as_float(tracker.attributes.get(ATTR_LONGITUDE)) if tracker else None
+        latitude = (
+            _as_float(tracker.attributes.get(ATTR_LATITUDE)) if tracker else None
+        )
+        longitude = (
+            _as_float(tracker.attributes.get(ATTR_LONGITUDE)) if tracker else None
+        )
         if latitude is None or longitude is None:
             return self._empty_data(
                 fetched_at,
@@ -202,7 +225,7 @@ class ElektrumDriveCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         session = async_get_clientsession(self.hass)
         async with session.get(
             STATIONS_URL,
-            headers=REQUEST_HEADERS,
+            headers=STATION_HEADERS,
             timeout=REQUEST_TIMEOUT,
         ) as response:
             response.raise_for_status()
@@ -212,18 +235,158 @@ class ElektrumDriveCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._stations = [item for item in payload if isinstance(item, dict)]
         self._stations_loaded_at = monotonic()
 
+    async def async_station_catalog(self) -> list[dict[str, Any]]:
+        """Return normalized public stations for the dashboard map."""
+        await self._async_ensure_stations()
+        return [
+            normalized
+            for station in self._stations
+            if (normalized := normalize_elektrum_station(station)) is not None
+        ]
+
+    async def async_station_detail(
+        self,
+        station_id: str,
+    ) -> dict[str, Any] | None:
+        """Fetch live connector state and current tariff for one station."""
+        await self._async_ensure_stations()
+        station = next(
+            (
+                item
+                for item in self._stations
+                if str(item.get("id") or "") == str(station_id)
+            ),
+            None,
+        )
+        if station is None:
+            return None
+        normalized = normalize_elektrum_station(station)
+        if normalized is None:
+            return None
+
+        public_connectors = [
+            dict(item) for item in normalized.get("connectors", [])
+        ]
+        results = await asyncio.gather(
+            *(self._async_fetch_connector(item["code"]) for item in public_connectors),
+            return_exceptions=True,
+        )
+        connectors: list[dict[str, Any]] = []
+        errors: list[str] = []
+        for public, result in zip(public_connectors, results, strict=True):
+            if isinstance(result, Exception):
+                errors.append(f"{public['code']}: {result}")
+                connectors.append(dict(public))
+                continue
+            direct_price = _as_float(result.get("price_c_per_kwh"))
+            final_price = price_after_discount(
+                direct_price,
+                partner=bool(station.get("partner")),
+                discount_percent=self.discount_percent,
+            )
+            connectors.append(
+                {
+                    **public,
+                    **result,
+                    "direct_price_c_per_kwh": direct_price,
+                    "price_c_per_kwh": final_price,
+                    "price_value": final_price,
+                    "price_unit": "kWh" if final_price is not None else result.get("price_unit"),
+                    "price_formatted": (
+                        f"{final_price:g} c/kWh"
+                        if final_price is not None
+                        else result.get("price_formatted")
+                    ),
+                }
+            )
+
+        statuses = [
+            str(item.get("status") or "unknown").lower() for item in connectors
+        ]
+        available = statuses.count("available")
+        occupied = sum(status in ACTIVE_CONNECTOR_STATUSES for status in statuses)
+        prices = [
+            float(item["price_c_per_kwh"])
+            for item in connectors
+            if item.get("price_c_per_kwh") is not None
+        ]
+        availability = (
+            "available"
+            if available
+            else "occupied"
+            if occupied
+            else "unavailable"
+            if any(status not in {"unknown", ""} for status in statuses)
+            else "unknown"
+        )
+        return {
+            **normalized,
+            "connectors": connectors,
+            "availability": availability,
+            "available_connectors": available,
+            "occupied_connectors": occupied,
+            "price_c_per_kwh": min(prices) if prices else None,
+            "price_value": (
+                min(prices)
+                if prices
+                else normalized.get("price_value")
+            ),
+            "price_unit": "kWh" if prices else normalized.get("price_unit"),
+            "price_formatted": (
+                f"{min(prices):g} c/kWh"
+                if prices
+                else normalized.get("price_formatted")
+            ),
+            "live_data_available": bool(connectors and not errors),
+            "connector_errors": errors,
+            "detail_source": "elektrum_drive_direct",
+            "fetched_at": datetime.now(UTC).isoformat(),
+        }
+
     async def _async_fetch_connector(self, code: str) -> dict[str, Any]:
         """Fetch one server-rendered Direct connector page."""
+        cached = self._connector_cache.get(code)
+        if cached and monotonic() - cached[0] < CONNECTOR_CACHE_SECONDS:
+            return dict(cached[1])
+        if monotonic() < self._direct_blocked_until:
+            if cached:
+                stale = dict(cached[1])
+                stale["live_data_stale"] = True
+                return stale
+            raise RuntimeError("Elektrum Direct is temporarily rate limited")
         session = async_get_clientsession(self.hass)
-        async with session.get(
-            DIRECT_CONNECTOR_URL,
-            params={"evseid": code},
-            headers=REQUEST_HEADERS,
-            timeout=REQUEST_TIMEOUT,
-        ) as response:
-            response.raise_for_status()
-            page = await response.text()
-        return parse_connector_page(page)
+        async with self._connector_semaphore:
+            async with session.get(
+                DIRECT_CONNECTOR_URL,
+                params={"evseid": code},
+                headers=DIRECT_HEADERS,
+                timeout=REQUEST_TIMEOUT,
+            ) as response:
+                if response.status in {429, 451}:
+                    retry_after = _retry_after_seconds(
+                        response.headers.get("Retry-After")
+                    )
+                    self._direct_blocked_until = monotonic() + retry_after
+                    _LOGGER.warning(
+                        "Elektrum Direct rate limited tariff requests for %s seconds",
+                        int(retry_after),
+                    )
+                    if cached:
+                        stale = dict(cached[1])
+                        stale["live_data_stale"] = True
+                        return stale
+                response.raise_for_status()
+                page = await response.text()
+        result = parse_connector_page(page)
+        normalized_status = str(result.get("status") or "unknown").lower()
+        previous = self._connector_status_since.get(code)
+        if previous is None or previous[0] != normalized_status:
+            previous = (normalized_status, datetime.now(UTC).isoformat())
+            self._connector_status_since[code] = previous
+        result["status_observed_since"] = previous[1]
+        result["status_time_source"] = "home_assistant_observation"
+        self._connector_cache[code] = (monotonic(), result)
+        return dict(result)
 
     @staticmethod
     def _station_data(
@@ -326,3 +489,10 @@ def _as_float(value: Any) -> float | None:
         return float(value)
     except (TypeError, ValueError):
         return None
+
+
+def _retry_after_seconds(value: Any) -> float:
+    try:
+        return max(60.0, min(6 * 60 * 60.0, float(value)))
+    except (TypeError, ValueError):
+        return float(DIRECT_RATE_LIMIT_SECONDS)
