@@ -1,4 +1,4 @@
-"""Fetch charging transactions from multiple Mobilly and Elektrum accounts."""
+"""Fetch exact transactions from all configured charging accounts."""
 
 from __future__ import annotations
 
@@ -19,9 +19,19 @@ from aiohttp import (
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
+from homeassistant.helpers.storage import Store
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 
+from .ampeco_auth import (
+    AMPECO_ACCOUNT_TYPES,
+    ampeco_app_headers,
+    ampeco_provider,
+    ampeco_token_form,
+    ampeco_token_values,
+)
+from .ampeco_history import ampeco_history_page, parse_ampeco_transactions
 from .charging_accounts_data import (
+    deduplicate_account_records,
     elektrum_month_keys,
     elektrum_profile_state,
     elektrum_token_can_replace,
@@ -30,6 +40,9 @@ from .charging_accounts_data import (
     tag_account_transactions,
 )
 from .const import (
+    CONF_AMPECO_ACCESS_TOKEN,
+    CONF_AMPECO_REFRESH_TOKEN,
+    CONF_AMPECO_TOKEN_EXPIRES_AT,
     ACCOUNT_TYPE_ELEKTRUM_DRIVE,
     ACCOUNT_TYPE_MOBILLY,
     CONF_ACCOUNT_ENABLED,
@@ -45,6 +58,7 @@ from .const import (
     CONF_MOBILLY_PHONE,
     CONF_MOBILLY_REFRESH_TOKEN,
     CONF_MOBILLY_USERNAME,
+    DOMAIN,
 )
 from .elektrum_login import elektrum_mobile_headers
 from .mobilly_auth import (
@@ -79,6 +93,7 @@ REQUEST_HEADERS = {
     "User-Agent": "HomeAssistant ZoeNewExtended/1.14",
 }
 ELEKTRUM_HEADERS = elektrum_mobile_headers()
+TRANSACTION_CACHE_VERSION = 1
 
 
 class ChargingAccountsCoordinator(DataUpdateCoordinator[dict[str, Any]]):
@@ -99,6 +114,12 @@ class ChargingAccountsCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._elektrum_month_cache: dict[
             tuple[str, str], list[dict[str, Any]]
         ] = {}
+        self._transaction_store: Store[dict[str, Any]] = Store(
+            hass,
+            TRANSACTION_CACHE_VERSION,
+            f"{DOMAIN}.charging_accounts_{entry.entry_id}",
+        )
+        self._transaction_cache_loaded = False
 
     @property
     def accounts(self) -> list[dict[str, Any]]:
@@ -106,10 +127,13 @@ class ChargingAccountsCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         raw_accounts = self.entry.data.get(CONF_CHARGING_ACCOUNTS, [])
         if not isinstance(raw_accounts, list):
             return []
-        return [dict(account) for account in raw_accounts if isinstance(account, dict)]
+        return deduplicate_account_records(
+            account for account in raw_accounts if isinstance(account, dict)
+        )
 
     async def _async_update_data(self) -> dict[str, Any]:
         """Fetch enabled accounts independently so one failure cannot block others."""
+        await self._async_load_transaction_cache()
         fetched_at = datetime.now(UTC).isoformat()
         accounts = self.accounts
         enabled = [
@@ -124,6 +148,7 @@ class ChargingAccountsCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
         account_status: list[dict[str, Any]] = []
         transaction_groups: list[list[dict[str, Any]]] = []
+        cache_changed = False
         for account, result in zip(enabled, results, strict=True):
             summary = self._account_summary(account)
             if isinstance(result, Exception):
@@ -152,6 +177,7 @@ class ChargingAccountsCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 self._last_transactions_by_account[
                     str(account.get(CONF_ACCOUNT_ID) or "")
                 ] = transactions
+                cache_changed = True
                 summary.update(
                     {
                         "status": result.get("status", "ok"),
@@ -187,6 +213,8 @@ class ChargingAccountsCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             if account.get(CONF_ACCOUNT_ID) not in disabled_ids
         )
         transactions = merge_account_transactions(*transaction_groups)
+        if cache_changed:
+            await self._async_save_transaction_cache()
         return {
             "configured": bool(accounts),
             "account_count": len(accounts),
@@ -197,6 +225,34 @@ class ChargingAccountsCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             "fetched_at": fetched_at,
         }
 
+    async def _async_load_transaction_cache(self) -> None:
+        """Restore exact provider history before the first live refresh."""
+        if self._transaction_cache_loaded:
+            return
+        self._transaction_cache_loaded = True
+        payload = await self._transaction_store.async_load()
+        groups = (
+            payload.get("transactions_by_account")
+            if isinstance(payload, dict)
+            else None
+        )
+        if not isinstance(groups, dict):
+            return
+        self._last_transactions_by_account = {
+            str(account_id): [dict(item) for item in transactions if isinstance(item, dict)]
+            for account_id, transactions in groups.items()
+            if isinstance(transactions, list)
+        }
+
+    async def _async_save_transaction_cache(self) -> None:
+        """Persist exact provider history without any account credentials."""
+        await self._transaction_store.async_save(
+            {
+                "transactions_by_account": self._last_transactions_by_account,
+                "saved_at": datetime.now(UTC).isoformat(),
+            }
+        )
+
     async def _async_fetch_account(
         self, account: dict[str, Any]
     ) -> dict[str, Any]:
@@ -205,6 +261,8 @@ class ChargingAccountsCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             return await self._async_fetch_mobilly(account)
         if account_type == ACCOUNT_TYPE_ELEKTRUM_DRIVE:
             return await self._async_fetch_elektrum(account)
+        if account_type in AMPECO_ACCOUNT_TYPES:
+            return await self._async_fetch_ampeco(account)
         raise ValueError("Unsupported charging account type")
 
     async def _async_fetch_mobilly(
@@ -592,6 +650,160 @@ class ChargingAccountsCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     payload = {}
         return payload if isinstance(payload, dict) else {}, status
 
+    async def _async_fetch_ampeco(
+        self,
+        account: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Fetch every public charging session from one AMPECO app profile."""
+        provider = ampeco_provider(account.get(CONF_ACCOUNT_TYPE))
+        token = str(account.get(CONF_AMPECO_ACCESS_TOKEN) or "")
+        if not token:
+            raise PermissionError(
+                f"{provider.display_name} account needs authentication"
+            )
+
+        account_id = str(account[CONF_ACCOUNT_ID])
+        account_name = str(
+            account.get(CONF_ACCOUNT_NAME) or provider.display_name
+        )
+        date_to = datetime.now(UTC).date()
+        date_from = date_to - timedelta(days=HISTORY_DAYS)
+        per_page = 100
+        raw_records: list[dict[str, Any]] = []
+        page_counts: dict[str, int] = {}
+        for page in range(1, 51):
+            payload, status, token = await self._async_ampeco_get(
+                provider,
+                "profile/session_history",
+                token,
+                account,
+                params={
+                    "start_date": date_from.isoformat(),
+                    "end_date": date_to.isoformat(),
+                    "page": str(page),
+                    "perPage": str(per_page),
+                    "sessionType": "public",
+                    "operatorCountry": provider.operator_country,
+                },
+            )
+            if status >= 400:
+                raise PermissionError(
+                    f"{provider.display_name} history request failed ({status})"
+                )
+            items, has_more = ampeco_history_page(
+                payload,
+                page=page,
+                per_page=per_page,
+            )
+            raw_records.extend(items)
+            page_counts[str(page)] = len(items)
+            if not has_more:
+                break
+
+        transactions = parse_ampeco_transactions(
+            raw_records,
+            account_id=account_id,
+            account_name=account_name,
+            account_type=provider.account_type,
+            provider_name=provider.display_name,
+        )
+        transactions = merge_account_transactions(transactions)
+        return {
+            "transactions": transactions,
+            "auth_state": "authenticated",
+            "source_counts": {
+                f"{provider.account_type}_app": len(transactions),
+                "raw_sessions": len(raw_records),
+                "pages": page_counts,
+            },
+        }
+
+    async def _async_ampeco_get(
+        self,
+        provider,
+        path: str,
+        token: str,
+        account: dict[str, Any],
+        *,
+        params: dict[str, str] | None = None,
+    ) -> tuple[Any, int, str]:
+        """Run an authenticated AMPECO request and refresh once on expiry."""
+        payload, status = await self._async_ampeco_request(
+            provider,
+            path,
+            token,
+            params=params,
+        )
+        if status != 401:
+            return payload, status, token
+
+        refresh_token = str(account.get(CONF_AMPECO_REFRESH_TOKEN) or "")
+        if not refresh_token:
+            raise PermissionError(
+                f"{provider.display_name} app session has expired"
+            )
+        session = async_get_clientsession(self.hass)
+        async with session.post(
+            f"https://{provider.host}/api/v1/app/oauth/token",
+            params={"operatorCountry": provider.operator_country},
+            headers=ampeco_app_headers(provider),
+            json=ampeco_token_form(
+                provider,
+                grant_type="refresh_token",
+                token=refresh_token,
+            ),
+            timeout=REQUEST_TIMEOUT,
+        ) as response:
+            try:
+                refresh_payload = await response.json(content_type=None)
+            except (TypeError, ValueError):
+                refresh_payload = {}
+            refresh_status = response.status
+        token_values = ampeco_token_values(refresh_payload)
+        refreshed_token = str(token_values.get("access_token") or "")
+        if refresh_status >= 400 or not refreshed_token:
+            raise PermissionError(
+                f"{provider.display_name} app session refresh failed"
+            )
+        refreshed_refresh = str(
+            token_values.get("refresh_token") or refresh_token
+        )
+        self._store_ampeco_tokens(
+            str(account.get(CONF_ACCOUNT_ID) or ""),
+            refreshed_token,
+            refreshed_refresh,
+            str(token_values.get("expires_at") or ""),
+        )
+        payload, status = await self._async_ampeco_request(
+            provider,
+            path,
+            refreshed_token,
+            params=params,
+        )
+        return payload, status, refreshed_token
+
+    async def _async_ampeco_request(
+        self,
+        provider,
+        path: str,
+        token: str,
+        *,
+        params: dict[str, str] | None = None,
+    ) -> tuple[Any, int]:
+        session = async_get_clientsession(self.hass)
+        async with session.get(
+            f"https://{provider.host}/api/v1/app/{path.lstrip('/')}",
+            params=params,
+            headers=ampeco_app_headers(provider, token),
+            timeout=REQUEST_TIMEOUT,
+        ) as response:
+            try:
+                payload = await response.json(content_type=None)
+            except (TypeError, ValueError):
+                payload = {}
+            status = response.status
+        return payload if isinstance(payload, (dict, list)) else {}, status
+
     def _store_mobilly_tokens(
         self,
         account_id: str,
@@ -605,6 +817,30 @@ class ChargingAccountsCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 continue
             account[CONF_MOBILLY_ACCESS_TOKEN] = access_token
             account[CONF_MOBILLY_REFRESH_TOKEN] = refresh_token
+            changed = True
+            break
+        if not changed:
+            return
+        data = dict(self.entry.data)
+        data[CONF_CHARGING_ACCOUNTS] = accounts
+        self.hass.config_entries.async_update_entry(self.entry, data=data)
+
+    def _store_ampeco_tokens(
+        self,
+        account_id: str,
+        access_token: str,
+        refresh_token: str,
+        expires_at: str,
+    ) -> None:
+        accounts = self.accounts
+        changed = False
+        for account in accounts:
+            if str(account.get(CONF_ACCOUNT_ID)) != account_id:
+                continue
+            account[CONF_AMPECO_ACCESS_TOKEN] = access_token
+            account[CONF_AMPECO_REFRESH_TOKEN] = refresh_token
+            if expires_at:
+                account[CONF_AMPECO_TOKEN_EXPIRES_AT] = expires_at
             changed = True
             break
         if not changed:
@@ -666,9 +902,18 @@ def _form_value(page: str, name: str) -> str | None:
 
 def _access_token(payload: dict[str, Any]) -> str | None:
     data = payload.get("data")
-    if not isinstance(data, dict):
-        return None
-    value = data.get("accessToken")
+    if isinstance(data, dict):
+        value = (
+            data.get("accessToken")
+            or data.get("access_token")
+            or data.get("token")
+        )
+    else:
+        value = (
+            payload.get("accessToken")
+            or payload.get("access_token")
+            or payload.get("token")
+        )
     return str(value) if value else None
 
 

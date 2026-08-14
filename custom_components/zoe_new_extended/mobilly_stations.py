@@ -40,11 +40,12 @@ MOBILLY_SITES_URL = "https://api.mobilly.lv/v3/app/sites"
 MOBILLY_SITE_TYPES = "car_wash,ev_charge,parking"
 CACHE_SECONDS = 6 * 60 * 60
 LIVE_CACHE_SECONDS = 30
+DETAIL_CACHE_SECONDS = 30 * 60
 REQUEST_TIMEOUT = ClientTimeout(total=35)
 REQUEST_HEADERS = {
     "Accept": "application/json",
     "Accept-Language": "lv",
-    "User-Agent": "HomeAssistant ZoeNewExtended/1.15",
+    "User-Agent": "HomeAssistant ZoeNewExtended/1.18",
 }
 
 
@@ -56,9 +57,11 @@ class MobillyStationsClient:
         self.entry = entry
         self._stations: list[dict[str, Any]] = []
         self._stations_by_id: dict[str, dict[str, Any]] = {}
+        self._detail_cache: dict[str, tuple[float, dict[str, Any]]] = {}
         self._loaded_at = 0.0
         self._live_loaded_at = 0.0
         self._load_lock = asyncio.Lock()
+        self.catalog_stats: dict[str, int] = {}
 
     async def async_catalog(self) -> list[dict[str, Any]]:
         """Return public stations enriched with authenticated live status."""
@@ -81,12 +84,23 @@ class MobillyStationsClient:
     async def async_detail(self, station_id: str) -> dict[str, Any] | None:
         """Return protected connector price/status when an app token exists."""
         await self._async_ensure_catalog()
-        station = self._stations_by_id.get(str(station_id))
+        station_id = str(station_id)
+        cached = self._detail_cache.get(station_id)
+        if cached and monotonic() - cached[0] < DETAIL_CACHE_SECONDS:
+            return dict(cached[1])
+        station = self._stations_by_id.get(station_id)
         if station is None:
             return None
         if self._app_accounts():
             payload = await self._async_app_get(f"ev-charge/site/{station_id}")
-            return merge_mobilly_station_detail(station, payload)
+            detail = merge_mobilly_station_detail(station, payload)
+            self._detail_cache[station_id] = (monotonic(), detail)
+            self._stations_by_id[station_id] = detail
+            self._stations = [
+                detail if item.get("id") == station_id else item
+                for item in self._stations
+            ]
+            return dict(detail)
         return {
             **station,
             "detail_source": "mobilly_public_catalog",
@@ -257,6 +271,30 @@ class MobillyStationsClient:
                 if isinstance(site, dict)
                 if (normalized := normalize_mobilly_station(site)) is not None
             ]
+            now = monotonic()
+            self._detail_cache = {
+                station_id: cached
+                for station_id, cached in self._detail_cache.items()
+                if now - cached[0] < DETAIL_CACHE_SECONDS
+            }
+            stations = [
+                dict(self._detail_cache[str(station["id"])][1])
+                if str(station["id"]) in self._detail_cache
+                else station
+                for station in stations
+            ]
+            ev_sites = [
+                site
+                for site in raw_sites
+                if isinstance(site, dict) and site.get("type") == "ev_charge"
+            ]
             self._stations = stations
             self._stations_by_id = {item["id"]: item for item in stations}
             self._loaded_at = monotonic()
+            self.catalog_stats = {
+                "raw_site_count": len(raw_sites),
+                "raw_ev_station_count": len(ev_sites),
+                "normalized_station_count": len(stations),
+                "rejected_ev_station_count": len(ev_sites) - len(stations),
+                "live_detail_station_count": len(self._detail_cache),
+            }

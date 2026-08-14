@@ -589,17 +589,68 @@ def deduplicate_stations(
         merged["provider_groups"] = [
             offer["provider_group"] for offer in merged["provider_offers"]
         ]
+        merged["name"] = _best_station_name(existing, station)
         result[duplicate_index] = merged
         register(duplicate_index, station)
     return result
 
 
+def _best_station_name(*stations: Mapping[str, Any]) -> str:
+    """Prefer a human-readable site name over an EVSE or catalog identifier."""
+    names: list[str] = []
+    addresses: list[str] = []
+    for station in stations:
+        name = str(station.get("name") or "").strip()
+        address = str(station.get("address") or "").strip()
+        if name:
+            names.append(name)
+        if address:
+            addresses.append(address)
+    if names:
+        best_name = max(names, key=lambda value: _station_name_quality(value, False))
+        if _station_name_quality(best_name, False)[0] > 0:
+            return best_name
+    if addresses:
+        return max(
+            addresses,
+            key=lambda value: _station_name_quality(value, True),
+        )
+    return names[0] if names else "Charging station"
+
+
+def _station_name_quality(value: str, is_address: bool) -> tuple[int, int, int]:
+    text = re.sub(r"\s+", " ", value).strip()
+    identifier = bool(
+        re.fullmatch(r"[A-Z0-9*_.-]{8,}", text.upper())
+        and not re.search(r"\s", text)
+    )
+    has_words = bool(re.search(r"[A-Za-z\u00c0-\u024f]{3,}\s+[A-Za-z\u00c0-\u024f0-9]", text))
+    human_score = 0 if identifier else 2 if has_words else 1
+    address_score = 1 if is_address and not identifier else 0
+    return human_score, address_score, min(len(text), 120)
+
+
 def _station_connector_codes(station: Mapping[str, Any]) -> set[str]:
     return {
-        str(item.get("code") or "").upper()
+        alias
         for item in station.get("connectors", [])
         if isinstance(item, Mapping) and item.get("code")
+        for alias in _connector_code_aliases(item.get("code"))
     }
+
+
+def _connector_code_aliases(value: Any) -> set[str]:
+    """Return comparable aliases for compact and full eMI3 EVSE IDs."""
+    source = str(value or "").strip().upper()
+    compact = re.sub(r"[^A-Z0-9]", "", source)
+    aliases = {compact} if compact else set()
+    parts = [re.sub(r"[^A-Z0-9]", "", part) for part in source.split("*")]
+    if len(parts) >= 3 and parts[-1]:
+        suffix = parts[-1]
+        aliases.add(suffix)
+        if suffix.startswith("E") and len(suffix) > 10:
+            aliases.add(suffix[1:])
+    return aliases
 
 
 def _station_spatial_cell(
@@ -623,16 +674,8 @@ def _same_physical_station(
     first: Mapping[str, Any],
     second: Mapping[str, Any],
 ) -> bool:
-    first_codes = {
-        str(item.get("code") or "").upper()
-        for item in first.get("connectors", [])
-        if isinstance(item, Mapping) and item.get("code")
-    }
-    second_codes = {
-        str(item.get("code") or "").upper()
-        for item in second.get("connectors", [])
-        if isinstance(item, Mapping) and item.get("code")
-    }
+    first_codes = _station_connector_codes(first)
+    second_codes = _station_connector_codes(second)
     if first_codes & second_codes:
         return True
     if first.get("provider") == second.get("provider"):
@@ -646,12 +689,8 @@ def _same_physical_station(
         )
     except (KeyError, TypeError, ValueError):
         return False
-    if distance > 80:
+    if distance > 50:
         return False
-    first_id = str(first.get("id") or "")
-    second_id = str(second.get("id") or "")
-    if first_id and first_id == second_id:
-        return True
     first_name = _normalized_station_identity(first.get("name"))
     second_name = _normalized_station_identity(second.get("name"))
     if len(first_name) >= 8 and first_name == second_name:
@@ -660,9 +699,23 @@ def _same_physical_station(
     second_address = _normalized_station_identity(second.get("address"))
     if distance <= 25 and len(first_address) >= 12 and first_address == second_address:
         return True
+    names_overlap = bool(
+        min(len(first_name), len(second_name)) >= 8
+        and (first_name in second_name or second_name in first_name)
+    )
+    addresses_overlap = bool(
+        min(len(first_address), len(second_address)) >= 12
+        and (first_address in second_address or second_address in first_address)
+    )
+    if distance <= 10 and names_overlap and addresses_overlap:
+        return True
     first_operator = _normalized_operator(first.get("operator"))
     second_operator = _normalized_operator(second.get("operator"))
-    return bool(first_operator and first_operator == second_operator)
+    return bool(
+        distance <= 30
+        and first_operator
+        and first_operator == second_operator
+    )
 
 
 def _normalized_operator(value: Any) -> str:
@@ -674,7 +727,7 @@ def _normalized_operator(value: Any) -> str:
 
 def _normalized_station_identity(value: Any) -> str:
     text = re.sub(r"^\s*\([^)]*\)\s*", "", str(value or "").casefold())
-    return re.sub(r"[^a-z0-9āčēģīķļņšūž]+", "", text)
+    return re.sub(r"[^\w]+", "", text, flags=re.UNICODE)
 
 
 def _station_quality(station: Mapping[str, Any]) -> tuple[int, int, int, int, int]:
@@ -716,13 +769,27 @@ def _provider_offer(station: Mapping[str, Any]) -> dict[str, Any]:
         "connector_live_data_available": bool(
             station.get("connector_live_data_available")
         ),
+        "connectors": [
+            dict(connector)
+            for connector in station.get("connectors", [])
+            if isinstance(connector, Mapping)
+        ],
+        "connector_count": station.get("connector_count"),
+        "max_power_kw": station.get("max_power_kw"),
     }
 
 
 def _merge_provider_offers(*sources: Any) -> list[dict[str, Any]]:
     """Retain the best independent offer for each user-facing provider."""
     offers_by_group: dict[str, dict[str, Any]] = {}
-    order = {"elektrum": 0, "mobilly": 1, "emobi": 2}
+    order = {
+        "elektrum": 0,
+        "mobilly": 1,
+        "emobi": 2,
+        "nap": 3,
+        "ignitis": 4,
+        "ikrautas": 5,
+    }
     for source in sources:
         if not isinstance(source, list):
             continue
@@ -752,6 +819,20 @@ def _merge_provider_offers(*sources: Any) -> list[dict[str, Any]]:
             )
             if not merged.get("description") and merged["descriptions"]:
                 merged["description"] = merged["descriptions"][0]
+            merged["connectors"] = _merge_offer_connectors(
+                primary.get("connectors"),
+                secondary.get("connectors"),
+            )
+            merged["connector_count"] = len(merged["connectors"])
+            powers = [
+                _as_float(connector.get("power_kw"))
+                for connector in merged["connectors"]
+                if isinstance(connector, Mapping)
+            ]
+            merged["max_power_kw"] = max(
+                (power for power in powers if power is not None),
+                default=merged.get("max_power_kw"),
+            )
             offers_by_group[group] = merged
     return sorted(
         offers_by_group.values(),
@@ -759,7 +840,70 @@ def _merge_provider_offers(*sources: Any) -> list[dict[str, Any]]:
     )
 
 
-def _offer_quality(offer: Mapping[str, Any]) -> tuple[int, int, int, int]:
+def _merge_offer_connectors(*sources: Any) -> list[dict[str, Any]]:
+    """Keep every physical connector while preferring richer live records."""
+    result: list[dict[str, Any]] = []
+    indexes: dict[str, int] = {}
+    for source in sources:
+        if not isinstance(source, list):
+            continue
+        for value in source:
+            if not isinstance(value, Mapping):
+                continue
+            connector = dict(value)
+            code = str(connector.get("code") or "").strip().casefold()
+            if code:
+                key = f"code:{code}"
+            else:
+                number = connector.get("connector_number") or connector.get(
+                    "connector_index"
+                )
+                key = "fallback:{}|{}|{}".format(
+                    number or f"anonymous-{len(result)}",
+                    str(
+                        connector.get("connector_type")
+                        or connector.get("type")
+                        or ""
+                    ).casefold(),
+                    connector.get("power_kw") or "",
+                )
+            existing_index = indexes.get(key)
+            if existing_index is None:
+                indexes[key] = len(result)
+                result.append(connector)
+                continue
+            existing = result[existing_index]
+            primary, secondary = (
+                (connector, existing)
+                if _connector_quality(connector) > _connector_quality(existing)
+                else (existing, connector)
+            )
+            merged = dict(primary)
+            for field, field_value in secondary.items():
+                if merged.get(field) in (None, "", [], {}) and field_value not in (
+                    None,
+                    "",
+                    [],
+                    {},
+                ):
+                    merged[field] = field_value
+            result[existing_index] = merged
+    return result
+
+
+def _connector_quality(connector: Mapping[str, Any]) -> tuple[int, int, int, int]:
+    return (
+        1 if connector.get("status") not in {None, "", "unknown"} else 0,
+        1
+        if connector.get("price_value") is not None
+        or connector.get("price_c_per_kwh") is not None
+        else 0,
+        1 if connector.get("code") else 0,
+        len(connector),
+    )
+
+
+def _offer_quality(offer: Mapping[str, Any]) -> tuple[int, int, int, int, int]:
     return (
         1 if offer.get("connector_live_data_available") else 0,
         1 if offer.get("live_data_available") else 0,
@@ -768,6 +912,7 @@ def _offer_quality(offer: Mapping[str, Any]) -> tuple[int, int, int, int]:
         or offer.get("price_c_per_kwh") is not None
         else 0,
         1 if offer.get("availability") not in {None, "", "unknown"} else 0,
+        len(offer.get("connectors", [])),
     )
 
 

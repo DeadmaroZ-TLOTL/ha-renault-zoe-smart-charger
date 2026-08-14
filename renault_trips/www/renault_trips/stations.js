@@ -3,8 +3,20 @@
 const SETTINGS_ENTITY = "sensor.renault_zoe_new_cost_settings";
 const DEFAULT_CENTER = [56.9496, 24.1052];
 const DEFAULT_ZOOM = 10;
-const LIST_LIMIT = 40;
+const LIST_PAGE_SIZE = 40;
+const FILTERED_LIST_PAGE_SIZE = 200;
+const MAX_PRICE_LABELS = 80;
 const DETAIL_CACHE_MS = 30 * 60 * 1000;
+const DETAIL_PREFETCH_BATCH_SIZE = 40;
+const DETAIL_PREFETCH_SCOPE_LIMIT = 40;
+const DETAIL_PREFETCH_CONCURRENCY = 3;
+const DETAIL_PREFETCH_DELAY_MS = 260;
+const DETAIL_PREFETCH_NEXT_BATCH_DELAY_MS = 450;
+const DETAIL_REQUEST_RETRY_DELAY_MS = 1800;
+const DETAIL_RETRY_MS = 5 * 60 * 1000;
+const LOAD_RETRY_DELAY_MS = 5000;
+const LOAD_RETRY_LIMIT = 12;
+const LIVE_DETAIL_PROVIDERS = new Set(["elektrum", "mobilly"]);
 const CONNECTOR_FILTER_STORAGE = "zoe-stations-disabled-connectors";
 const OPERATOR_FILTER_STORAGE = "zoe-stations-disabled-operators";
 const CHEAPEST_DISTANCE_STORAGE = "zoe-stations-cheapest-distance-km";
@@ -37,7 +49,7 @@ const I18N = {
     description: "Apraksts un piekļuve",
     plugNumber: "Spraudnis {number}",
     title: "Uzlādes stacijas",
-    subtitle: "Elektrum Drive, Mobilly, e-mobi un PlugShare",
+    subtitle: "Elektrum Drive, Mobilly, e-mobi, Ignitis ON, IKRAUTAS, Latvijas NPP un PlugShare",
     search: "Meklēt",
     searchPlaceholder: "Meklēt vietu vai adresi",
     allPowers: "Visas jaudas",
@@ -56,12 +68,18 @@ const I18N = {
     elektrum: "Elektrum Drive",
     mobilly: "Mobilly",
     emobi: "e-mobi",
+    nap: "Latvijas NPP",
+    ignitis: "Ignitis ON",
+    ikrautas: "IKRAUTAS",
+    sourceRecords: "Avotu ieraksti",
     visible: "Redzamas",
-    loaded: "Ielādētas {count} stacijas. Elektrum dzīvie dati tiek nolasīti pēc stacijas izvēles.",
+    loaded: "Ielādētas {count} unikālas stacijas no {sourceCount} avotu ierakstiem.",
     partial: "Daļa datu nav pieejama: {errors}",
     loadFailed: "Neizdevās ielādēt stacijas: {error}",
-    mapCount: "Kartē {count} stacijas",
+    mapCount: "Kartē visas {count} stacijas",
     listCount: "Parādītas {shown} no {count}",
+    showMoreStations: "Parādīt vēl ({remaining} atlikušas)",
+    sourceCount: "{count} avotā",
     connectors: "Savienotāji",
     power: "Maks. jauda",
     price: "Cena",
@@ -111,7 +129,7 @@ const I18N = {
     description: "Description and access",
     plugNumber: "Plug {number}",
     title: "Charging stations",
-    subtitle: "Elektrum Drive, Mobilly, e-mobi, and PlugShare",
+    subtitle: "Elektrum Drive, Mobilly, e-mobi, Ignitis ON, IKRAUTAS, Latvia NAP, and PlugShare",
     search: "Search",
     searchPlaceholder: "Search place or address",
     allPowers: "All power levels",
@@ -130,12 +148,18 @@ const I18N = {
     elektrum: "Elektrum Drive",
     mobilly: "Mobilly",
     emobi: "e-mobi",
+    nap: "Latvia NAP",
+    ignitis: "Ignitis ON",
+    ikrautas: "IKRAUTAS",
+    sourceRecords: "Source records",
     visible: "Visible",
-    loaded: "Loaded {count} stations. Elektrum live data loads after station selection.",
+    loaded: "Loaded {count} unique stations from {sourceCount} source records.",
     partial: "Some data is unavailable: {errors}",
     loadFailed: "Unable to load stations: {error}",
-    mapCount: "{count} stations on map",
+    mapCount: "All {count} stations on map",
     listCount: "Showing {shown} of {count}",
+    showMoreStations: "Show more ({remaining} remaining)",
+    sourceCount: "{count} at source",
     connectors: "Connectors",
     power: "Max power",
     price: "Price",
@@ -164,18 +188,30 @@ const I18N = {
 let language = "lv";
 let map;
 let stationLayer;
+let priceLabelLayer;
 let vehicleMarker;
 let stations = [];
 let filteredStations = [];
+let sourceStationCount = 0;
+let sourceCounts = {};
 let vehicleLocation = null;
 let selectedProvider = "all";
 let selectedStationKey = "";
 let selectedStation = null;
 let markerByKey = new Map();
 let detailsCache = new Map();
+let detailRequests = new Map();
 let cachedParentHass = null;
 let searchTimer = null;
+let loadRetryTimer = null;
+let loadRetryAttempt = 0;
+let detailPrefetchTimer = null;
+let detailPrefetchRunning = false;
+let detailPrefetchQueued = false;
+let detailPrefetchFailures = new Map();
+let detailPrefetchGeneration = 0;
 let listOrigin = null;
+let stationListLimit = LIST_PAGE_SIZE;
 let disabledConnectorTypes = readStoredSet(CONNECTOR_FILTER_STORAGE);
 let disabledOperators = readStoredSet(OPERATOR_FILTER_STORAGE);
 
@@ -184,6 +220,7 @@ const metricsEl = document.getElementById("metrics");
 const mapSubtitleEl = document.getElementById("mapSubtitle");
 const listSubtitleEl = document.getElementById("listSubtitle");
 const stationListEl = document.getElementById("stationList");
+const showAllStationsEl = document.getElementById("showAllStations");
 const stationDetailEl = document.getElementById("stationDetail");
 const searchEl = document.getElementById("search");
 const powerFilterEl = document.getElementById("powerFilter");
@@ -295,6 +332,12 @@ function updatePlugShareMap() {
   openPlugShareEl.href = permalinkUrl;
 }
 
+function resetStationListLimit() {
+  stationListLimit = searchEl.value.trim() || selectedProvider !== "all"
+    ? FILTERED_LIST_PAGE_SIZE
+    : LIST_PAGE_SIZE;
+}
+
 function showProviderView(provider) {
   const showPlugShare = provider === "plugshare";
   localStationsViewEl.hidden = showPlugShare;
@@ -304,8 +347,26 @@ function showProviderView(provider) {
     updatePlugShareMap();
     return;
   }
+  resetStationListLimit();
   applyFilters();
+  if (provider !== "all") {
+    fitMapToStations(filteredStations);
+  }
   window.setTimeout(() => map?.invalidateSize(), 0);
+}
+
+function fitMapToStations(items) {
+  if (!map || !items.length) return;
+  if (items.length === 1) {
+    map.setView([items[0].latitude, items[0].longitude], 14);
+    return;
+  }
+  const bounds = L.latLngBounds(
+    items.map((station) => [station.latitude, station.longitude]),
+  );
+  if (bounds.isValid()) {
+    map.fitBounds(bounds, { padding: [34, 34], maxZoom: 11 });
+  }
 }
 
 function canonicalConnectorType(value) {
@@ -320,17 +381,73 @@ function canonicalConnectorType(value) {
   return source || "Unknown";
 }
 
-function connectorTypes(station) {
-  const values = (Array.isArray(station.connectors) ? station.connectors : [])
+function offersForProvider(station, group = selectedProvider) {
+  return stationOffers(station)
+    .filter((offer) => group === "all" || (offer.provider_group || offer.provider) === group);
+}
+
+function stationConnectors(station, group = selectedProvider) {
+  const offers = offersForProvider(station, group);
+  const offered = offers
+    .flatMap((offer) => Array.isArray(offer.connectors) ? offer.connectors : []);
+  const source = offers.length
+    ? offered
+    : (Array.isArray(station.connectors) ? station.connectors : []);
+  const seen = new Set();
+  return source.filter((connector) => {
+    const key = [
+      connector.code,
+      connector.connector_number ?? connector.connector_index,
+      connector.connector_type || connector.type,
+      connector.power_kw,
+    ].join("|");
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+function connectorTypes(station, group = selectedProvider) {
+  const values = stationConnectors(station, group)
     .map((connector) => canonicalConnectorType(connector.connector_type || connector.type));
   return [...new Set(values)];
 }
 
-function stationOperator(station) {
-  return String(
-    station.operator
-      || providerLabel(providerGroup(station)),
-  );
+function stationOperators(station, group = selectedProvider) {
+  const values = offersForProvider(station, group).map((offer) => String(
+    offer.operator || providerLabel(offer.provider_group || offer.provider),
+  ));
+  if (!values.length) {
+    values.push(String(station.operator || providerLabel(providerGroup(station))));
+  }
+  return [...new Set(values.filter(Boolean))];
+}
+
+function stationOperator(station, group = selectedProvider) {
+  return stationOperators(station, group).join(", ");
+}
+
+function stationAvailability(station, group = selectedProvider) {
+  const offers = offersForProvider(station, group);
+  const statuses = offers
+    .map((offer) => String(offer.availability || "unknown").toLowerCase());
+  if (statuses.includes("available")) return "available";
+  if (statuses.some((status) => [
+    "occupied", "charging", "finishing", "preparing", "suspendedev", "suspendedevse",
+  ].includes(status))) return "occupied";
+  if (statuses.some((status) => status === "unavailable")) return "unavailable";
+  if (offers.length) return "unknown";
+  return station.availability || "unknown";
+}
+
+function stationMaxPower(station, group = selectedProvider) {
+  const offers = offersForProvider(station, group);
+  const values = offers
+    .map((offer) => Number(offer.max_power_kw))
+    .filter(Number.isFinite);
+  if (values.length) return Math.max(...values);
+  if (offers.length) return null;
+  return Number(station.max_power_kw) || null;
 }
 
 function providerGroup(station) {
@@ -361,6 +478,10 @@ function stationOffers(station) {
     price_formatted: station.price_formatted,
     availability: station.availability,
     live_data_available: station.live_data_available,
+    connector_live_data_available: station.connector_live_data_available,
+    connectors: Array.isArray(station.connectors) ? station.connectors : [],
+    connector_count: station.connector_count,
+    max_power_kw: station.max_power_kw,
   }];
 }
 
@@ -396,7 +517,11 @@ function stationDescriptions(station) {
 function providerLabel(provider) {
   if (provider === "elektrum" || provider === "emobi_elektrum") return "Elektrum Drive";
   if (provider === "emobi") return "e-mobi";
-  return "Mobilly";
+  if (provider === "nap" || provider === "latvia_nap") return t("nap");
+  if (provider === "mobilly") return "Mobilly";
+  if (provider === "ignitis" || provider === "ignitis_on") return "Ignitis ON";
+  if (provider === "ikrautas") return "IKRAUTAS";
+  return String(provider || t("unknown"));
 }
 
 function formatStatusTime(connector) {
@@ -442,7 +567,7 @@ function renderFilterMenus() {
   if (!connectorOptionsEl || !operatorOptionsEl) return;
   const connectorValues = [...new Set(stations.flatMap(connectorTypes))]
     .sort((left, right) => left.localeCompare(right, language));
-  const operatorValues = [...new Set(stations.map(stationOperator))]
+  const operatorValues = [...new Set(stations.flatMap((station) => stationOperators(station, "all")))]
     .sort((left, right) => left.localeCompare(right, language));
 
   connectorOptionsEl.innerHTML = connectorValues.map((value) => `
@@ -501,10 +626,73 @@ async function getParentHass() {
   return null;
 }
 
+function parseMaybeJson(value) {
+  try {
+    return JSON.parse(value);
+  } catch (_error) {
+    return null;
+  }
+}
+
+async function refreshAccessToken(tokens) {
+  if (!tokens?.refresh_token) return null;
+  const body = new URLSearchParams();
+  body.set("grant_type", "refresh_token");
+  body.set("refresh_token", tokens.refresh_token);
+  body.set("client_id", `${location.origin}/`);
+  const response = await fetch("/auth/token", {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body,
+  });
+  if (!response.ok) return null;
+  const fresh = await response.json();
+  const merged = {
+    ...tokens,
+    ...fresh,
+    expires: Date.now() + fresh.expires_in * 1000,
+  };
+  localStorage.setItem("hassTokens", JSON.stringify(merged));
+  return merged.access_token;
+}
+
+async function getAccessToken() {
+  const direct = parseMaybeJson(localStorage.getItem("hassTokens"));
+  if (direct?.access_token) {
+    if (!direct.expires || direct.expires > Date.now() + 60000) {
+      return direct.access_token;
+    }
+    const refreshed = await refreshAccessToken(direct);
+    if (refreshed) return refreshed;
+  }
+  for (let index = 0; index < localStorage.length; index += 1) {
+    const value = parseMaybeJson(localStorage.getItem(localStorage.key(index)));
+    if (value?.access_token) return value.access_token;
+  }
+  return null;
+}
+
 async function haApi(path) {
   const hass = await getParentHass();
-  if (!hass?.callApi) throw new Error("Home Assistant connection is unavailable");
-  return hass.callApi("GET", path.replace(/^\/api\//, ""));
+  const apiPath = path.replace(/^\/api\//, "");
+  const separator = apiPath.includes("?") ? "&" : "?";
+  const uncachedApiPath = `${apiPath}${separator}_=${Date.now()}`;
+  if (hass?.callApi) {
+    try {
+      return await hass.callApi("GET", uncachedApiPath);
+    } catch (error) {
+      console.debug("Parent Home Assistant API request failed", error);
+    }
+  }
+  const token = await getAccessToken();
+  const headers = token ? { Authorization: `Bearer ${token}` } : {};
+  const response = await fetch(`/api/${uncachedApiPath}`, {
+    headers,
+    credentials: "same-origin",
+    cache: "no-store",
+  });
+  if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
+  return response.json();
 }
 
 function formatError(error) {
@@ -533,8 +721,36 @@ function ensureMap() {
     maxZoom: 20,
     attribution: "&copy; OpenStreetMap contributors &copy; CARTO",
   }).addTo(map);
-  stationLayer = L.layerGroup().addTo(map);
-  map.on("moveend", renderStationList);
+  stationLayer = typeof L.markerClusterGroup === "function"
+    ? L.markerClusterGroup({
+      chunkedLoading: true,
+      chunkInterval: 50,
+      chunkDelay: 10,
+      removeOutsideVisibleBounds: true,
+      showCoverageOnHover: false,
+      spiderfyOnMaxZoom: true,
+      disableClusteringAtZoom: 15,
+      maxClusterRadius: 55,
+      iconCreateFunction(cluster) {
+        const count = cluster.getChildCount();
+        const size = count >= 100 ? 48 : count >= 10 ? 42 : 36;
+        return L.divIcon({
+          html: `<span>${count}</span>`,
+          className: "station-cluster",
+          iconSize: [size, size],
+          iconAnchor: [size / 2, size / 2],
+        });
+      },
+    })
+    : L.layerGroup();
+  stationLayer.addTo(map);
+  priceLabelLayer = L.layerGroup().addTo(map);
+  map.on("moveend", () => {
+    renderPriceLabels();
+    renderStationList();
+    detailPrefetchGeneration += 1;
+    scheduleDetailPrefetch();
+  });
 }
 
 function formatNumber(value, digits = 1) {
@@ -548,6 +764,7 @@ function priceLabel(item) {
   if (!item) return t("unknown");
   if (item.price_formatted) return String(item.price_formatted);
   const value = item.price_value ?? item.price_c_per_kwh;
+  if (value === null || value === undefined || value === "") return t("unknown");
   if (!Number.isFinite(Number(value))) return t("unknown");
   const unit = item.price_unit || "kWh";
   return `${formatNumber(value, 2)} c/${unit}`;
@@ -557,7 +774,9 @@ function priceSummary(station, group = selectedProvider) {
   const offers = stationOffers(station)
     .filter((offer) => group === "all" || (offer.provider_group || offer.provider) === group);
   if (!offers.length) return priceLabel(station);
-  if (group !== "all") return priceLabel(offers[0]);
+  if (group !== "all") {
+    return [...new Set(offers.map(priceLabel))].join(" / ");
+  }
   return offers
     .map((offer) => `${providerLabel(offer.provider_group || offer.provider)}: ${priceLabel(offer)}`)
     .join(" · ");
@@ -611,25 +830,66 @@ function availabilityClass(status) {
 }
 
 function markerColor(station) {
-  if (station.availability === "available") return "#2d8a4b";
-  if (["occupied", "unavailable"].includes(station.availability)) return "#c24f3d";
-  if (providerGroup(station) === "elektrum") return "#087f8c";
-  if (providerGroup(station) === "emobi") return "#355f9e";
+  const availability = stationAvailability(station);
+  if (availability === "available") return "#2d8a4b";
+  if (["occupied", "unavailable"].includes(availability)) return "#c24f3d";
+  const group = selectedProvider === "all" ? providerGroup(station) : selectedProvider;
+  if (group === "elektrum") return "#087f8c";
+  if (group === "emobi") return "#355f9e";
+  if (group === "nap") return "#7b4b94";
+  if (group === "ignitis") return "#a52335";
+  if (group === "ikrautas") return "#267a42";
   return "#d67b0d";
+}
+
+function stationMarkerIcon(station, selected = false) {
+  const size = selected ? 18 : 13;
+  return L.divIcon({
+    html: `<span style="--station-marker-color:${markerColor(station)}"></span>`,
+    className: `station-marker${selected ? " selected" : ""}`,
+    iconSize: [size, size],
+    iconAnchor: [size / 2, size / 2],
+  });
+}
+
+function renderPriceLabels() {
+  if (!priceLabelLayer) return;
+  priceLabelLayer.clearLayers();
+  if (map.getZoom() < 13) return;
+  const center = map.getCenter();
+  const labelBounds = map.getBounds().pad(0.2);
+  filteredStations
+    .filter((station) => labelBounds.contains([station.latitude, station.longitude]))
+    .filter((station) => stationComparablePrices(station).length)
+    .map((station) => ({ station, distance: distanceKm(station, center) }))
+    .sort((left, right) => left.distance - right.distance)
+    .slice(0, MAX_PRICE_LABELS)
+    .forEach(({ station }) => {
+      L.tooltip({
+        permanent: true,
+        direction: "right",
+        className: "station-price-label",
+        offset: [7, 0],
+      })
+        .setLatLng([station.latitude, station.longitude])
+        .setContent(escapeHtml(priceSummary(station)))
+        .addTo(priceLabelLayer);
+    });
 }
 
 function renderMarkers() {
   stationLayer.clearLayers();
+  priceLabelLayer.clearLayers();
   markerByKey = new Map();
+  const markers = [];
   for (const station of filteredStations) {
-    const marker = L.circleMarker([station.latitude, station.longitude], {
-      radius: stationKey(station) === selectedStationKey ? 8 : 5,
-      weight: stationKey(station) === selectedStationKey ? 3 : 1,
-      color: "#ffffff",
-      fillColor: markerColor(station),
-      fillOpacity: 0.9,
+    const key = stationKey(station);
+    const marker = L.marker([station.latitude, station.longitude], {
+      icon: stationMarkerIcon(station, key === selectedStationKey),
+      keyboard: true,
+      title: station.name,
     });
-    const connectorRows = (Array.isArray(station.connectors) ? station.connectors : [])
+    const connectorRows = stationConnectors(station)
       .map((connector) => {
         const connectorPrice = priceLabel(connector);
         const connectorStatus = statusLabel(connector.status);
@@ -648,24 +908,17 @@ function renderMarkers() {
       <div class="map-connector-list">${connectorRows || `<span>${escapeHtml(t("unknown"))}</span>`}</div>
     `, { maxWidth: 360 });
     marker.bindTooltip(
-      `<strong>${escapeHtml(station.name)}</strong><span>${escapeHtml(station.price_value == null && station.price_c_per_kwh == null ? t("priceLoading") : priceLabel(station))}</span>`,
+      `<strong>${escapeHtml(station.name)}</strong><span>${escapeHtml(priceSummary(station))}</span>`,
       { direction: "top", opacity: 0.95 },
     );
     marker.on("click", () => selectStation(station, false));
-    marker.addTo(stationLayer);
-    markerByKey.set(stationKey(station), marker);
-    if (station.price_value != null || station.price_c_per_kwh != null) {
-      L.tooltip({
-        permanent: true,
-        direction: "right",
-        className: "station-price-label",
-        offset: [7, 0],
-      })
-        .setLatLng([station.latitude, station.longitude])
-        .setContent(escapeHtml(priceLabel(station)))
-        .addTo(stationLayer);
-    }
+    markers.push(marker);
+    markerByKey.set(key, marker);
   }
+  if (typeof stationLayer.addLayers === "function") stationLayer.addLayers(markers);
+  else for (const marker of markers) marker.addTo(stationLayer);
+  renderPriceLabels();
+  document.getElementById("map").dataset.stationCount = String(filteredStations.length);
   mapSubtitleEl.textContent = t("mapCount", { count: filteredStations.length });
 }
 
@@ -682,25 +935,34 @@ function distanceKm(station, center = listOrigin || map.getCenter()) {
   return 6371 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
-function renderStationList() {
-  if (!map) return;
-  const nearest = [...filteredStations]
+function listedStations(limit = stationListLimit) {
+  return [...filteredStations]
     .map((station) => ({ station, distance: distanceKm(station) }))
     .sort((a, b) => a.distance - b.distance)
-    .slice(0, LIST_LIMIT);
+    .slice(0, limit);
+}
+
+function renderStationList() {
+  if (!map) return;
+  const nearest = listedStations();
   listSubtitleEl.textContent = t("listCount", { shown: nearest.length, count: filteredStations.length });
+  showAllStationsEl.hidden = nearest.length >= filteredStations.length;
+  showAllStationsEl.textContent = t("showMoreStations", {
+    remaining: filteredStations.length - nearest.length,
+  });
   stationListEl.innerHTML = nearest.map(({ station, distance }) => {
     const price = priceSummary(station);
     const plugs = connectorTypes(station).join(", ");
+    const maxPower = stationMaxPower(station);
     return `
-    <button class="station-list-item ${stationKey(station) === selectedStationKey ? "selected" : ""}" type="button" data-key="${escapeHtml(stationKey(station))}" data-provider="${escapeHtml(providerGroup(station))}">
+    <button class="station-list-item ${stationKey(station) === selectedStationKey ? "selected" : ""}" type="button" data-key="${escapeHtml(stationKey(station))}" data-provider="${escapeHtml(selectedProvider === "all" ? providerGroup(station) : selectedProvider)}">
       <i class="provider-line" aria-hidden="true"></i>
       <span class="station-list-copy">
         <strong>${escapeHtml(station.name)}</strong>
         <span>${escapeHtml(station.address || station.description || "")}</span>
         <span>${escapeHtml(stationOperator(station))} · ${escapeHtml(plugs || t("unknown"))}</span>
       </span>
-      <span class="station-list-distance">${formatNumber(distance, distance < 10 ? 1 : 0)} km<br>${station.max_power_kw ? `${formatNumber(station.max_power_kw, 0)} kW` : ""}<br><strong>${escapeHtml(price)}</strong></span>
+      <span class="station-list-distance">${formatNumber(distance, distance < 10 ? 1 : 0)} km<br>${maxPower ? `${formatNumber(maxPower, 0)} kW` : ""}<br><strong>${escapeHtml(price)}</strong></span>
     </button>
   `;
   }).join("");
@@ -716,35 +978,45 @@ function updateMetrics() {
   const elektrumCount = stations.filter((item) => providerGroups(item).includes("elektrum")).length;
   const mobillyCount = stations.filter((item) => providerGroups(item).includes("mobilly")).length;
   const emobiCount = stations.filter((item) => providerGroups(item).includes("emobi")).length;
+  const napCount = stations.filter((item) => providerGroups(item).includes("nap")).length;
+  const ignitisCount = stations.filter((item) => providerGroups(item).includes("ignitis")).length;
+  const ikrautasCount = stations.filter((item) => providerGroups(item).includes("ikrautas")).length;
   const items = [
-    [t("total"), stations.length],
-    [t("elektrum"), elektrumCount],
-    [t("mobilly"), mobillyCount],
-    [t("emobi"), emobiCount],
-    [t("visible"), filteredStations.length],
+    [t("total"), stations.length, null],
+    [t("sourceRecords"), sourceStationCount, null],
+    [t("elektrum"), elektrumCount, sourceCounts.elektrum],
+    [t("mobilly"), mobillyCount, sourceCounts.mobilly],
+    [t("emobi"), emobiCount, sourceCounts.emobi],
+    [t("nap"), napCount, sourceCounts.latvia_nap],
+    [t("ignitis"), ignitisCount, sourceCounts.ignitis],
+    [t("ikrautas"), ikrautasCount, sourceCounts.ikrautas],
+    [t("visible"), filteredStations.length, null],
   ];
-  metricsEl.innerHTML = items.map(([label, value]) => `
-    <div class="metric"><span>${escapeHtml(label)}</span><strong>${formatNumber(value, 0)}</strong></div>
+  metricsEl.innerHTML = items.map(([label, value, source]) => `
+    <div class="metric"><span>${escapeHtml(label)}</span><strong>${formatNumber(value, 0)}</strong>${source !== null && source !== undefined && Number.isFinite(Number(source)) ? `<small>${escapeHtml(t("sourceCount", { count: formatNumber(source, 0) }))}</small>` : ""}</div>
   `).join("");
 }
 
-function applyFilters() {
+function applyFilters({ prefetch = true } = {}) {
   const query = searchEl.value.trim().toLocaleLowerCase(language === "lv" ? "lv-LV" : "en-GB");
   const minimumPower = Number(powerFilterEl.value || 0);
   const availableOnly = availableOnlyEl.checked;
   filteredStations = stations.filter((station) => {
     if (selectedProvider !== "all" && !providerGroups(station).includes(selectedProvider)) return false;
-    if (disabledOperators.has(stationOperator(station))) return false;
+    const operators = stationOperators(station);
+    if (operators.length && operators.every((operator) => disabledOperators.has(operator))) return false;
     const plugs = connectorTypes(station);
     if (plugs.length && plugs.every((plug) => disabledConnectorTypes.has(plug))) return false;
-    if (minimumPower > 0 && Number(station.max_power_kw || 0) < minimumPower) return false;
-    if (availableOnly && station.availability !== "available") return false;
+    if (minimumPower > 0 && Number(stationMaxPower(station) || 0) < minimumPower) return false;
+    if (availableOnly && stationAvailability(station) !== "available") return false;
     if (!query) return true;
     return [
       station.name,
       station.address,
       station.city,
       ...stationDescriptions(station),
+      ...stationOperators(station, "all"),
+      ...providerGroups(station).map(providerLabel),
     ]
       .filter(Boolean)
       .join(" ")
@@ -754,6 +1026,10 @@ function applyFilters() {
   renderMarkers();
   renderStationList();
   updateMetrics();
+  if (prefetch) {
+    detailPrefetchGeneration += 1;
+    scheduleDetailPrefetch();
+  }
 }
 
 function stationByKey(key) {
@@ -773,6 +1049,7 @@ function offerWithDetail(offer, detail) {
     "price_c_per_kwh", "price_value", "price_unit", "price_formatted",
     "price_source", "availability", "available_connectors", "occupied_connectors",
     "live_data_available", "connector_live_data_available", "description", "descriptions",
+    "connectors", "connector_count", "max_power_kw", "status_source", "detail_source",
   ]) {
     if (detail?.[key] !== undefined && detail?.[key] !== null) result[key] = detail[key];
   }
@@ -790,16 +1067,40 @@ async function loadStationDetail(station) {
   const key = stationKey(station);
   const cached = detailsCache.get(key);
   if (cached && Date.now() - cached.loadedAt < DETAIL_CACHE_MS) return cached.detail;
+  const pending = detailRequests.get(key);
+  if (pending) return pending;
+  const request = loadStationDetailUncached(station);
+  detailRequests.set(key, request);
+  try {
+    return await request;
+  } finally {
+    detailRequests.delete(key);
+  }
+}
+
+async function loadStationDetailUncached(station) {
+  const key = stationKey(station);
   const offers = stationOffers(station);
-  const results = await Promise.allSettled(offers.map((offer) => haApi(
-    `zoe_new_extended/stations/${encodeURIComponent(offer.provider)}/${encodeURIComponent(offer.id)}`,
+  const results = await Promise.allSettled(offers.map((offer) => (
+    LIVE_DETAIL_PROVIDERS.has(String(offer.provider || ""))
+      ? haApi(`zoe_new_extended/stations/${encodeURIComponent(offer.provider)}/${encodeURIComponent(offer.id)}`)
+      : Promise.resolve(offer)
   )));
-  const details = results
-    .filter((result) => result.status === "fulfilled")
-    .map((result) => result.value);
+  const liveResults = results.filter((_, index) => (
+    LIVE_DETAIL_PROVIDERS.has(String(offers[index]?.provider || ""))
+  ));
+  if (liveResults.length && !liveResults.some((result) => result.status === "fulfilled")) {
+    throw new Error("All live station detail requests failed");
+  }
   const enrichedOffers = offers.map((offer, index) => (
     results[index].status === "fulfilled" ? offerWithDetail(offer, results[index].value) : offer
   ));
+  const details = results
+    .map((result, index) => ({ result, offer: offers[index] }))
+    .filter(({ result, offer }) => result.status === "fulfilled"
+      && (selectedProvider === "all"
+        || (offer.provider_group || offer.provider) === selectedProvider))
+    .map(({ result }) => result.value);
   const best = [...details].sort((left, right) => detailQuality(right) - detailQuality(left))[0];
   const detail = {
     ...station,
@@ -815,9 +1116,126 @@ async function loadStationDetail(station) {
   return detail;
 }
 
+async function loadStationDetailWithRetry(station) {
+  try {
+    return await loadStationDetail(station);
+  } catch (_error) {
+    await new Promise((resolve) => window.setTimeout(
+      resolve,
+      DETAIL_REQUEST_RETRY_DELAY_MS,
+    ));
+    return loadStationDetail(station);
+  }
+}
+
+function offerNeedsLiveDetail(offer) {
+  if (!LIVE_DETAIL_PROVIDERS.has(String(offer?.provider || ""))) return false;
+  const group = offer.provider_group || offer.provider;
+  if (selectedProvider !== "all" && selectedProvider !== group) return false;
+  const hasPrice = offer.price_value !== null && offer.price_value !== undefined
+    || offer.price_c_per_kwh !== null && offer.price_c_per_kwh !== undefined;
+  const connectors = Array.isArray(offer.connectors) ? offer.connectors : [];
+  const hasConnectorStatus = connectors.some((connector) => (
+    availabilityClass(connector.status) !== "unknown"
+  ));
+  return !hasPrice || !hasConnectorStatus;
+}
+
+function prefetchCandidates() {
+  if (!map || selectedProvider === "plugshare") return [];
+  const now = Date.now();
+  return listedStations(DETAIL_PREFETCH_SCOPE_LIMIT)
+    .map(({ station }) => station)
+    .filter((station) => {
+      const cached = detailsCache.get(stationKey(station));
+      if (cached && now - cached.loadedAt < DETAIL_CACHE_MS) return false;
+      const failedAt = detailPrefetchFailures.get(stationKey(station));
+      if (failedAt && now - failedAt < DETAIL_RETRY_MS) return false;
+      if (!stationOffers(station).some(offerNeedsLiveDetail)) return false;
+      return true;
+    })
+    .slice(0, DETAIL_PREFETCH_BATCH_SIZE);
+}
+
+function scheduleDetailPrefetch(delay = DETAIL_PREFETCH_DELAY_MS) {
+  window.clearTimeout(detailPrefetchTimer);
+  detailPrefetchTimer = window.setTimeout(runDetailPrefetch, delay);
+}
+
+async function loadFirstFilteredStationDetail() {
+  const station = listedStations(1)[0]?.station;
+  if (!station || !stationOffers(station).some(offerNeedsLiveDetail)) return;
+  try {
+    await loadStationDetailWithRetry(station);
+    renderStationList();
+    renderPriceLabels();
+  } catch (error) {
+    console.debug("Priority station detail failed", stationKey(station), error);
+  }
+}
+
+async function runDetailPrefetch() {
+  if (detailPrefetchRunning) {
+    detailPrefetchQueued = true;
+    return;
+  }
+  const candidates = prefetchCandidates();
+  if (!candidates.length) return;
+  detailPrefetchRunning = true;
+  const generation = detailPrefetchGeneration;
+  let nextIndex = 0;
+  const worker = async () => {
+    while (
+      nextIndex < candidates.length
+      && generation === detailPrefetchGeneration
+    ) {
+      const station = candidates[nextIndex];
+      nextIndex += 1;
+      try {
+        await loadStationDetailWithRetry(station);
+        detailPrefetchFailures.delete(stationKey(station));
+        renderStationList();
+        if (selectedStationKey === stationKey(station)) {
+          const current = stationByKey(selectedStationKey);
+          if (current) renderDetail(current);
+        }
+      } catch (error) {
+        detailPrefetchFailures.set(stationKey(station), Date.now());
+        console.debug("Station price prefetch failed", stationKey(station), error);
+      }
+    }
+  };
+  try {
+    await Promise.all(
+      Array.from(
+        { length: Math.min(DETAIL_PREFETCH_CONCURRENCY, candidates.length) },
+        worker,
+      ),
+    );
+    renderStationList();
+    renderPriceLabels();
+    if (selectedStationKey) {
+      const current = stationByKey(selectedStationKey);
+      if (current) renderDetail(current);
+    }
+  } finally {
+    detailPrefetchRunning = false;
+    if (detailPrefetchQueued) {
+      detailPrefetchQueued = false;
+      scheduleDetailPrefetch();
+    } else if (prefetchCandidates().length) {
+      scheduleDetailPrefetch(DETAIL_PREFETCH_NEXT_BATCH_DELAY_MS);
+    } else {
+      renderMarkers();
+    }
+  }
+}
+
 function renderDetail(station, { loading = false, error = false } = {}) {
-  const connectors = Array.isArray(station.connectors) ? station.connectors : [];
-  const availability = availabilityClass(station.availability);
+  const connectors = stationConnectors(station);
+  const currentAvailability = stationAvailability(station);
+  const availability = availabilityClass(currentAvailability);
+  const maxPower = stationMaxPower(station);
   const address = [station.address, station.city].filter(Boolean).join(", ");
   const destination = `${station.latitude},${station.longitude}`;
   const mapsUrl = `https://www.google.com/maps/dir/?api=1&travelmode=driving&dir_action=navigate&destination=${encodeURIComponent(destination)}`;
@@ -838,8 +1256,8 @@ function renderDetail(station, { loading = false, error = false } = {}) {
       <span class="provider-badges">${visibleGroups.map((group) => `<span class="provider-badge ${escapeHtml(group)}">${escapeHtml(providerLabel(group))}</span>`).join("")}</span>
     </div>
     <div class="station-facts">
-      <div class="station-fact"><span>${escapeHtml(t("availability"))}</span><strong><span class="status-badge ${availability}">${escapeHtml(statusLabel(station.availability))}</span></strong></div>
-      <div class="station-fact"><span>${escapeHtml(t("power"))}</span><strong>${station.max_power_kw ? `${formatNumber(station.max_power_kw, 1)} kW` : "-"}</strong></div>
+      <div class="station-fact"><span>${escapeHtml(t("availability"))}</span><strong><span class="status-badge ${availability}">${escapeHtml(statusLabel(currentAvailability))}</span></strong></div>
+      <div class="station-fact"><span>${escapeHtml(t("power"))}</span><strong>${maxPower ? `${formatNumber(maxPower, 1)} kW` : "-"}</strong></div>
       <div class="station-fact"><span>${escapeHtml(t("price"))}</span><strong>${escapeHtml(price)}</strong></div>
       <div class="station-fact"><span>${escapeHtml(t("operator"))}</span><strong>${escapeHtml(stationOperator(station))}</strong></div>
     </div>
@@ -881,11 +1299,24 @@ function renderDetail(station, { loading = false, error = false } = {}) {
 }
 
 async function selectStation(station, moveMap = false) {
+  const previousStationKey = selectedStationKey;
   selectedStationKey = stationKey(station);
   selectedStation = station;
-  if (moveMap) map.flyTo([station.latitude, station.longitude], Math.max(map.getZoom(), 14), { duration: 0.45 });
+  for (const key of new Set([previousStationKey, selectedStationKey])) {
+    const marker = markerByKey.get(key);
+    const item = stationByKey(key);
+    if (marker && item) marker.setIcon(stationMarkerIcon(item, key === selectedStationKey));
+  }
+  if (moveMap) {
+    const marker = markerByKey.get(selectedStationKey);
+    if (marker && typeof stationLayer.zoomToShowLayer === "function") {
+      stationLayer.zoomToShowLayer(marker, () => marker.openPopup());
+    } else {
+      map.flyTo([station.latitude, station.longitude], Math.max(map.getZoom(), 15), { duration: 0.45 });
+      marker?.openPopup();
+    }
+  }
   renderDetail(station, { loading: station.provider === "elektrum" });
-  renderMarkers();
   renderStationList();
 
   const cached = detailsCache.get(selectedStationKey);
@@ -896,7 +1327,7 @@ async function selectStation(station, moveMap = false) {
     return;
   }
   try {
-    await loadStationDetail(station);
+    await loadStationDetailWithRetry(station);
     renderDetail(selectedStation);
     applyFilters();
   } catch (error) {
@@ -1003,9 +1434,7 @@ async function showCheapestStation() {
     }
     comparable.sort((left, right) => left.value - right.value || left.distance - right.distance);
     const winner = comparable[0];
-    map.flyTo([winner.station.latitude, winner.station.longitude], 15, { duration: 0.55 });
-    await selectStation(winner.station, false);
-    markerByKey.get(stationKey(winner.station))?.openPopup();
+    await selectStation(winner.station, true);
     statusEl.textContent = t("cheapestFound", {
       price: priceLabel(winner.offer),
       distance: formatNumber(winner.distance, winner.distance < 10 ? 1 : 0),
@@ -1049,7 +1478,13 @@ function renderVehicleLocation() {
   }).addTo(map).bindTooltip("Renault ZOE", { permanent: false, direction: "top" });
 }
 
-async function loadStations() {
+async function loadStations({ clearDetails = false } = {}) {
+  window.clearTimeout(loadRetryTimer);
+  loadRetryTimer = null;
+  if (clearDetails) {
+    detailsCache.clear();
+    detailPrefetchFailures.clear();
+  }
   reloadEl.disabled = true;
   statusEl.classList.remove("warn");
   statusEl.textContent = t("loading");
@@ -1061,7 +1496,12 @@ async function loadStations() {
     if (!payload || typeof payload !== "object") {
       throw new Error("Station API returned an invalid response");
     }
+    loadRetryAttempt = 0;
     stations = Array.isArray(payload.stations) ? payload.stations : [];
+    sourceStationCount = Number(payload.source_station_count || stations.length);
+    sourceCounts = payload.source_counts && typeof payload.source_counts === "object"
+      ? payload.source_counts
+      : {};
     vehicleLocation = payload.vehicle_location || null;
     if (selectedProvider === "plugshare") updatePlugShareMap();
     renderFilterMenus();
@@ -1074,36 +1514,70 @@ async function loadStations() {
       statusEl.classList.add("warn");
       statusEl.textContent = t("partial", { errors: errors.join("; ") });
     } else {
-      statusEl.textContent = t("loaded", { count: stations.length });
+      statusEl.textContent = t("loaded", {
+        count: stations.length,
+        sourceCount: sourceStationCount,
+      });
     }
   } catch (error) {
+    const errorText = formatError(error);
+    if (/\b(?:404|503)\b/.test(errorText) && loadRetryAttempt < LOAD_RETRY_LIMIT) {
+      loadRetryAttempt += 1;
+      statusEl.textContent = `${t("loading")} (${loadRetryAttempt}/${LOAD_RETRY_LIMIT})`;
+      loadRetryTimer = window.setTimeout(loadStations, LOAD_RETRY_DELAY_MS);
+      return;
+    }
     statusEl.classList.add("warn");
-    statusEl.textContent = t("loadFailed", { error: formatError(error) });
+    statusEl.textContent = t("loadFailed", { error: errorText });
   } finally {
     reloadEl.disabled = false;
     window.setTimeout(() => map?.invalidateSize(), 150);
   }
 }
 
+function activateProviderTab(tab) {
+  const provider = tab.dataset.provider;
+  if (!provider) return;
+  if (selectedProvider === provider && tab.classList.contains("active")) return;
+  selectedProvider = provider;
+  for (const item of document.querySelectorAll(".provider-tab")) {
+    const active = item === tab;
+    item.classList.toggle("active", active);
+    item.setAttribute("aria-selected", String(active));
+  }
+  showProviderView(selectedProvider);
+}
+
 for (const tab of document.querySelectorAll(".provider-tab")) {
-  tab.addEventListener("click", () => {
-    selectedProvider = tab.dataset.provider;
-    for (const item of document.querySelectorAll(".provider-tab")) {
-      const active = item === tab;
-      item.classList.toggle("active", active);
-      item.setAttribute("aria-selected", String(active));
-    }
-    showProviderView(selectedProvider);
+  tab.addEventListener("pointerdown", () => activateProviderTab(tab));
+  tab.addEventListener("click", () => activateProviderTab(tab));
+  tab.addEventListener("keydown", (event) => {
+    if (event.key === "Enter" || event.key === " ") activateProviderTab(tab);
   });
 }
 
 searchEl.addEventListener("input", () => {
   window.clearTimeout(searchTimer);
-  searchTimer = window.setTimeout(applyFilters, 220);
+  searchTimer = window.setTimeout(() => {
+    resetStationListLimit();
+    applyFilters();
+    if (searchEl.value.trim()) {
+      fitMapToStations(filteredStations);
+      loadFirstFilteredStationDetail();
+    }
+  }, 220);
 });
 powerFilterEl.addEventListener("change", applyFilters);
 availableOnlyEl.addEventListener("change", applyFilters);
-reloadEl.addEventListener("click", loadStations);
+reloadEl.addEventListener("click", () => loadStations({ clearDetails: true }));
+showAllStationsEl.addEventListener("click", () => {
+  stationListLimit = Math.min(
+    filteredStations.length,
+    stationListLimit + FILTERED_LIST_PAGE_SIZE,
+  );
+  renderStationList();
+  scheduleDetailPrefetch();
+});
 document.getElementById("locate").addEventListener("click", showVehicleLocation);
 nearestEl.addEventListener("click", showNearestStations);
 cheapestEl.addEventListener("click", showCheapestStation);
@@ -1142,6 +1616,7 @@ document.addEventListener("click", (event) => {
 });
 window.addEventListener("resize", () => map?.invalidateSize());
 
+searchEl.value = "";
 applyLanguage();
 ensureMap();
 loadStations();

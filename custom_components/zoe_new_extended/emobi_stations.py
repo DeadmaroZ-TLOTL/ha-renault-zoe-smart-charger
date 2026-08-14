@@ -19,7 +19,7 @@ REQUEST_TIMEOUT = ClientTimeout(total=35)
 REQUEST_HEADERS = {
     "Accept": "application/json",
     "Accept-Language": "lv",
-    "User-Agent": "HomeAssistant ZoeNewExtended/1.15",
+    "User-Agent": "HomeAssistant ZoeNewExtended/1.18",
 }
 
 
@@ -32,6 +32,7 @@ class EmobiStationsClient:
         self._stations_by_id: dict[str, dict[str, Any]] = {}
         self._loaded_at = 0.0
         self._load_lock = asyncio.Lock()
+        self.catalog_stats: dict[str, int] = {}
 
     async def async_catalog(self) -> list[dict[str, Any]]:
         """Return the current official e-mobi stations."""
@@ -70,3 +71,8 @@ class EmobiStationsClient:
             self._stations = stations
             self._stations_by_id = {item["id"]: item for item in stations}
             self._loaded_at = monotonic()
+            self.catalog_stats = {
+                "raw_feature_count": len(features),
+                "normalized_station_count": len(stations),
+                "rejected_feature_count": len(features) - len(stations),
+            }

@@ -28,8 +28,8 @@ Renault entity IDs differ.
 1. Copy the contents of `www/renault_trips/` to
    `/config/www/renault_trips/`. `control.html`, `control-pages.css`, and
    `control-pages.js` provide the matching full-screen Charging and IMMAX
-   views. `stations.html` provides the Elektrum Drive, Mobilly, e-mobi, and
-   PlugShare map.
+   views. `stations.html` provides the Elektrum Drive, Mobilly, e-mobi,
+   Latvia National Access Point, Ignitis ON, IKRAUTAS, and PlugShare map.
 2. Install ApexCharts Card 2.2.3 or newer through HACS. The complete dashboard
    plots every known Nord Pool interval from today and tomorrow together with
    the price-cap line.
@@ -54,8 +54,13 @@ panel uses the full viewport width and the control columns stack vertically.
 
 ## Charging stations
 
-The Stations view combines Elektrum Drive, Mobilly, and e-mobi catalogs and
-centers the map on the Renault location when it is available. Search,
+The Stations view combines complete Elektrum Drive, Mobilly, e-mobi, Latvia
+National Access Point, Ignitis ON, and IKRAUTAS catalogs and centers the map on
+the Renault location when it is available. The NAP DATEX II feed supplies
+country-wide connector details, live status, and tariffs every 15 minutes.
+Source metrics show the raw catalog count beside the unique physical-station
+count. The nearby list starts with 40 rows for performance and can expand to
+every filtered station. Search,
 provider, plug-type, minimum-power, and known-availability filters run locally
 in the browser. Selecting a station shows every known connector, its physical
 number, operator price, provider description/access notes, and live state when
@@ -65,8 +70,10 @@ filters; zero or unknown prices are excluded and per-kWh prices are never mixed
 with per-minute prices. Directions open in Google Maps or Waze, and the
 WhatsApp action opens a prefilled station location message for the user to
 send. A separate provider tab embeds the public PlugShare map; PlugShare
-locations are not merged into the local catalog because its station-data API
-requires a commercial license.
+locations are not merged into the local catalog because PlugShare declined API
+access for this use case. Matching source rows are merged by EVSE identifier or
+conservative physical-location checks. Each provider's independent price,
+status, description, and complete connector set remains available.
 
 ## Energy cost model
 

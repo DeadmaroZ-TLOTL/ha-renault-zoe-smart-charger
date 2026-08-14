@@ -2,6 +2,9 @@
   --elektrum: #087f8c;
   --mobilly: #d67b0d;
   --emobi: #355f9e;
+  --nap: #7b4b94;
+  --ignitis: #a52335;
+  --ikrautas: #267a42;
   --available: #2d8a4b;
   --occupied: #c24f3d;
 }
@@ -250,7 +253,14 @@
 }
 
 .station-metrics {
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+}
+
+.station-metrics .metric small {
+  display: block;
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 10px;
 }
 
 .station-layout {
@@ -334,6 +344,9 @@
 .legend-dot.elektrum { background: var(--elektrum); }
 .legend-dot.mobilly { background: var(--mobilly); }
 .legend-dot.emobi { background: var(--emobi); }
+.legend-dot.nap { background: var(--nap); }
+.legend-dot.ignitis { background: var(--ignitis); }
+.legend-dot.ikrautas { background: var(--ikrautas); }
 .legend-dot.available { background: var(--available); }
 
 .station-browser {
@@ -412,6 +425,9 @@
 .provider-badge.elektrum { color: var(--elektrum); }
 .provider-badge.mobilly { color: var(--mobilly); }
 .provider-badge.emobi { color: var(--emobi); }
+.provider-badge.nap { color: var(--nap); }
+.provider-badge.ignitis { color: var(--ignitis); }
+.provider-badge.ikrautas { color: var(--ikrautas); }
 .status-badge.available { color: var(--available); }
 .status-badge.occupied,
 .status-badge.unavailable { color: var(--occupied); }
@@ -601,6 +617,19 @@
   padding: 0 10px 10px;
 }
 
+.show-all-stations {
+  width: calc(100% - 20px);
+  min-height: 38px;
+  margin: 0 10px 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--accent);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 650;
+}
+
 .station-list-item {
   display: grid;
   width: 100%;
@@ -636,6 +665,18 @@
 
 .station-list-item[data-provider="emobi"] .provider-line {
   background: var(--emobi);
+}
+
+.station-list-item[data-provider="nap"] .provider-line {
+  background: var(--nap);
+}
+
+.station-list-item[data-provider="ignitis"] .provider-line {
+  background: var(--ignitis);
+}
+
+.station-list-item[data-provider="ikrautas"] .provider-line {
+  background: var(--ikrautas);
 }
 
 .station-list-copy {
@@ -674,6 +715,44 @@
 
 .leaflet-container {
   font: inherit;
+}
+
+.station-marker {
+  border: 0;
+  background: transparent;
+}
+
+.station-marker span {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border: 2px solid #ffffff;
+  border-radius: 50%;
+  background: var(--station-marker-color);
+  box-shadow: 0 1px 5px rgb(20 37 45 / 45%);
+}
+
+.station-marker.selected span {
+  border-width: 3px;
+  box-shadow: 0 0 0 2px #6fc7ce, 0 2px 7px rgb(20 37 45 / 50%);
+}
+
+.station-cluster {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 3px solid #087f8c;
+  border-radius: 50%;
+  background: #ffffff;
+  color: #16333a;
+  box-shadow: 0 2px 8px rgb(20 37 45 / 35%);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.station-cluster span {
+  display: block;
+  line-height: 1;
 }
 
 .leaflet-popup-content {

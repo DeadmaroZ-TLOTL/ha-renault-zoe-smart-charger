@@ -15,8 +15,10 @@ from homeassistant.helpers.event import async_call_later
 
 from .charge_control import ZoeNewChargeControl, find_zoe_new
 from .charging_accounts import ChargingAccountsCoordinator
+from .charging_accounts_data import deduplicate_account_records
 from .const import (
     API_ENTITY_IDS,
+    CONF_CHARGING_ACCOUNTS,
     CONF_IMMAX_AI_ADVISOR_ENABLED,
     CONF_IMMAX_AI_ADVISOR_INTERVAL,
     CONF_IMMAX_AI_CURRENT_CAP,
@@ -246,10 +248,21 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     if vehicle is None:
         raise ConfigEntryNotReady("Renault Zoe New is not loaded yet")
 
+    raw_accounts = entry.data.get(CONF_CHARGING_ACCOUNTS, [])
+    if isinstance(raw_accounts, list):
+        accounts = deduplicate_account_records(
+            account for account in raw_accounts if isinstance(account, dict)
+        )
+        if accounts != raw_accounts:
+            data = dict(entry.data)
+            data[CONF_CHARGING_ACCOUNTS] = accounts
+            hass.config_entries.async_update_entry(entry, data=data)
+
     entity_registry = er.async_get(hass)
     device_registry = dr.async_get(hass)
     retry_cancel: Callable[[], None] | None = None
     reconcile_cancel: Callable[[], None] | None = None
+    charge_session_refresh_cancel: Callable[[], None] | None = None
     reconciling = False
     runtime: dict[str, object] = {"last_options": dict(entry.options)}
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = runtime
@@ -362,6 +375,40 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     await elektrum_coordinator.async_config_entry_first_refresh()
     charging_accounts_coordinator = ChargingAccountsCoordinator(hass, entry)
     await charging_accounts_coordinator.async_config_entry_first_refresh()
+
+    @callback
+    def schedule_charge_session_refresh() -> None:
+        """Rebuild charge history after exact operator transactions change."""
+        nonlocal charge_session_refresh_cancel
+        if charge_session_refresh_cancel is not None:
+            return
+
+        @callback
+        def refresh_charge_sessions(_now: datetime) -> None:
+            nonlocal charge_session_refresh_cancel
+            charge_session_refresh_cancel = None
+            if hass.services.has_service(
+                "pyscript", "zoe_charge_sessions_update"
+            ):
+                hass.async_create_task(
+                    hass.services.async_call(
+                        "pyscript",
+                        "zoe_charge_sessions_update",
+                        blocking=False,
+                    )
+                )
+
+        charge_session_refresh_cancel = async_call_later(
+            hass,
+            2,
+            refresh_charge_sessions,
+        )
+
+    unsubscribe_charge_session_refresh = (
+        charging_accounts_coordinator.async_add_listener(
+            schedule_charge_session_refresh
+        )
+    )
     extras_coordinator = ZoeNewCloudExtrasCoordinator(hass, entry, charge_control)
     await extras_coordinator.async_config_entry_first_refresh()
     runtime.update(
@@ -376,12 +423,21 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             "nordpool_coordinator": nordpool_coordinator,
             "elektrum_coordinator": elektrum_coordinator,
             "charging_accounts_coordinator": charging_accounts_coordinator,
+            "unsubscribe_charge_session_refresh": (
+                unsubscribe_charge_session_refresh
+            ),
+            "cancel_charge_session_refresh": (
+                lambda: charge_session_refresh_cancel()
+                if charge_session_refresh_cancel
+                else None
+            ),
             "extras_coordinator": extras_coordinator,
         }
     )
     async_register_station_views(hass, entry)
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     await _async_sync_charging_setpoints(hass, entry)
+    schedule_charge_session_refresh()
 
     @callback
     def sync_after_automation_setup(_now: datetime) -> None:
@@ -409,6 +465,8 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         runtime["cancel_retry"]()
         runtime["cancel_reconcile"]()
         runtime["cancel_setpoint_sync"]()
+        runtime["unsubscribe_charge_session_refresh"]()
+        runtime["cancel_charge_session_refresh"]()
     return True
 
 

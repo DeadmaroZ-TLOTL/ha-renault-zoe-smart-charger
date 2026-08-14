@@ -25,21 +25,29 @@ used by the included Nord Pool smart charger package.
 - Smart charging permission by one or more Home Assistant zones.
 - Nord Pool country/price area, Renault planner targets, price cap, energy cost
   model, and IMMAX setpoints in the integration options.
-- Any number of Mobilly and Elektrum Drive accounts. Exact completed-session
-  energy and cost are merged across both Mobilly statement pages and monthly
-  Elektrum app transactions. One physical Elektrum charge split into several
-  Renault API rows is shown once with the provider's exact energy and amount.
+- Any number of Mobilly, Elektrum Drive, Ignitis ON, and IKRAUTAS accounts.
+  Exact completed-session energy and cost are merged across Mobilly statements,
+  Elektrum app transactions, and the Ignitis ON or IKRAUTAS app profile. One
+  physical charge split into several Renault API rows is shown once, with the
+  direct operator record preferred over reseller data.
 - One-time Elektrum postpaid-agreement linking in integration options. The
   personal code is sent directly to Elektrum over HTTPS for Smart-ID approval
   and is never stored by Home Assistant.
 - Renault account sign-in in the same options menu. It uses Renault's official
   Home Assistant client and updates only the selected official Renault config
   entry; credentials and refreshed tokens are never copied into this helper.
-- A responsive **Stations** map combining Elektrum Drive, Mobilly, and e-mobi
-  catalogs, plus an embedded PlugShare map. It includes provider, plug-type,
+- A responsive **Stations** map combining the complete Elektrum Drive, Mobilly,
+  e-mobi, Latvia National Access Point, Ignitis ON, and IKRAUTAS catalogs, plus
+  an embedded PlugShare map. The
+  official NAP DATEX II feed adds country-wide connector inventory, live
+  status, and VAT-inclusive tariffs refreshed every 15 minutes. It includes provider, plug-type,
   power, and availability filters; connector models and physical plug numbers;
   provider prices, station descriptions/access notes, and live state when
-  available; Google Maps and Waze navigation; and WhatsApp sharing. A
+  available; Google Maps and Waze navigation; and WhatsApp sharing. Duplicate
+  source rows are collapsed only at the physical-station level while every
+  provider offer and connector remains available. Raw and unique source counts
+  make incomplete catalogs visible, and the nearby list can expand to every
+  filtered station. A
   configurable distance limit can select the nearest station with the lowest
   known comparable price while respecting the active filters.
 - Extended entities are attached to the dedicated **Renault Zoe ... Zoe New
@@ -89,12 +97,18 @@ Open **Zoe New Extended > Configure > Renault smart charging** to select the
 planner's Nord Pool country, targets, price cap, and allowed zones. Use
 **Energy cost model** for delivery price, VAT, usable capacity, efficiency, and
 fallback consumption. **Charging accounts** adds, edits, disables, or removes
-multiple Mobilly and Elektrum Drive accounts. After authenticating an Elektrum
+multiple Mobilly, Elektrum Drive, Ignitis ON, and IKRAUTAS accounts. After
+authenticating an Elektrum
 app account, choose **Link Elektrum agreement**, enter the agreement holder's
 personal code, approve Smart-ID, and select an agreement when several exist.
 The personal code is discarded immediately. Account secrets stay in the Home
 Assistant config-entry store and are not exposed as entity attributes or saved
-in this repository. **Renault account login** signs the selected official
+in this repository. Ignitis ON and IKRAUTAS use the official app's Google
+`third-party` token exchange. Paste a fresh Google OAuth access token for the
+same Google account once; the Google token is discarded immediately and only
+the operator's renewable AMPECO session is stored. Repeated setup attempts for
+the same operator identity are merged instead of creating duplicate accounts.
+**Renault account login** signs the selected official
 Renault entry in again with country/locale, username, and password. It uses the
 same Renault API client as Home Assistant Core and stores the resulting
 credentials and token only in the official Renault entry.
@@ -146,10 +160,20 @@ Stations, and the optional IMMAX view share one responsive visual system. Trips
 are calculated from Recorder history and do not need manual start/stop buttons.
 The Stations view uses authenticated integration API endpoints and must run
 inside Home Assistant. PlugShare is displayed through its public embedded map
-because its station-data API requires a separate commercial license.
+because PlugShare declined station-data API access for this use case. The local
+catalog instead consumes Latvia's CC0 National Access Point
+[infrastructure](https://transportdata.gov.lv/en/card/d8e419c3-1585-4666-9067-85712befd2c4)
+and [live status/price](https://transportdata.gov.lv/en/card/a377a160-baa1-4b67-b4e8-6612cd289e22)
+DATEX II feeds. Rotating download URLs are resolved from public metadata on
+every refresh rather than stored in the integration.
 
 Elektrum station details include live connector state and current public
-tariff when the provider page is reachable. Mobilly exposes location,
+tariff when the provider page is reachable. Ignitis ON and IKRAUTAS provide
+public connector inventory, current state, and tariffs through their official
+app catalogs; when an app account is connected, its authenticated roaming
+catalog and exact completed-session history are used as well. Latvia NAP fills
+provider gaps and is deduplicated by EVSE ID and
+physical location. Mobilly exposes location,
 connector model/count, and maximum power publicly; live Mobilly occupancy and
 tariff require a mobile-app session and are marked unavailable rather than
 guessed. Provider descriptions, access instructions, opening hours, and notes

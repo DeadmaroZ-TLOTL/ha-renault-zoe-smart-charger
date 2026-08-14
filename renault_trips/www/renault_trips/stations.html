@@ -5,8 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Charging stations</title>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
   <link rel="stylesheet" href="./shared-theme.css?v=2.2.0" />
-  <link rel="stylesheet" href="./stations.css?v=1.2.3" />
+  <link rel="stylesheet" href="./stations.css?v=1.5.15" />
 </head>
 <body>
   <main class="app stations-app">
@@ -17,7 +18,7 @@
         </span>
         <div>
           <h1 data-i18n="title">Uzlādes stacijas</h1>
-          <p id="subtitle" data-i18n="subtitle">Elektrum Drive, Mobilly, e-mobi un PlugShare</p>
+          <p id="subtitle" data-i18n="subtitle">Elektrum Drive, Mobilly, e-mobi, Ignitis ON, IKRAUTAS, Latvijas NPP un PlugShare</p>
         </div>
       </div>
       <div class="filters station-filters">
@@ -92,6 +93,9 @@
       <button class="provider-tab" type="button" data-provider="elektrum" role="tab" aria-selected="false">Elektrum Drive</button>
       <button class="provider-tab" type="button" data-provider="mobilly" role="tab" aria-selected="false">Mobilly</button>
       <button class="provider-tab" type="button" data-provider="emobi" role="tab" aria-selected="false">e-mobi</button>
+      <button class="provider-tab" type="button" data-provider="nap" role="tab" aria-selected="false" data-i18n="nap">Latvijas NPP</button>
+      <button class="provider-tab" type="button" data-provider="ignitis" role="tab" aria-selected="false">Ignitis ON</button>
+      <button class="provider-tab" type="button" data-provider="ikrautas" role="tab" aria-selected="false">IKRAUTAS</button>
       <button class="provider-tab" type="button" data-provider="plugshare" role="tab" aria-selected="false">PlugShare</button>
       <label class="availability-toggle">
         <input id="availableOnly" type="checkbox" />
@@ -115,6 +119,9 @@
               <span><i class="legend-dot elektrum"></i>Elektrum</span>
               <span><i class="legend-dot mobilly"></i>Mobilly</span>
               <span><i class="legend-dot emobi"></i>e-mobi</span>
+              <span><i class="legend-dot nap"></i><span data-i18n="nap">Latvijas NPP</span></span>
+              <span><i class="legend-dot ignitis"></i>Ignitis ON</span>
+              <span><i class="legend-dot ikrautas"></i>IKRAUTAS</span>
               <span><i class="legend-dot available"></i><span data-i18n="available">Brīva</span></span>
             </div>
           </div>
@@ -137,6 +144,7 @@
               </div>
             </div>
             <div id="stationList" class="station-list"></div>
+            <button id="showAllStations" class="show-all-stations" type="button" hidden>Parādīt visas</button>
           </section>
         </aside>
       </section>
@@ -157,7 +165,8 @@
   </main>
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
   <script src="./dashboard-tabs.js?v=1.2.0"></script>
-  <script src="./stations.js?v=1.2.3"></script>
+  <script src="./stations.js?v=1.5.15"></script>
 </body>
 </html>

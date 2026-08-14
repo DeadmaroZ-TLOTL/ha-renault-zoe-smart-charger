@@ -11,8 +11,63 @@ from typing import Any
 
 ELEKTRUM_SOURCE = "elektrum_drive"
 MOBILLY_SOURCE = "mobilly"
+IGNITIS_SOURCE = "ignitis_on"
+IKRAUTAS_SOURCE = "ikrautas"
+DIRECT_OPERATOR_SOURCES = frozenset(
+    {ELEKTRUM_SOURCE, IGNITIS_SOURCE, IKRAUTAS_SOURCE}
+)
 _ELEKTRUM_MATCH_SECONDS = 20 * 60
 _CHARGE_FRAGMENT_GAP_SECONDS = 30 * 60
+
+
+def charging_account_identity(account: Mapping[str, Any]) -> tuple[str, ...]:
+    """Return a stable identity for one configured charging account."""
+    account_type = str(account.get("type") or "").strip().casefold()
+    identity_fields = {
+        "ignitis_on": ("email",),
+        "ikrautas": ("email",),
+        "mobilly": ("mobile_phone", "username"),
+        "elektrum_drive": ("agreement_id", "phone"),
+    }.get(
+        account_type,
+        ("email", "mobile_phone", "phone", "username"),
+    )
+    for field in identity_fields:
+        value = str(account.get(field) or "").strip().casefold()
+        if value:
+            return account_type, field, value
+    account_id = str(account.get("id") or "").strip()
+    return account_type, "id", account_id
+
+
+def deduplicate_account_records(
+    records: Iterable[Mapping[str, Any]],
+) -> list[dict[str, Any]]:
+    """Merge duplicate account records while preserving the original ID.
+
+    Repeated authorization attempts previously appended another record for the
+    same operator identity. Later non-empty values are preferred so a renewed
+    token replaces an expired one without creating a second coordinator task.
+    """
+    result: list[dict[str, Any]] = []
+    indexes: dict[tuple[str, ...], int] = {}
+    for raw in records:
+        account = dict(raw)
+        identity = charging_account_identity(account)
+        existing_index = indexes.get(identity)
+        if existing_index is None:
+            indexes[identity] = len(result)
+            result.append(account)
+            continue
+
+        existing = result[existing_index]
+        original_id = existing.get("id")
+        for key, value in account.items():
+            if value is not None and value != "" and value != [] and value != {}:
+                existing[key] = value
+        if original_id:
+            existing["id"] = original_id
+    return result
 
 
 def elektrum_profile_state(payload: Mapping[str, Any]) -> dict[str, Any]:
@@ -188,23 +243,23 @@ def tag_account_transactions(
 def merge_account_transactions(
     *record_groups: Iterable[Mapping[str, Any]],
 ) -> list[dict[str, Any]]:
-    """Merge all accounts and prefer exact Elektrum app records on overlap."""
+    """Merge accounts and prefer an operator app over an overlapping reseller."""
     records = [dict(item) for group in record_groups for item in group]
     records = _deduplicate_same_source(records)
 
-    elektrum = [
+    direct_operator_records = [
         record
         for record in records
-        if record.get("source_account_type") == ELEKTRUM_SOURCE
+        if record.get("source_account_type") in DIRECT_OPERATOR_SOURCES
     ]
     consumed_mobilly: set[int] = set()
-    for primary in elektrum:
+    for primary in direct_operator_records:
         candidates = [
             (index, candidate)
             for index, candidate in enumerate(records)
             if index not in consumed_mobilly
             and candidate.get("source_account_type") == MOBILLY_SOURCE
-            and candidate.get("elektrum_transaction")
+            and _operator_transaction_matches(primary, candidate)
             and _same_charge(primary, candidate)
         ]
         if not candidates:
@@ -222,6 +277,39 @@ def merge_account_transactions(
         if index not in consumed_mobilly
     ]
     return sorted(merged, key=lambda record: record.get("end") or "", reverse=True)
+
+
+def _operator_transaction_matches(
+    primary: Mapping[str, Any],
+    alternate: Mapping[str, Any],
+) -> bool:
+    source = primary.get("source_account_type")
+    if source == ELEKTRUM_SOURCE:
+        return bool(alternate.get("elektrum_transaction"))
+
+    primary_names = {
+        _normalize(primary.get("provider")),
+        _normalize(primary.get("operator")),
+    }
+    alternate_text = " ".join(
+        filter(
+            None,
+            (
+                _normalize(alternate.get("provider")),
+                _normalize(alternate.get("operator")),
+                _normalize(alternate.get("station_name")),
+                _normalize(alternate.get("note")),
+                _normalize(alternate.get("description")),
+            ),
+        )
+    )
+    aliases = {
+        IGNITIS_SOURCE: ("ignitis",),
+        IKRAUTAS_SOURCE: ("ikrautas",),
+    }
+    needles = {value for value in primary_names if value}
+    needles.update(aliases.get(str(source), ()))
+    return any(needle in alternate_text for needle in needles)
 
 
 def apply_provider_transactions(

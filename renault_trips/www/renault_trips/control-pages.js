@@ -157,8 +157,12 @@ const I18N = {
     connector: "Konektors",
     homeNordPool: "Mājas / Nord Pool",
     elektrumDrive: "Elektrum Drive",
-    elektrumDriveApp: "Elektrum Drive (precīzs darījums)",
-    mobilly: "Mobilly (precīzs darījums)",
+    elektrumDriveApp: "Elektrum Drive",
+    mobilly: "Mobilly",
+    ignitisOnApp: "Ignitis ON",
+    ikrautasApp: "IKRAUTAS",
+    operatorExact: "operatora dati",
+    calculatedFallback: "aprēķināts, operatora dati nav pieejami",
     duration: "Ilgums",
     batteryEnergy: "Baterijas enerģija",
     gridEnergy: "Tīkla enerģija",
@@ -325,8 +329,12 @@ const I18N = {
     connector: "Connector",
     homeNordPool: "Home / Nord Pool",
     elektrumDrive: "Elektrum Drive",
-    elektrumDriveApp: "Elektrum Drive (exact transaction)",
-    mobilly: "Mobilly (exact transaction)",
+    elektrumDriveApp: "Elektrum Drive",
+    mobilly: "Mobilly",
+    ignitisOnApp: "Ignitis ON",
+    ikrautasApp: "IKRAUTAS",
+    operatorExact: "operator data",
+    calculatedFallback: "calculated; operator data unavailable",
     duration: "Duration",
     batteryEnergy: "Battery energy",
     gridEnergy: "Grid energy",
@@ -2196,6 +2204,8 @@ function sessionPriceSourceLabel(session) {
   if (session.price_source === "elektrum_drive") return t("elektrumDrive");
   if (session.price_source === "elektrum_drive_app") return t("elektrumDriveApp");
   if (session.price_source === "mobilly") return t("mobilly");
+  if (session.price_source === "ignitis_on_app") return t("ignitisOnApp");
+  if (session.price_source === "ikrautas_app") return t("ikrautasApp");
   if (["home_nord_pool", "legacy_nord_pool"].includes(session.price_source)) {
     return t("homeNordPool");
   }
@@ -2217,6 +2227,8 @@ function renderSessions() {
   let totalBattery = 0;
   let totalGrid = 0;
   let totalCost = 0;
+  let allGridExact = true;
+  let allCostExact = true;
   const rows = sessions.map((session) => {
     const battery = toNumber(session.estimated_battery_energy_kwh) || 0;
     const grid = toNumber(session.grid_energy_kwh);
@@ -2224,10 +2236,22 @@ function renderSessions() {
     const station = sessionStationLabel(session);
     const connector = session.connector_code || "";
     const priceSource = sessionPriceSourceLabel(session);
+    const exactEnergy = session.provider_reported_energy === true
+      || session.energy_source === "provider_meter";
+    const exactCost = session.provider_reported_cost === true;
+    const exactRate = exactEnergy && exactCost;
+    const sourceNote = exactRate ? t("operatorExact") : t("calculatedFallback");
     totalBattery += battery;
-    if (Number.isFinite(grid)) totalGrid += grid;
-    if (Number.isFinite(cost)) totalCost += cost;
-    const coverageMark = toNumber(session.price_coverage_percent) < 99 ? "~" : "";
+    if (Number.isFinite(grid)) {
+      totalGrid += grid;
+      allGridExact = allGridExact && exactEnergy;
+    }
+    if (Number.isFinite(cost)) {
+      totalCost += cost;
+      allCostExact = allCostExact && exactRate;
+    }
+    const gridMark = exactEnergy ? "" : "~";
+    const priceMark = exactRate ? "" : "~";
     return `
       <tr>
         <td>${escapeHtml(formatSessionDate(session.start))}<br>${escapeHtml(formatSessionDate(session.end, false))}</td>
@@ -2235,9 +2259,9 @@ function renderSessions() {
         <td>${escapeHtml(Math.round(toNumber(session.duration_min) || 0))} min</td>
         <td>${escapeHtml(toNumber(session.start_soc) ?? "-")} → ${escapeHtml(toNumber(session.end_soc) ?? "-")}%</td>
         <td>~${battery.toFixed(2)} kWh</td>
-        <td>${Number.isFinite(grid) ? `${grid.toFixed(2)} kWh` : "-"}</td>
-        <td>${Number.isFinite(toNumber(session.total_rate_c_per_kwh)) ? `${coverageMark}${toNumber(session.total_rate_c_per_kwh).toFixed(2)} c/kWh` : "-"}<span class="cell-note">${escapeHtml(priceSource)}</span></td>
-        <td><strong>${Number.isFinite(cost) ? `${coverageMark}${cost.toFixed(2)} EUR` : "-"}</strong></td>
+        <td>${Number.isFinite(grid) ? `${gridMark}${grid.toFixed(2)} kWh` : "-"}</td>
+        <td>${Number.isFinite(toNumber(session.total_rate_c_per_kwh)) ? `${priceMark}${toNumber(session.total_rate_c_per_kwh).toFixed(2)} c/kWh` : "-"}<span class="cell-note">${escapeHtml(priceSource)} · ${escapeHtml(sourceNote)}</span></td>
+        <td><strong>${Number.isFinite(cost) ? `${priceMark}${cost.toFixed(2)} EUR` : "-"}</strong></td>
         <td>${escapeHtml(session.status || "-")}</td>
       </tr>`;
   }).join("");
@@ -2261,9 +2285,9 @@ function renderSessions() {
           <td><strong>${escapeHtml(t("total"))}</strong></td>
           <td></td><td></td><td></td>
           <td><strong>~${totalBattery.toFixed(2)} kWh</strong></td>
-          <td><strong>${totalGrid.toFixed(2)} kWh</strong></td>
-          <td><strong>${totalRate.toFixed(2)} c/kWh</strong></td>
-          <td><strong>${totalCost.toFixed(2)} EUR</strong></td>
+          <td><strong>${allGridExact ? "" : "~"}${totalGrid.toFixed(2)} kWh</strong></td>
+          <td><strong>${allCostExact ? "" : "~"}${totalRate.toFixed(2)} c/kWh</strong></td>
+          <td><strong>${allCostExact ? "" : "~"}${totalCost.toFixed(2)} EUR</strong></td>
           <td></td>
         </tr></tfoot>
       </table>

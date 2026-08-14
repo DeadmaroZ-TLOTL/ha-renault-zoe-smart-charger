@@ -509,6 +509,62 @@ class StationsDataTest(unittest.TestCase):
 
         self.assertEqual(1, len(result))
 
+    def test_merged_station_prefers_address_over_catalog_identifier(self) -> None:
+        nap = {
+            "provider": "latvia_nap",
+            "provider_group": "nap",
+            "id": "nap-1",
+            "name": "PLVCARLA32_EDLV-242",
+            "address": "Laivu iela 32",
+            "latitude": 57.129,
+            "longitude": 24.278,
+            "connectors": [{"code": "LV*ELR*EPLVCARLA32_EDLV-242"}],
+        }
+        elektrum = {
+            "provider": "elektrum",
+            "id": "el-1",
+            "name": "PLVCARLA32",
+            "address": "Laivu iela 32",
+            "latitude": 57.129,
+            "longitude": 24.278,
+            "connectors": [{"code": "PLVCARLA32_EDLV-242"}],
+        }
+
+        result = stations_data.deduplicate_stations([nap, elektrum])
+
+        self.assertEqual(1, len(result))
+        self.assertEqual("Laivu iela 32", result[0]["name"])
+
+    def test_merges_same_point_when_city_prefix_differs(self) -> None:
+        partner = {
+            "provider": "emobi_elektrum",
+            "provider_group": "elektrum",
+            "id": "partner-1",
+            "name": "RĪGA Swedbank",
+            "address": "Rīga, Balasta dambis 15",
+            "latitude": 56.949395,
+            "longitude": 24.0889,
+            "connectors": [],
+        }
+        nap = {
+            "provider": "latvia_nap",
+            "provider_group": "nap",
+            "id": "nap-2",
+            "name": "Swedbank",
+            "address": "Balasta dambis 15",
+            "latitude": 56.94939539,
+            "longitude": 24.0889009,
+            "connectors": [],
+        }
+
+        result = stations_data.deduplicate_stations([partner, nap])
+
+        self.assertEqual(1, len(result))
+        self.assertCountEqual(
+            ["elektrum", "nap"],
+            result[0]["provider_groups"],
+        )
+
     def test_prefers_official_emobi_connector_status(self) -> None:
         mobilly = {
             "provider": "mobilly",
@@ -641,6 +697,205 @@ class StationsDataTest(unittest.TestCase):
 
         self.assertEqual(1, len(result))
         self.assertEqual(["elektrum", "mobilly"], result[0]["provider_groups"])
+
+    def test_merges_latvia_nap_by_evse_id_and_keeps_its_offer(self) -> None:
+        elektrum = {
+            "provider": "elektrum",
+            "provider_group": "elektrum",
+            "id": "e-1",
+            "operator": "Elektrum Drive",
+            "latitude": 56.95,
+            "longitude": 24.1,
+            "connectors": [{"code": "LV*ELR*E001"}],
+        }
+        nap = {
+            "provider": "latvia_nap",
+            "provider_group": "nap",
+            "id": "nap-1",
+            "operator": "Elektrum Drive",
+            "latitude": 56.951,
+            "longitude": 24.101,
+            "price_value": 44.0,
+            "price_unit": "kWh",
+            "price_formatted": "44 c/kWh",
+            "live_data_available": True,
+            "connector_live_data_available": True,
+            "connectors": [
+                {"code": "LV*ELR*E001", "status": "available"}
+            ],
+        }
+
+        result = stations_data.deduplicate_stations([elektrum, nap])
+
+        self.assertEqual(1, len(result))
+        self.assertEqual(["elektrum", "nap"], result[0]["provider_groups"])
+        self.assertEqual(
+            ["elektrum", "latvia_nap"],
+            [offer["provider"] for offer in result[0]["provider_offers"]],
+        )
+
+    def test_merges_compact_elektrum_and_full_emi3_connector_ids(self) -> None:
+        elektrum = {
+            "provider": "elektrum",
+            "provider_group": "elektrum",
+            "id": "direct-carnikava",
+            "operator": "Elektrum Drive",
+            "name": "Laivu iela 32",
+            "address": "Laivu iela 32",
+            "latitude": 57.150026,
+            "longitude": 24.260258,
+            "connectors": [{"code": "PLVCARLA32002TP2"}],
+        }
+        nap = {
+            "provider": "latvia_nap",
+            "provider_group": "nap",
+            "id": "nap-carnikava",
+            "operator": "Elektrum Drive",
+            "name": "PLVCARLA32_EDLV-242",
+            "address": "Laivu iela 32",
+            "latitude": 57.149761,
+            "longitude": 24.261459,
+            "connectors": [{"code": "LV*ELR*EPLVCARLA32002TP2"}],
+        }
+
+        result = stations_data.deduplicate_stations([elektrum, nap])
+
+        self.assertEqual(1, len(result))
+        self.assertEqual(["elektrum", "nap"], result[0]["provider_groups"])
+
+    def test_merges_connectors_from_two_catalogs_for_the_same_operator(self) -> None:
+        direct = {
+            "provider": "elektrum",
+            "provider_group": "elektrum",
+            "id": "direct-1",
+            "operator": "Elektrum Drive",
+            "name": "Shared station",
+            "latitude": 56.95,
+            "longitude": 24.1,
+            "connectors": [
+                {"code": "LV*ELR*E001", "status": "unknown", "power_kw": 22.0}
+            ],
+        }
+        live = {
+            "provider": "emobi_elektrum",
+            "provider_group": "elektrum",
+            "id": "live-1",
+            "operator": "Elektrum Drive",
+            "name": "Shared station",
+            "latitude": 56.9501,
+            "longitude": 24.1001,
+            "connector_live_data_available": True,
+            "connectors": [
+                {"code": "LV*ELR*E001", "status": "available", "power_kw": 22.0},
+                {"code": "LV*ELR*E002", "status": "occupied", "power_kw": 50.0},
+            ],
+        }
+
+        result = stations_data.deduplicate_stations([direct, live])[0]
+
+        self.assertEqual(1, len(result["provider_offers"]))
+        offer = result["provider_offers"][0]
+        self.assertEqual(2, offer["connector_count"])
+        self.assertEqual(50.0, offer["max_power_kw"])
+        self.assertEqual(
+            ["available", "occupied"],
+            [connector["status"] for connector in offer["connectors"]],
+        )
+
+    def test_does_not_merge_equal_numeric_ids_from_different_sources(self) -> None:
+        first = {
+            "provider": "ignitis_on",
+            "provider_group": "ignitis",
+            "id": "142",
+            "operator": "Ignitis ON",
+            "name": "Ignitis Tallinn North",
+            "latitude": 59.437,
+            "longitude": 24.753,
+            "connectors": [],
+        }
+        second = {
+            "provider": "ikrautas",
+            "provider_group": "ikrautas",
+            "id": "142",
+            "operator": "IKRAUTAS",
+            "name": "IKRAUTAS Tallinn South",
+            "latitude": 59.4372,
+            "longitude": 24.7532,
+            "connectors": [],
+        }
+
+        result = stations_data.deduplicate_stations([first, second])
+
+        self.assertEqual(2, len(result))
+
+    def test_does_not_merge_same_operator_sites_sixty_metres_apart(self) -> None:
+        first = {
+            "provider": "elektrum",
+            "id": "one",
+            "operator": "Elektrum Drive",
+            "latitude": 56.95,
+            "longitude": 24.1,
+            "connectors": [],
+        }
+        second = {
+            "provider": "mobilly",
+            "id": "two",
+            "operator": "Elektrum Drive",
+            "latitude": 56.95055,
+            "longitude": 24.1,
+            "connectors": [],
+        }
+
+        result = stations_data.deduplicate_stations([first, second])
+
+        self.assertEqual(2, len(result))
+
+    def test_merges_global_evse_id_and_keeps_new_provider_offers(self) -> None:
+        ignitis = {
+            "provider": "ignitis_on",
+            "provider_group": "ignitis",
+            "id": "one",
+            "operator": "Ignitis ON",
+            "latitude": 56.95,
+            "longitude": 24.1,
+            "price_value": 35.0,
+            "price_unit": "kWh",
+            "connectors": [{"code": "LV*IGN*E0001"}],
+        }
+        mobilly = {
+            "provider": "mobilly",
+            "provider_group": "mobilly",
+            "id": "two",
+            "operator": "Ignitis ON",
+            "latitude": 56.9501,
+            "longitude": 24.1001,
+            "price_value": 39.0,
+            "price_unit": "kWh",
+            "connectors": [{"code": "lv*ign*e0001"}],
+        }
+
+        result = stations_data.deduplicate_stations([ignitis, mobilly])
+
+        self.assertEqual(1, len(result))
+        self.assertEqual(["mobilly", "ignitis"], result[0]["provider_groups"])
+        self.assertEqual(
+            [39.0, 35.0],
+            [offer["price_value"] for offer in result[0]["provider_offers"]],
+        )
+        self.assertEqual(
+            ["lv*ign*e0001"],
+            [
+                connector["code"]
+                for connector in result[0]["provider_offers"][0]["connectors"]
+            ],
+        )
+        self.assertEqual(
+            ["LV*IGN*E0001"],
+            [
+                connector["code"]
+                for connector in result[0]["provider_offers"][1]["connectors"]
+            ],
+        )
 
 
 if __name__ == "__main__":

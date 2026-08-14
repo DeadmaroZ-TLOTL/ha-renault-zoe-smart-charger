@@ -32,9 +32,26 @@ from homeassistant.helpers.selector import (
     TextSelectorType,
 )
 
+from .ampeco_auth import (
+    AMPECO_ACCOUNT_TYPES,
+    ampeco_app_headers,
+    ampeco_login_link_requested,
+    ampeco_login_link_token,
+    ampeco_provider,
+    ampeco_token_form,
+    ampeco_token_values,
+)
 from .const import (
     ACCOUNT_TYPE_ELEKTRUM_DRIVE,
+    ACCOUNT_TYPE_IGNITIS_ON,
+    ACCOUNT_TYPE_IKRAUTAS,
     ACCOUNT_TYPE_MOBILLY,
+    CONF_AMPECO_ACCESS_TOKEN,
+    CONF_AMPECO_EMAIL,
+    CONF_AMPECO_GOOGLE_ACCESS_TOKEN,
+    CONF_AMPECO_LOGIN_LINK,
+    CONF_AMPECO_REFRESH_TOKEN,
+    CONF_AMPECO_TOKEN_EXPIRES_AT,
     CONF_ACCOUNT_ACTION,
     CONF_ACCOUNT_ENABLED,
     CONF_ACCOUNT_ID,
@@ -190,7 +207,11 @@ from .elektrum_login import (
     elektrum_verify_form,
     normalize_elektrum_phone,
 )
-from .charging_accounts_data import elektrum_token_can_replace
+from .charging_accounts_data import (
+    charging_account_identity,
+    deduplicate_account_records,
+    elektrum_token_can_replace,
+)
 from .mobilly_auth import (
     MOBILLY_AUTH_URL,
     mobilly_access_token,
@@ -565,7 +586,9 @@ class ZoeNewExtendedOptionsFlow(config_entries.OptionsFlow):
         raw_accounts = self.config_entry.data.get(CONF_CHARGING_ACCOUNTS, [])
         if not isinstance(raw_accounts, list):
             return []
-        return [dict(account) for account in raw_accounts if isinstance(account, dict)]
+        return deduplicate_account_records(
+            account for account in raw_accounts if isinstance(account, dict)
+        )
 
     def _save_charging_accounts(self, accounts):
         """Store secrets in config-entry data, outside ordinary options."""
@@ -581,7 +604,7 @@ class ZoeNewExtendedOptionsFlow(config_entries.OptionsFlow):
     def _update_charging_accounts(self, accounts):
         """Update charging-account secrets while keeping the options flow open."""
         data = dict(self.config_entry.data)
-        data[CONF_CHARGING_ACCOUNTS] = accounts
+        data[CONF_CHARGING_ACCOUNTS] = deduplicate_account_records(accounts)
         self.hass.config_entries.async_update_entry(self.config_entry, data=data)
 
     def _selected_account(self):
@@ -612,6 +635,22 @@ class ZoeNewExtendedOptionsFlow(config_entries.OptionsFlow):
                     "Pievienot Elektrum Drive kontu"
                     if is_lv
                     else "Add Elektrum Drive account"
+                ),
+            },
+            {
+                "value": f"add:{ACCOUNT_TYPE_IGNITIS_ON}",
+                "label": (
+                    "Pievienot Ignitis ON kontu"
+                    if is_lv
+                    else "Add Ignitis ON account"
+                ),
+            },
+            {
+                "value": f"add:{ACCOUNT_TYPE_IKRAUTAS}",
+                "label": (
+                    "Pievienot IKRAUTAS kontu"
+                    if is_lv
+                    else "Add IKRAUTAS account"
                 ),
             },
         ]
@@ -675,6 +714,17 @@ class ZoeNewExtendedOptionsFlow(config_entries.OptionsFlow):
                         ),
                     }
                 )
+            if account_type in AMPECO_ACCOUNT_TYPES:
+                actions.append(
+                    {
+                        "value": f"authenticate:{account_id}",
+                        "label": (
+                            f"Pieslegt {name} lietotnes kontu"
+                            if is_lv
+                            else f"Authenticate {name} app account"
+                        ),
+                    }
+                )
 
         if user_input is not None:
             action, _, account_id = user_input[CONF_ACCOUNT_ACTION].partition(":")
@@ -682,6 +732,9 @@ class ZoeNewExtendedOptionsFlow(config_entries.OptionsFlow):
                 self._selected_account_id = None
                 if account_id == ACCOUNT_TYPE_MOBILLY:
                     return await self.async_step_mobilly_account()
+                if account_id in AMPECO_ACCOUNT_TYPES:
+                    self._ampeco_account_type = account_id
+                    return await self.async_step_ampeco_account()
                 return await self.async_step_elektrum_account()
             self._selected_account_id = account_id
             if action == "remove":
@@ -692,9 +745,14 @@ class ZoeNewExtendedOptionsFlow(config_entries.OptionsFlow):
                 return await self.async_step_elektrum_mobile_login()
             if action == "mobile":
                 return await self.async_step_mobilly_mobile()
+            if action == "authenticate":
+                return await self.async_step_ampeco_google()
             selected = self._selected_account()
             if selected and selected.get(CONF_ACCOUNT_TYPE) == ACCOUNT_TYPE_MOBILLY:
                 return await self.async_step_mobilly_account()
+            if selected and selected.get(CONF_ACCOUNT_TYPE) in AMPECO_ACCOUNT_TYPES:
+                self._ampeco_account_type = selected.get(CONF_ACCOUNT_TYPE)
+                return await self.async_step_ampeco_account()
             return await self.async_step_elektrum_account()
 
         return self.async_show_form(
@@ -710,6 +768,298 @@ class ZoeNewExtendedOptionsFlow(config_entries.OptionsFlow):
                 }
             ),
             description_placeholders={"account_count": str(len(accounts))},
+        )
+
+    async def async_step_ampeco_account(self, user_input=None):
+        """Add or edit one Ignitis ON or IKRAUTAS app account."""
+        account = self._selected_account()
+        account_type = (
+            account.get(CONF_ACCOUNT_TYPE)
+            if account is not None
+            else getattr(self, "_ampeco_account_type", None)
+        )
+        if account_type not in AMPECO_ACCOUNT_TYPES:
+            return await self.async_step_charging_accounts()
+        provider = ampeco_provider(account_type)
+        errors = {}
+        if user_input is not None:
+            email = str(user_input.get(CONF_AMPECO_EMAIL) or "").strip()
+            if "@" not in email or email.startswith("@") or email.endswith("@"):
+                errors["base"] = "ampeco_email_invalid"
+            else:
+                updated = {
+                    CONF_ACCOUNT_ID: (
+                        account.get(CONF_ACCOUNT_ID) if account else uuid4().hex
+                    ),
+                    CONF_ACCOUNT_TYPE: provider.account_type,
+                    CONF_ACCOUNT_NAME: str(
+                        user_input.get(CONF_ACCOUNT_NAME)
+                        or provider.display_name
+                    ).strip(),
+                    CONF_ACCOUNT_ENABLED: bool(
+                        user_input.get(CONF_ACCOUNT_ENABLED, True)
+                    ),
+                    CONF_AMPECO_EMAIL: email,
+                }
+                if account is not None and email.casefold() == str(
+                    account.get(CONF_AMPECO_EMAIL) or ""
+                ).casefold():
+                    for key in (
+                        CONF_AMPECO_ACCESS_TOKEN,
+                        CONF_AMPECO_REFRESH_TOKEN,
+                        CONF_AMPECO_TOKEN_EXPIRES_AT,
+                    ):
+                        if account.get(key):
+                            updated[key] = account[key]
+
+                accounts = self._charging_accounts
+                if account is None:
+                    accounts.append(updated)
+                else:
+                    accounts = [
+                        updated
+                        if item.get(CONF_ACCOUNT_ID)
+                        == account.get(CONF_ACCOUNT_ID)
+                        else item
+                        for item in accounts
+                    ]
+                accounts = deduplicate_account_records(accounts)
+                canonical = next(
+                    (
+                        item
+                        for item in accounts
+                        if charging_account_identity(item)
+                        == charging_account_identity(updated)
+                    ),
+                    updated,
+                )
+                if canonical.get(CONF_AMPECO_ACCESS_TOKEN):
+                    return self._save_charging_accounts(accounts)
+                self._update_charging_accounts(accounts)
+                self._selected_account_id = canonical[CONF_ACCOUNT_ID]
+                self._ampeco_account_type = provider.account_type
+                return await self.async_step_ampeco_google()
+
+        return self.async_show_form(
+            step_id="ampeco_account",
+            data_schema=vol.Schema(
+                {
+                    vol.Required(
+                        CONF_ACCOUNT_NAME,
+                        default=(account or {}).get(
+                            CONF_ACCOUNT_NAME,
+                            provider.display_name,
+                        ),
+                    ): TextSelector(TextSelectorConfig()),
+                    vol.Required(
+                        CONF_ACCOUNT_ENABLED,
+                        default=(account or {}).get(CONF_ACCOUNT_ENABLED, True),
+                    ): BooleanSelector(),
+                    vol.Required(
+                        CONF_AMPECO_EMAIL,
+                        default=(account or {}).get(CONF_AMPECO_EMAIL, ""),
+                    ): TextSelector(TextSelectorConfig(type=TextSelectorType.EMAIL)),
+                }
+            ),
+            errors=errors,
+            description_placeholders={
+                "mode": "edit" if account else "add",
+                "provider": provider.display_name,
+            },
+        )
+
+    async def async_step_ampeco_google(self, user_input=None):
+        """Exchange a one-time Google token using the official app flow."""
+        account = self._selected_account()
+        if (
+            account is None
+            or account.get(CONF_ACCOUNT_TYPE) not in AMPECO_ACCOUNT_TYPES
+        ):
+            return await self.async_step_charging_accounts()
+        provider = ampeco_provider(account.get(CONF_ACCOUNT_TYPE))
+        errors = {}
+
+        if user_input is not None:
+            google_token = str(
+                user_input.get(CONF_AMPECO_GOOGLE_ACCESS_TOKEN) or ""
+            ).strip()
+            if not google_token:
+                errors["base"] = "ampeco_google_token_invalid"
+            else:
+                session = async_get_clientsession(self.hass)
+                try:
+                    async with session.post(
+                        f"https://{provider.host}/api/v1/app/oauth/token",
+                        params={"operatorCountry": provider.operator_country},
+                        headers=ampeco_app_headers(provider),
+                        json=ampeco_token_form(
+                            provider,
+                            grant_type="third-party",
+                            token=google_token,
+                            login_type="google",
+                        ),
+                        timeout=ELEKTRUM_REQUEST_TIMEOUT,
+                    ) as response:
+                        try:
+                            payload = await response.json(content_type=None)
+                        except (TypeError, ValueError):
+                            payload = {}
+                        status = response.status
+                except (ClientError, TimeoutError):
+                    errors["base"] = "ampeco_connection_failed"
+                else:
+                    token_values = ampeco_token_values(payload)
+                    access_token = token_values.get("access_token")
+                    if status >= 400 or not access_token:
+                        _LOGGER.warning(
+                            "%s rejected Google third-party authentication "
+                            "(HTTP %s, response keys: %s)",
+                            provider.display_name,
+                            status,
+                            sorted(payload) if isinstance(payload, dict) else [],
+                        )
+                        errors["base"] = "ampeco_google_exchange_failed"
+                    else:
+                        accounts = self._charging_accounts
+                        for item in accounts:
+                            if item.get(CONF_ACCOUNT_ID) != account.get(
+                                CONF_ACCOUNT_ID
+                            ):
+                                continue
+                            item[CONF_AMPECO_ACCESS_TOKEN] = access_token
+                            if token_values.get("refresh_token"):
+                                item[CONF_AMPECO_REFRESH_TOKEN] = token_values[
+                                    "refresh_token"
+                                ]
+                            if token_values.get("expires_at"):
+                                item[CONF_AMPECO_TOKEN_EXPIRES_AT] = token_values[
+                                    "expires_at"
+                                ]
+                            break
+                        return self._save_charging_accounts(accounts)
+
+        return self.async_show_form(
+            step_id="ampeco_google",
+            data_schema=vol.Schema(
+                {
+                    vol.Required(CONF_AMPECO_GOOGLE_ACCESS_TOKEN): TextSelector(
+                        TextSelectorConfig(type=TextSelectorType.PASSWORD)
+                    )
+                }
+            ),
+            errors=errors,
+            description_placeholders={
+                "provider": provider.display_name,
+                "email": str(account.get(CONF_AMPECO_EMAIL) or ""),
+            },
+        )
+
+    async def async_step_ampeco_login_link(self, user_input=None):
+        """Send and exchange an AMPECO one-time email login link."""
+        account = self._selected_account()
+        if (
+            account is None
+            or account.get(CONF_ACCOUNT_TYPE) not in AMPECO_ACCOUNT_TYPES
+        ):
+            return await self.async_step_charging_accounts()
+        provider = ampeco_provider(account.get(CONF_ACCOUNT_TYPE))
+        email = str(account.get(CONF_AMPECO_EMAIL) or "").strip()
+        errors = {}
+        session = async_get_clientsession(self.hass)
+
+        if not getattr(self, "_ampeco_login_link_sent", False):
+            try:
+                async with session.post(
+                    f"https://{provider.host}/api/v1/app/login-link",
+                    params={"operatorCountry": provider.operator_country},
+                    headers=ampeco_app_headers(provider),
+                    json={"email": email},
+                    timeout=ELEKTRUM_REQUEST_TIMEOUT,
+                ) as response:
+                    try:
+                        payload = await response.json(content_type=None)
+                    except (TypeError, ValueError):
+                        payload = {}
+                    status = response.status
+            except (ClientError, TimeoutError):
+                errors["base"] = "ampeco_connection_failed"
+            else:
+                if status >= 400 or not ampeco_login_link_requested(payload):
+                    _LOGGER.warning(
+                        "%s login-link request was not confirmed by the "
+                        "operator (HTTP %s, response keys: %s)",
+                        provider.display_name,
+                        status,
+                        sorted(payload) if isinstance(payload, dict) else [],
+                    )
+                    errors["base"] = "ampeco_login_link_failed"
+                else:
+                    self._ampeco_login_link_sent = True
+
+        if user_input is not None and not errors:
+            token = ampeco_login_link_token(
+                user_input.get(CONF_AMPECO_LOGIN_LINK)
+            )
+            if not token:
+                errors["base"] = "ampeco_login_link_invalid"
+            else:
+                try:
+                    async with session.post(
+                        f"https://{provider.host}/api/v1/app/oauth/token",
+                        params={"operatorCountry": provider.operator_country},
+                        headers=ampeco_app_headers(provider),
+                        json=ampeco_token_form(
+                            provider,
+                            grant_type="login-link",
+                            token=token,
+                        ),
+                        timeout=ELEKTRUM_REQUEST_TIMEOUT,
+                    ) as response:
+                        try:
+                            payload = await response.json(content_type=None)
+                        except (TypeError, ValueError):
+                            payload = {}
+                        status = response.status
+                except (ClientError, TimeoutError):
+                    errors["base"] = "ampeco_connection_failed"
+                else:
+                    token_values = ampeco_token_values(payload)
+                    access_token = token_values.get("access_token")
+                    if status >= 400 or not access_token:
+                        errors["base"] = "ampeco_login_link_exchange_failed"
+                    else:
+                        accounts = self._charging_accounts
+                        for item in accounts:
+                            if item.get(CONF_ACCOUNT_ID) != account.get(
+                                CONF_ACCOUNT_ID
+                            ):
+                                continue
+                            item[CONF_AMPECO_ACCESS_TOKEN] = access_token
+                            if token_values.get("refresh_token"):
+                                item[CONF_AMPECO_REFRESH_TOKEN] = token_values[
+                                    "refresh_token"
+                                ]
+                            if token_values.get("expires_at"):
+                                item[CONF_AMPECO_TOKEN_EXPIRES_AT] = token_values[
+                                    "expires_at"
+                                ]
+                            break
+                        return self._save_charging_accounts(accounts)
+
+        return self.async_show_form(
+            step_id="ampeco_login_link",
+            data_schema=vol.Schema(
+                {
+                    vol.Required(CONF_AMPECO_LOGIN_LINK): TextSelector(
+                        TextSelectorConfig()
+                    )
+                }
+            ),
+            errors=errors,
+            description_placeholders={
+                "provider": provider.display_name,
+                "email": email,
+            },
         )
 
     async def async_step_mobilly_account(self, user_input=None):

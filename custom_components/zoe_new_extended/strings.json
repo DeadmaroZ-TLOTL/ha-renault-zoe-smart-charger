@@ -65,7 +65,7 @@
       },
       "charging_accounts": {
         "title": "Charging accounts",
-        "description": "Manage any number of Mobilly and Elektrum Drive accounts. Configured accounts: {account_count}. Transactions from all enabled accounts are merged without double-counting overlapping sessions.",
+        "description": "Manage Mobilly, Elektrum Drive, Ignitis ON, and IKRAUTAS accounts. Configured accounts: {account_count}. Transactions from all enabled accounts are merged without double-counting overlapping sessions.",
         "data": {
           "account_action": "Account action"
         }
@@ -168,6 +168,29 @@
           "agreement_selection": "Agreement"
         }
       },
+      "ampeco_account": {
+        "title": "Operator app account",
+        "description": "{mode} a {provider} account. Use the email belonging to the same operator profile as your Google sign-in. Authentication tokens stay in the Home Assistant config entry.",
+        "data": {
+          "name": "Account name",
+          "enabled": "Enabled",
+          "email": "Account email"
+        }
+      },
+      "ampeco_google": {
+        "title": "Authenticate operator app with Google",
+        "description": "Paste a fresh Google OAuth access token for the {email} account used in {provider}. Home Assistant exchanges it once through the same third-party login used by the official app and does not store the Google token.",
+        "data": {
+          "google_access_token": "Google OAuth access token"
+        }
+      },
+      "ampeco_login_link": {
+        "title": "Authenticate operator app",
+        "description": "A one-time {provider} sign-in link was requested for {email}. After it arrives, copy the complete link from the email without opening it, paste it below, and continue. The one-time link is never stored.",
+        "data": {
+          "login_link": "Complete sign-in link"
+        }
+      },
       "remove_charging_account": {
         "title": "Remove charging account",
         "description": "Remove {account_name} and its saved authentication data? Historical HA states are not deleted.",
@@ -232,6 +255,13 @@
     },
     "error": {
       "account_removal_not_confirmed": "Confirm account removal before continuing.",
+      "ampeco_connection_failed": "Could not connect to the operator app service.",
+      "ampeco_email_invalid": "Enter the email used by this operator account.",
+      "ampeco_google_exchange_failed": "The operator rejected this Google sign-in token. Generate a fresh access token for the same Google account and try again.",
+      "ampeco_google_token_invalid": "Enter a fresh Google OAuth access token.",
+      "ampeco_login_link_exchange_failed": "The operator rejected or expired this sign-in link. Request a new link and try again.",
+      "ampeco_login_link_failed": "The operator could not send a sign-in link to this email.",
+      "ampeco_login_link_invalid": "Paste the complete sign-in link from the operator email.",
       "elektrum_agreement_link_failed": "Elektrum did not switch the account to the selected postpaid agreement.",
       "elektrum_agreement_required": "Select an Elektrum agreement.",
       "elektrum_authorization_failed": "Smart-ID succeeded, but Elektrum could not attach the agreement to this Drive app profile. If the agreement already appears in the official app, import that app profile's access token and device ID instead.",

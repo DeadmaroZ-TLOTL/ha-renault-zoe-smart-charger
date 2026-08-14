@@ -42,7 +42,7 @@ SOURCE_CHARGING_ACCOUNTS = SourceDevice(
     slug="charging_accounts",
     label="Charging Accounts",
     manufacturer="Zoe New Extended",
-    model="Mobilly and Elektrum Drive",
+    model="Mobilly, Elektrum, Ignitis ON, and IKRAUTAS",
 )
 SOURCE_NORDPOOL = SourceDevice(
     slug="nordpool",

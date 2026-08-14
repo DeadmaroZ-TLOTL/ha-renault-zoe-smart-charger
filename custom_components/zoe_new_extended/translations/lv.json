@@ -168,6 +168,29 @@
           "agreement_selection": "Līgums"
         }
       },
+      "ampeco_account": {
+        "title": "Operatora lietotnes konts",
+        "description": "{mode} {provider} kontu. Izmanto e-pastu, kas pieder tam pašam operatora profilam kā Google pieteikšanās. Autorizācijas tokeni paliek Home Assistant konfigurācijas ierakstā.",
+        "data": {
+          "name": "Konta nosaukums",
+          "enabled": "Ieslēgts",
+          "email": "Konta e-pasts"
+        }
+      },
+      "ampeco_google": {
+        "title": "Pieslēgt operatora lietotni ar Google",
+        "description": "Ielīmē svaigu Google OAuth piekļuves tokenu {email} kontam, ko izmanto {provider}. Home Assistant to vienreiz apmaina ar to pašu third-party pieteikšanos, ko lieto oficiālā lietotne, un Google tokenu nesaglabā.",
+        "data": {
+          "google_access_token": "Google OAuth piekļuves tokens"
+        }
+      },
+      "ampeco_login_link": {
+        "title": "Pieslēgt operatora lietotni",
+        "description": "Vienreizēja {provider} pieteikšanās saite tika pieprasīta uz {email}. Kad tā pienāk, neatverot saiti, nokopē to pilnībā no e-pasta un ielīmē zemāk. Vienreizējā saite netiek saglabāta.",
+        "data": {
+          "login_link": "Pilna pieteikšanās saite"
+        }
+      },
       "remove_charging_account": {
         "title": "Noņemt uzlādes kontu",
         "description": "Noņemt {account_name} un saglabātos autorizācijas datus? Vēsturiskie HA stāvokļi netiks dzēsti.",
@@ -232,6 +255,13 @@
     },
     "error": {
       "account_removal_not_confirmed": "Pirms turpināšanas apstiprini konta noņemšanu.",
+      "ampeco_connection_failed": "Neizdevās savienoties ar operatora lietotnes servisu.",
+      "ampeco_email_invalid": "Ievadi šim operatora kontam izmantoto e-pastu.",
+      "ampeco_google_exchange_failed": "Operators noraidīja šo Google pieteikšanās tokenu. Izveido svaigu piekļuves tokenu tam pašam Google kontam un mēģini vēlreiz.",
+      "ampeco_google_token_invalid": "Ievadi svaigu Google OAuth piekļuves tokenu.",
+      "ampeco_login_link_exchange_failed": "Operators noraidīja šo pieteikšanās saiti vai tai beidzies termiņš. Pieprasi jaunu saiti.",
+      "ampeco_login_link_failed": "Operators nevarēja nosūtīt pieteikšanās saiti uz šo e-pastu.",
+      "ampeco_login_link_invalid": "Ielīmē pilnu pieteikšanās saiti no operatora e-pasta.",
       "elektrum_agreement_link_failed": "Elektrum nepārslēdza kontu uz izvēlēto pēcapmaksas līgumu.",
       "elektrum_agreement_required": "Izvēlies Elektrum līgumu.",
       "elektrum_authorization_failed": "Smart-ID pārbaude izdevās, bet Elektrum nevarēja piesaistīt līgumu šim Drive lietotnes profilam. Ja līgums jau redzams oficiālajā lietotnē, importē tās profila piekļuves tokenu un ierīces ID.",

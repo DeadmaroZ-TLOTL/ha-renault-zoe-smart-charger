@@ -78,9 +78,11 @@ class ElektrumDriveCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._stations: list[dict[str, Any]] = []
         self._stations_loaded_at = 0.0
         self._connector_cache: dict[str, tuple[float, dict[str, Any]]] = {}
+        self._station_detail_cache: dict[str, tuple[float, dict[str, Any]]] = {}
         self._connector_status_since: dict[str, tuple[str, str]] = {}
         self._connector_semaphore = asyncio.Semaphore(2)
         self._direct_blocked_until = 0.0
+        self.catalog_stats: dict[str, int] = {}
 
     @property
     def enabled(self) -> bool:
@@ -238,11 +240,30 @@ class ElektrumDriveCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     async def async_station_catalog(self) -> list[dict[str, Any]]:
         """Return normalized public stations for the dashboard map."""
         await self._async_ensure_stations()
-        return [
+        stations = [
             normalized
             for station in self._stations
             if (normalized := normalize_elektrum_station(station)) is not None
         ]
+        now = monotonic()
+        self._station_detail_cache = {
+            station_id: cached
+            for station_id, cached in self._station_detail_cache.items()
+            if now - cached[0] < CONNECTOR_CACHE_SECONDS
+        }
+        stations = [
+            dict(self._station_detail_cache[str(station["id"])][1])
+            if str(station["id"]) in self._station_detail_cache
+            else station
+            for station in stations
+        ]
+        self.catalog_stats = {
+            "raw_station_count": len(self._stations),
+            "normalized_station_count": len(stations),
+            "rejected_station_count": len(self._stations) - len(stations),
+            "live_detail_station_count": len(self._station_detail_cache),
+        }
+        return stations
 
     async def async_station_detail(
         self,
@@ -250,6 +271,10 @@ class ElektrumDriveCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     ) -> dict[str, Any] | None:
         """Fetch live connector state and current tariff for one station."""
         await self._async_ensure_stations()
+        station_id = str(station_id)
+        cached = self._station_detail_cache.get(station_id)
+        if cached and monotonic() - cached[0] < CONNECTOR_CACHE_SECONDS:
+            return dict(cached[1])
         station = next(
             (
                 item
@@ -319,7 +344,7 @@ class ElektrumDriveCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             if any(status not in {"unknown", ""} for status in statuses)
             else "unknown"
         )
-        return {
+        detail = {
             **normalized,
             "connectors": connectors,
             "availability": availability,
@@ -342,6 +367,8 @@ class ElektrumDriveCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             "detail_source": "elektrum_drive_direct",
             "fetched_at": datetime.now(UTC).isoformat(),
         }
+        self._station_detail_cache[station_id] = (monotonic(), detail)
+        return dict(detail)
 
     async def _async_fetch_connector(self, code: str) -> dict[str, Any]:
         """Fetch one server-rendered Direct connector page."""

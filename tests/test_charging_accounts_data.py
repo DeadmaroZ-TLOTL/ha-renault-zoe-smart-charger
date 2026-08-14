@@ -49,6 +49,40 @@ ELEKTRUM_PAYLOAD = {
 class ChargingAccountsDataTest(unittest.TestCase):
     """Verify exact provider data and cross-account de-duplication."""
 
+    def test_duplicate_operator_accounts_are_merged(self) -> None:
+        records = charging_data.deduplicate_account_records(
+            [
+                {
+                    "id": "original",
+                    "type": "ikrautas",
+                    "email": "User@Example.com",
+                    "name": "IKRAUTAS",
+                },
+                {
+                    "id": "duplicate",
+                    "type": "ikrautas",
+                    "email": "user@example.com",
+                    "ampeco_access_token": "new-access",
+                    "ampeco_refresh_token": "new-refresh",
+                },
+            ]
+        )
+
+        self.assertEqual(1, len(records))
+        self.assertEqual("original", records[0]["id"])
+        self.assertEqual("new-access", records[0]["ampeco_access_token"])
+        self.assertEqual("new-refresh", records[0]["ampeco_refresh_token"])
+
+    def test_different_operator_accounts_remain_separate(self) -> None:
+        records = charging_data.deduplicate_account_records(
+            [
+                {"id": "one", "type": "mobilly", "mobile_phone": "111"},
+                {"id": "two", "type": "mobilly", "mobile_phone": "222"},
+            ]
+        )
+
+        self.assertEqual(["one", "two"], [item["id"] for item in records])
+
     def test_parses_elektrum_units(self) -> None:
         records = charging_data.parse_elektrum_transactions(
             ELEKTRUM_PAYLOAD,
@@ -381,6 +415,37 @@ class ChargingAccountsDataTest(unittest.TestCase):
         self.assertEqual("2026-08-07T16:29:18+00:00", matched[0]["end"])
         self.assertEqual(2.5, matched[0]["total_cost_eur"])
         self.assertEqual("mobilly", matched[0]["price_source"])
+
+    def test_ignitis_app_wins_over_matching_mobilly_row(self) -> None:
+        operator = {
+            "transaction_id": "ignitis-42",
+            "source_account_type": "ignitis_on",
+            "provider": "Ignitis ON",
+            "operator": "Ignitis ON",
+            "start": "2026-08-08T10:00:00+00:00",
+            "end": "2026-08-08T10:30:00+00:00",
+            "energy_kwh": 20.1,
+            "total_cost_eur": 6.03,
+            "price_source": "ignitis_on_app",
+        }
+        reseller = {
+            "transaction_id": "mobilly-99",
+            "source_account_type": "mobilly",
+            "provider": "Ignitis ON via Mobilly",
+            "operator": "Mobilly",
+            "start": "2026-08-08T10:01:00+00:00",
+            "end": "2026-08-08T10:31:00+00:00",
+            "energy_kwh": 20.0,
+            "total_cost_eur": 6.2,
+            "price_source": "mobilly",
+        }
+
+        merged = charging_data.merge_account_transactions([reseller], [operator])
+
+        self.assertEqual(1, len(merged))
+        self.assertEqual("ignitis_on_app", merged[0]["price_source"])
+        self.assertEqual(6.03, merged[0]["total_cost_eur"])
+        self.assertEqual(1, len(merged[0]["alternate_sources"]))
 
 
 if __name__ == "__main__":
