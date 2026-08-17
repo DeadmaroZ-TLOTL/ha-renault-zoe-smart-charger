@@ -177,6 +177,13 @@
           "email": "Konta e-pasts"
         }
       },
+      "ampeco_auth": {
+        "title": "Pieslēgt operatora lietotni",
+        "description": "Izvēlies oficiālās {provider} lietotnes atbalstītu autorizācijas metodi kontam {email}.",
+        "data": {
+          "auth_method": "Autorizācijas metode"
+        }
+      },
       "ampeco_google": {
         "title": "Pieslēgt operatora lietotni ar Google",
         "description": "Ielīmē svaigu Google OAuth piekļuves tokenu {email} kontam, ko izmanto {provider}. Home Assistant to vienreiz apmaina ar to pašu third-party pieteikšanos, ko lieto oficiālā lietotne, un Google tokenu nesaglabā.",

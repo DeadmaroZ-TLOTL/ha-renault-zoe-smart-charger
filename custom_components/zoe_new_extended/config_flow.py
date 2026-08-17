@@ -256,6 +256,7 @@ RENAULT_USERNAME = "renault_username"
 RENAULT_PASSWORD = "renault_password"
 RENAULT_KAMEREON_ACCOUNT_ID = "renault_kamereon_account_id"
 MOBILLY_OTP_CODE = "otp_code"
+AMPECO_AUTH_METHOD = "auth_method"
 
 
 def _normalize_elektrum_personal_code(value):
@@ -746,7 +747,7 @@ class ZoeNewExtendedOptionsFlow(config_entries.OptionsFlow):
             if action == "mobile":
                 return await self.async_step_mobilly_mobile()
             if action == "authenticate":
-                return await self.async_step_ampeco_google()
+                return await self.async_step_ampeco_auth()
             selected = self._selected_account()
             if selected and selected.get(CONF_ACCOUNT_TYPE) == ACCOUNT_TYPE_MOBILLY:
                 return await self.async_step_mobilly_account()
@@ -838,7 +839,7 @@ class ZoeNewExtendedOptionsFlow(config_entries.OptionsFlow):
                 self._update_charging_accounts(accounts)
                 self._selected_account_id = canonical[CONF_ACCOUNT_ID]
                 self._ampeco_account_type = provider.account_type
-                return await self.async_step_ampeco_google()
+                return await self.async_step_ampeco_auth()
 
         return self.async_show_form(
             step_id="ampeco_account",
@@ -868,8 +869,65 @@ class ZoeNewExtendedOptionsFlow(config_entries.OptionsFlow):
             },
         )
 
+    async def async_step_ampeco_auth(self, user_input=None):
+        """Choose an explicit AMPECO authentication method."""
+        account = self._selected_account()
+        if (
+            account is None
+            or account.get(CONF_ACCOUNT_TYPE) not in AMPECO_ACCOUNT_TYPES
+        ):
+            return await self.async_step_charging_accounts()
+        provider = ampeco_provider(account.get(CONF_ACCOUNT_TYPE))
+        is_lv = str(self.hass.config.language).lower().startswith("lv")
+        if user_input is not None:
+            method = str(user_input.get(AMPECO_AUTH_METHOD) or "")
+            if method == "email_link":
+                self._ampeco_login_link_sent = False
+                return await self.async_step_ampeco_login_link()
+            if method == "google_token":
+                return await self.async_step_ampeco_google()
+
+        auth_options = [
+            {
+                "value": "email_link",
+                "label": (
+                    "Vienreizēja e-pasta pieteikšanās saite"
+                    if is_lv
+                    else "One-time email sign-in link"
+                ),
+            }
+        ]
+        auth_options.append(
+            {
+                "value": "google_token",
+                "label": (
+                    "Google OAuth piekļuves tokens"
+                    if is_lv
+                    else "Google OAuth access token"
+                ),
+            }
+        )
+
+        return self.async_show_form(
+            step_id="ampeco_auth",
+            data_schema=vol.Schema(
+                {
+                    vol.Required(AMPECO_AUTH_METHOD): SelectSelector(
+                        SelectSelectorConfig(
+                            options=auth_options,
+                            mode=SelectSelectorMode.DROPDOWN,
+                        )
+                    )
+                }
+            ),
+            description_placeholders={
+                "provider": provider.display_name,
+                "email": str(account.get(CONF_AMPECO_EMAIL) or ""),
+            },
+        )
+
     async def async_step_ampeco_google(self, user_input=None):
-        """Exchange a one-time Google token using the official app flow."""
+        """Exchange a one-time Google access token using the official app flow."""
         account = self._selected_account()
         if (
             account is None

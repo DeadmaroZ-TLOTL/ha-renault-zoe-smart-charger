@@ -83,6 +83,39 @@ class ChargingAccountsDataTest(unittest.TestCase):
 
         self.assertEqual(["one", "two"], [item["id"] for item in records])
 
+    def test_parses_nordpool_archive_with_vat(self) -> None:
+        prices = charging_data.parse_nordpool_day_ahead_prices(
+            {
+                "currency": "EUR",
+                "multiAreaEntries": [
+                    {
+                        "deliveryStart": "2026-08-16T21:00:00Z",
+                        "deliveryEnd": "2026-08-16T21:15:00Z",
+                        "entryPerArea": {"LV": 93.03},
+                    }
+                ],
+            },
+            vat_percent=21,
+        )
+
+        self.assertEqual(1, len(prices))
+        self.assertEqual(11.257, round(prices[0]["cents_per_kwh"], 3))
+        self.assertEqual(
+            "home_nord_pool_archive",
+            prices[0]["attributes"]["price_source"],
+        )
+        self.assertEqual(
+            datetime(2026, 8, 16, 21, 0, tzinfo=UTC),
+            prices[0]["time"],
+        )
+
+    def test_nordpool_archive_rejects_non_eur_payload(self) -> None:
+        with self.assertRaisesRegex(ValueError, "not EUR"):
+            charging_data.parse_nordpool_day_ahead_prices(
+                {"currency": "SEK", "multiAreaEntries": []},
+                vat_percent=21,
+            )
+
     def test_parses_elektrum_units(self) -> None:
         records = charging_data.parse_elektrum_transactions(
             ELEKTRUM_PAYLOAD,
@@ -308,6 +341,72 @@ class ChargingAccountsDataTest(unittest.TestCase):
             places=3,
         )
         self.assertEqual(2, matched[0]["provider_split_session_count"])
+
+    def test_adjacent_ikrautas_payments_keep_their_own_renault_fragments(self) -> None:
+        sessions = [
+            {
+                "start": "2026-08-10T16:35:08+00:00",
+                "end": "2026-08-10T16:38:51+00:00",
+                "start_soc": 16,
+                "end_soc": 18,
+                "duration_min": 4,
+                "estimated_battery_energy_kwh": 1.04,
+            },
+            {
+                "start": "2026-08-10T17:06:18+00:00",
+                "end": "2026-08-10T19:35:58+00:00",
+                "start_soc": 18,
+                "end_soc": 100,
+                "duration_min": 150,
+                "estimated_battery_energy_kwh": 42.64,
+            },
+        ]
+        combined = charging_data.combine_charge_fragments(sessions)
+        self.assertEqual(1, len(combined))
+        transactions = [
+            {
+                "transaction_id": "103090",
+                "source_account_type": "ikrautas",
+                "provider": "IKRAUTAS",
+                "operator": "IKRAUTAS",
+                "station_id": "21",
+                "station_name": "Europa Royale Druskininkai",
+                "connector_code": "5003",
+                "start": "2026-08-10T16:34:58+00:00",
+                "end": "2026-08-10T16:38:58+00:00",
+                "duration_minutes": 4,
+                "energy_kwh": 1.26,
+                "total_cost_eur": 0.87,
+                "price_source": "ikrautas_app",
+            },
+            {
+                "transaction_id": "103093",
+                "source_account_type": "ikrautas",
+                "provider": "IKRAUTAS",
+                "operator": "IKRAUTAS",
+                "station_id": "21",
+                "station_name": "Europa Royale Druskininkai",
+                "connector_code": "5003",
+                "start": "2026-08-10T17:06:10+00:00",
+                "end": "2026-08-10T19:36:05+00:00",
+                "duration_minutes": 150,
+                "energy_kwh": 46.46,
+                "total_cost_eur": 21.21,
+                "price_source": "ikrautas_app",
+            },
+        ]
+
+        matched = charging_data.apply_provider_transactions(combined, transactions)
+        matched = charging_data.combine_charge_fragments(matched)
+
+        self.assertEqual(2, len(matched))
+        self.assertEqual((18.0, 100.0), (matched[0]["start_soc"], matched[0]["end_soc"]))
+        self.assertEqual(46.46, matched[0]["grid_energy_kwh"])
+        self.assertEqual(21.21, matched[0]["total_cost_eur"])
+        self.assertEqual("5003", matched[0]["connector_code"])
+        self.assertEqual((16.0, 18.0), (matched[1]["start_soc"], matched[1]["end_soc"]))
+        self.assertEqual(1.26, matched[1]["grid_energy_kwh"])
+        self.assertEqual(0.87, matched[1]["total_cost_eur"])
 
     def test_stop_restart_rows_are_one_physical_charge(self) -> None:
         sessions = [

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable, Mapping
 from datetime import UTC, datetime, timedelta
+import math
 import re
 import unicodedata
 from typing import Any
@@ -18,6 +19,54 @@ DIRECT_OPERATOR_SOURCES = frozenset(
 )
 _ELEKTRUM_MATCH_SECONDS = 20 * 60
 _CHARGE_FRAGMENT_GAP_SECONDS = 30 * 60
+
+
+def parse_nordpool_day_ahead_prices(
+    payload: Mapping[str, Any],
+    *,
+    vat_percent: float,
+    area: str = "LV",
+) -> list[dict[str, Any]]:
+    """Normalize official Nord Pool archive prices to VAT-inclusive c/kWh."""
+    if str(payload.get("currency") or "EUR").upper() != "EUR":
+        raise ValueError("Nord Pool archive currency is not EUR")
+
+    multiplier = (1.0 + max(0.0, float(vat_percent)) / 100.0) / 10.0
+    result: list[dict[str, Any]] = []
+    entries = payload.get("multiAreaEntries")
+    if not isinstance(entries, list):
+        return result
+
+    for entry in entries:
+        if not isinstance(entry, Mapping):
+            continue
+        area_values = entry.get("entryPerArea")
+        if not isinstance(area_values, Mapping):
+            continue
+        raw_price = _as_float(area_values.get(area))
+        start = _parse_datetime(entry.get("deliveryStart"))
+        end = _parse_datetime(entry.get("deliveryEnd"))
+        if (
+            raw_price is None
+            or not math.isfinite(raw_price)
+            or start is None
+            or end is None
+            or end <= start
+        ):
+            continue
+        result.append(
+            {
+                "time": start,
+                "end": end,
+                "cents_per_kwh": round(raw_price * multiplier, 6),
+                "attributes": {
+                    "price_source": "home_nord_pool_archive",
+                    "archive_source": "Nord Pool DayAheadPrices",
+                    "spot_price_includes_vat": True,
+                },
+            }
+        )
+    return sorted(result, key=lambda item: item["time"])
 
 
 def charging_account_identity(account: Mapping[str, Any]) -> tuple[str, ...]:
@@ -323,11 +372,11 @@ def apply_provider_transactions(
     Keeping one row prevents a single paid charge from looking like multiple
     sessions and avoids rounding the provider total across fragments.
     """
-    result = [dict(session) for session in sessions]
     provider_records = sorted(
         (dict(item) for item in transactions),
         key=lambda item: item.get("end") or "",
     )
+    result = _expand_multi_transaction_sessions(sessions, provider_records)
     for transaction in provider_records:
         candidates = [
             index
@@ -349,6 +398,80 @@ def apply_provider_transactions(
         key=lambda item: item.get("end") or item.get("start") or "",
         reverse=True,
     )
+
+
+def _expand_multi_transaction_sessions(
+    sessions: Iterable[Mapping[str, Any]],
+    transactions: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Restore Renault fragments when one combined row spans several payments."""
+    result: list[dict[str, Any]] = []
+    for raw_session in sessions:
+        session = dict(raw_session)
+        fragments = session.get("renault_session_fragments")
+        matching_transactions = sum(
+            1 for transaction in transactions if _interval_matches(session, transaction)
+        )
+        if (
+            matching_transactions <= 1
+            or not isinstance(fragments, list)
+            or len(fragments) <= 1
+        ):
+            result.append(session)
+            continue
+
+        normalized_fragments = [
+            dict(fragment) for fragment in fragments if isinstance(fragment, Mapping)
+        ]
+        if len(normalized_fragments) <= 1:
+            result.append(session)
+            continue
+
+        weights = [_fragment_weight(fragment) for fragment in normalized_fragments]
+        total_weight = sum(weights) or float(len(normalized_fragments))
+        for fragment, weight in zip(normalized_fragments, weights, strict=True):
+            expanded = dict(session)
+            expanded.update(fragment)
+            start = _parse_datetime(fragment.get("start"))
+            end = _parse_datetime(fragment.get("end"))
+            if start is not None and end is not None:
+                expanded["duration_min"] = max(
+                    0, round((end - start).total_seconds() / 60.0)
+                )
+            start_soc = _as_float(fragment.get("start_soc"))
+            end_soc = _as_float(fragment.get("end_soc"))
+            if start_soc is not None and end_soc is not None:
+                expanded["soc_gained"] = round(max(0.0, end_soc - start_soc), 1)
+            fraction = weight / total_weight
+            for field in (
+                "estimated_battery_energy_kwh",
+                "energy_recovered_kwh",
+                "grid_energy_kwh",
+                "spot_cost_eur",
+                "delivery_cost_eur",
+                "total_cost_eur",
+            ):
+                value = _as_float(session.get(field))
+                if value is not None:
+                    expanded[field] = round(value * fraction, 4)
+            expanded["combined_charge"] = False
+            expanded["combined_fragment_count"] = 1
+            expanded["renault_session_fragments"] = [fragment]
+            result.append(expanded)
+    return result
+
+
+def _fragment_weight(fragment: Mapping[str, Any]) -> float:
+    """Prefer SOC gain, then elapsed time, when allocating combined estimates."""
+    start_soc = _as_float(fragment.get("start_soc"))
+    end_soc = _as_float(fragment.get("end_soc"))
+    if start_soc is not None and end_soc is not None and end_soc > start_soc:
+        return end_soc - start_soc
+    start = _parse_datetime(fragment.get("start"))
+    end = _parse_datetime(fragment.get("end"))
+    if start is not None and end is not None and end > start:
+        return (end - start).total_seconds()
+    return 1.0
 
 
 def combine_charge_fragments(
@@ -392,6 +515,15 @@ def _fragments_match(
     *,
     max_gap_seconds: int,
 ) -> bool:
+    earlier_transaction = earlier.get("provider_transaction_id")
+    later_transaction = later.get("provider_transaction_id")
+    if earlier_transaction or later_transaction:
+        return bool(
+            earlier_transaction
+            and later_transaction
+            and earlier_transaction == later_transaction
+        )
+
     earlier_end = _parse_datetime(earlier.get("end"))
     later_start = _parse_datetime(later.get("start"))
     if earlier_end is None or later_start is None:
@@ -612,10 +744,15 @@ def _combine_provider_sessions(
             "price_source": transaction.get("price_source"),
             "price_entity": "sensor.renault_zoe_new_charging_accounts",
             "price_coverage_percent": 100.0,
+            "source_page": transaction.get("source_page"),
+            "station_id": transaction.get("station_id"),
             "station_name": transaction.get("station_name")
             or transaction.get("provider"),
             "station_address": transaction.get("station_address"),
+            "connector_code": transaction.get("connector_code"),
             "provider": transaction.get("provider"),
+            "operator": transaction.get("operator"),
+            "receipt_url": transaction.get("receipt_url"),
             "provider_transaction_id": transaction.get("transaction_id"),
             "provider_account_id": transaction.get("account_id"),
             "provider_account_name": transaction.get("account_name"),

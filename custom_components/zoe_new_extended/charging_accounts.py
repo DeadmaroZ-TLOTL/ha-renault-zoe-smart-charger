@@ -29,7 +29,12 @@ from .ampeco_auth import (
     ampeco_token_form,
     ampeco_token_values,
 )
-from .ampeco_history import ampeco_history_page, parse_ampeco_transactions
+from .ampeco_history import (
+    ampeco_history_location_ids,
+    ampeco_history_page,
+    ampeco_location_lookup,
+    parse_ampeco_transactions,
+)
 from .charging_accounts_data import (
     deduplicate_account_records,
     elektrum_month_keys,
@@ -70,6 +75,7 @@ from .mobilly_auth import (
     mobilly_token_credentials,
 )
 from .mobilly_data import (
+    merge_cached_app_history,
     merge_app_transactions,
     merge_transactions,
     parse_app_charge_sessions,
@@ -165,6 +171,13 @@ class ChargingAccountsCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                         "transaction_count": len(stale_transactions),
                     }
                 )
+                if isinstance(result, PermissionError):
+                    summary.update(
+                        {
+                            "auth_state": "reauthentication_required",
+                            "reauthentication_required": True,
+                        }
+                    )
                 _LOGGER.warning(
                     "Unable to refresh %s charging account %s: %s",
                     account.get(CONF_ACCOUNT_TYPE),
@@ -173,10 +186,27 @@ class ChargingAccountsCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 )
             else:
                 transactions = result.get("transactions", [])
+                account_id = str(account.get(CONF_ACCOUNT_ID) or "")
+                stale_transactions = self._last_transactions_by_account.get(
+                    account_id, []
+                )
+                if (
+                    stale_transactions
+                    and result.get("status") in {"partial", "action_required"}
+                ):
+                    if account.get(CONF_ACCOUNT_TYPE) == ACCOUNT_TYPE_MOBILLY:
+                        transactions = merge_cached_app_history(
+                            transactions,
+                            stale_transactions,
+                        )
+                    else:
+                        transactions = merge_account_transactions(
+                            transactions,
+                            stale_transactions,
+                        )
+                    result["history_stale"] = True
                 transaction_groups.append(transactions)
-                self._last_transactions_by_account[
-                    str(account.get(CONF_ACCOUNT_ID) or "")
-                ] = transactions
+                self._last_transactions_by_account[account_id] = transactions
                 cache_changed = True
                 summary.update(
                     {
@@ -191,6 +221,8 @@ class ChargingAccountsCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     "profile_type",
                     "agreement_linked",
                     "agreement_count",
+                    "history_stale",
+                    "reauthentication_required",
                 ):
                     if key in result:
                         summary[key] = result[key]
@@ -331,7 +363,14 @@ class ChargingAccountsCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         )
         return {
             "transactions": transactions,
-            "auth_state": "authenticated",
+            "auth_state": (
+                "reauthentication_required"
+                if app_error
+                else "authenticated"
+                if access_token
+                else "web_only"
+            ),
+            "reauthentication_required": bool(app_error),
             "status": "partial" if app_error else "ok",
             "error": app_error,
             "source_counts": source_counts,
@@ -706,6 +745,12 @@ class ChargingAccountsCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             account_name=account_name,
             account_type=provider.account_type,
             provider_name=provider.display_name,
+            locations=await self._async_ampeco_history_locations(
+                provider,
+                token,
+                account,
+                raw_records,
+            ),
         )
         transactions = merge_account_transactions(transactions)
         return {
@@ -718,6 +763,44 @@ class ChargingAccountsCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             },
         }
 
+    async def _async_ampeco_history_locations(
+        self,
+        provider,
+        token: str,
+        account: dict[str, Any],
+        records: list[dict[str, Any]],
+    ) -> dict[str, dict[str, Any]]:
+        """Resolve the small set of locations referenced by charge history."""
+        location_ids = ampeco_history_location_ids(records)
+        if not location_ids:
+            return {}
+        try:
+            payload, status, _ = await self._async_ampeco_post(
+                provider,
+                "locations",
+                token,
+                account,
+                params={"operatorCountry": provider.operator_country},
+                json_data={
+                    "locations": {location_id: "" for location_id in location_ids}
+                },
+            )
+        except (ClientError, PermissionError, RuntimeError, TimeoutError) as err:
+            _LOGGER.warning(
+                "Unable to resolve %s charging-history locations: %s",
+                provider.display_name,
+                _safe_error(err),
+            )
+            return {}
+        if status >= 400:
+            _LOGGER.warning(
+                "Unable to resolve %s charging-history locations (HTTP %s)",
+                provider.display_name,
+                status,
+            )
+            return {}
+        return ampeco_location_lookup(payload)
+
     async def _async_ampeco_get(
         self,
         provider,
@@ -728,11 +811,54 @@ class ChargingAccountsCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         params: dict[str, str] | None = None,
     ) -> tuple[Any, int, str]:
         """Run an authenticated AMPECO request and refresh once on expiry."""
+        return await self._async_ampeco_call(
+            provider,
+            path,
+            token,
+            account,
+            params=params,
+        )
+
+    async def _async_ampeco_post(
+        self,
+        provider,
+        path: str,
+        token: str,
+        account: dict[str, Any],
+        *,
+        params: dict[str, str] | None = None,
+        json_data: dict[str, Any] | None = None,
+    ) -> tuple[Any, int, str]:
+        """Run an authenticated AMPECO POST with the same refresh behavior."""
+        return await self._async_ampeco_call(
+            provider,
+            path,
+            token,
+            account,
+            method="POST",
+            params=params,
+            json_data=json_data,
+        )
+
+    async def _async_ampeco_call(
+        self,
+        provider,
+        path: str,
+        token: str,
+        account: dict[str, Any],
+        *,
+        method: str = "GET",
+        params: dict[str, str] | None = None,
+        json_data: dict[str, Any] | None = None,
+    ) -> tuple[Any, int, str]:
+        """Run an authenticated AMPECO request and refresh once on expiry."""
         payload, status = await self._async_ampeco_request(
             provider,
             path,
             token,
+            method=method,
             params=params,
+            json_data=json_data,
         )
         if status != 401:
             return payload, status, token
@@ -778,7 +904,9 @@ class ChargingAccountsCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             provider,
             path,
             refreshed_token,
+            method=method,
             params=params,
+            json_data=json_data,
         )
         return payload, status, refreshed_token
 
@@ -788,13 +916,17 @@ class ChargingAccountsCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         path: str,
         token: str,
         *,
+        method: str = "GET",
         params: dict[str, str] | None = None,
+        json_data: dict[str, Any] | None = None,
     ) -> tuple[Any, int]:
         session = async_get_clientsession(self.hass)
-        async with session.get(
+        async with session.request(
+            method,
             f"https://{provider.host}/api/v1/app/{path.lstrip('/')}",
             params=params,
             headers=ampeco_app_headers(provider, token),
+            json=json_data,
             timeout=REQUEST_TIMEOUT,
         ) as response:
             try:

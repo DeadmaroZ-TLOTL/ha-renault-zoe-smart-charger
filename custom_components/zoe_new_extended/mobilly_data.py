@@ -252,6 +252,42 @@ def merge_transactions(
     return sorted(result, key=lambda item: item.get("end") or "", reverse=True)
 
 
+def merge_cached_app_history(
+    fresh: Iterable[Mapping[str, Any]],
+    cached: Iterable[Mapping[str, Any]],
+) -> list[dict[str, Any]]:
+    """Keep rich app fields during a partial web-only Mobilly refresh.
+
+    Fresh web statement prices remain authoritative. Cached app rows only
+    backfill missing session data, so commissions and costs cannot accumulate
+    again on every coordinator refresh.
+    """
+    result = [dict(item) for item in fresh]
+    cached_records = [dict(item) for item in cached]
+    consumed: set[int] = set()
+    for record in result:
+        candidates = [
+            (index, candidate)
+            for index, candidate in enumerate(cached_records)
+            if index not in consumed and _cached_records_match(record, candidate)
+        ]
+        if not candidates:
+            continue
+        index, cached_record = min(
+            candidates,
+            key=lambda pair: _app_record_distance(record, pair[1]),
+        )
+        consumed.add(index)
+        _backfill_cached_app_fields(record, cached_record)
+
+    result.extend(
+        record
+        for index, record in enumerate(cached_records)
+        if index not in consumed
+    )
+    return sorted(result, key=lambda item: item.get("end") or "", reverse=True)
+
+
 def is_elektrum_station(record: Mapping[str, Any]) -> bool:
     """Return whether a Mobilly record belongs to Elektrum Drive."""
     return any(
@@ -800,6 +836,79 @@ def _mobilly_records_match(
         and second_end
         and abs((first_end - second_end).total_seconds()) <= 20 * 60
     )
+
+
+def _cached_records_match(
+    fresh: Mapping[str, Any], cached: Mapping[str, Any]
+) -> bool:
+    fresh_account = str(fresh.get("account_id") or "")
+    cached_account = str(cached.get("account_id") or "")
+    if fresh_account and cached_account and fresh_account != cached_account:
+        return False
+
+    fresh_id = str(fresh.get("transaction_id") or "")
+    cached_id = str(cached.get("transaction_id") or "")
+    if fresh_id and cached_id and fresh_id == cached_id:
+        return True
+
+    first_start = _parse_app_timestamp(fresh.get("start"))
+    second_start = _parse_app_timestamp(cached.get("start"))
+    if first_start is None or second_start is None:
+        return False
+    if abs((first_start - second_start).total_seconds()) > 10 * 60:
+        return False
+
+    first_provider = _normalize(fresh.get("provider"))
+    second_provider = _normalize(cached.get("provider"))
+    if first_provider and second_provider and not (
+        first_provider == second_provider
+        or first_provider in second_provider
+        or second_provider in first_provider
+    ):
+        return False
+
+    if fresh.get("end_inferred") or cached.get("end_inferred"):
+        return True
+    first_end = _parse_app_timestamp(fresh.get("end"))
+    second_end = _parse_app_timestamp(cached.get("end"))
+    return bool(
+        first_end
+        and second_end
+        and abs((first_end - second_end).total_seconds()) <= 20 * 60
+    )
+
+
+def _backfill_cached_app_fields(
+    fresh: dict[str, Any], cached: Mapping[str, Any]
+) -> None:
+    source_pages = set(fresh.get("source_pages") or [fresh.get("source_page")])
+    source_pages.update(cached.get("source_pages") or [cached.get("source_page")])
+    fresh["source_pages"] = sorted(item for item in source_pages if item)
+
+    if fresh.get("end_inferred") and not cached.get("end_inferred"):
+        fresh["start"] = cached.get("start") or fresh.get("start")
+        fresh["end"] = cached.get("end") or fresh.get("end")
+        fresh["duration_minutes"] = cached.get("duration_minutes")
+        fresh["end_inferred"] = False
+
+    for key in (
+        "session_id",
+        "station_name",
+        "station_address",
+        "connector_code",
+        "transaction_status",
+        "charge_type",
+        "service_code",
+        "energy_kwh",
+    ):
+        if fresh.get(key) in (None, "") and cached.get(key) not in (None, ""):
+            fresh[key] = cached[key]
+
+    energy = _as_float(fresh.get("energy_kwh"))
+    total_cost = _as_float(fresh.get("total_cost_eur"))
+    fresh["provider_reported_energy"] = energy is not None and energy > 0
+    if total_cost is not None and energy is not None and energy > 0:
+        fresh["total_rate_c_per_kwh"] = round(total_cost / energy * 100.0, 3)
 
 
 def _operator_values(value: Any, field_name: str | None = None) -> list[str]:

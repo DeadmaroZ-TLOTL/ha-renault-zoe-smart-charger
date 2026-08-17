@@ -6,14 +6,17 @@ import time
 from bisect import bisect_right
 from datetime import datetime, timedelta, timezone
 from functools import partial
+from zoneinfo import ZoneInfo
 
 from custom_components.pyscript.function import Function
 from homeassistant.components.recorder import get_instance
 from homeassistant.components.recorder.history import get_significant_states
+from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from custom_components.zoe_new_extended.charging_accounts_data import (
     apply_provider_transactions,
     combine_charge_fragments,
+    parse_nordpool_day_ahead_prices,
 )
 
 
@@ -26,17 +29,27 @@ DEFAULT_ENERGY_VAT_PERCENT = 21.0
 DEFAULT_FALLBACK_CONSUMPTION_KWH_PER_100KM = 17.5
 VISIBLE_HISTORY_DAYS = 31
 LEARNING_HISTORY_DAYS = 180
-MAX_EXPOSED_HISTORY_SESSIONS = 50
+MAX_EXPOSED_HISTORY_SESSIONS = 200
 UPDATE_INTERVAL_MINUTES = 15
 EFFECTIVE_PRICE_ENTITY = "sensor.renault_zoe_new_effective_charging_price"
 DYNAMIC_PRICE_ENTITY = "sensor.renault_zoe_new_nord_pool_price"
 LEGACY_PRICE_ENTITY = "sensor.nordpool_kwh_lv_eur_3_10_021"
 COST_SETTINGS_ENTITY = "sensor.renault_zoe_new_cost_settings"
 CHARGING_ACCOUNTS_ENTITY = "sensor.renault_zoe_new_charging_accounts"
-EXACT_PROVIDER_PRICE_SOURCES = {"elektrum_drive_app", "mobilly"}
-PYSCRIPT_REVISION = "combined_charge_fragments_v2"
+NORDPOOL_ARCHIVE_API_URL = (
+    "https://dataportal-api.nordpoolgroup.com/api/DayAheadPrices"
+)
+NORDPOOL_ARCHIVE_AREA = "LV"
+EXACT_PROVIDER_PRICE_SOURCES = {
+    "elektrum_drive_app",
+    "mobilly",
+    "ignitis_on_app",
+    "ikrautas_app",
+}
+PYSCRIPT_REVISION = "operator_transactions_v5"
 
 _refresh_in_progress = False
+_nordpool_archive_cache = {}
 
 
 def _attributes(result):
@@ -279,6 +292,130 @@ def _weighted_price(start, end, prices, price_times):
     )
 
 
+def _archive_query_dates(
+    sessions,
+    effective_prices,
+    effective_price_times,
+    legacy_prices,
+    legacy_price_times,
+):
+    """Return Nord Pool delivery dates needed for sessions missing history."""
+    local_zone = ZoneInfo(Function.hass.config.time_zone or "Europe/Riga")
+    local_dates = set()
+    for session in sessions:
+        start = _parse_datetime(session.get("start"))
+        end = _parse_datetime(session.get("end"))
+        if start is None or end is None or end <= start:
+            continue
+        duration_seconds = (end - start).total_seconds()
+        effective_rate, effective_covered, _ = _weighted_price(
+            start,
+            end,
+            effective_prices,
+            effective_price_times,
+        )
+        legacy_rate, legacy_covered, _ = _weighted_price(
+            start,
+            end,
+            legacy_prices,
+            legacy_price_times,
+        )
+        if (
+            effective_rate is not None
+            and effective_covered >= duration_seconds * 0.8
+        ) or (
+            legacy_rate is not None
+            and legacy_covered >= duration_seconds * 0.8
+        ):
+            continue
+
+        first_date = start.astimezone(local_zone).date()
+        last_date = (end - timedelta(microseconds=1)).astimezone(local_zone).date()
+        cursor = first_date
+        while cursor <= last_date:
+            local_dates.add(cursor)
+            cursor += timedelta(days=1)
+
+    query_dates = set()
+    for local_date in local_dates:
+        # The API's delivery date follows CET/CEST. Latvia's first local hour
+        # is therefore contained in the preceding API delivery date.
+        query_dates.add(local_date - timedelta(days=1))
+        query_dates.add(local_date)
+    return sorted(query_dates)
+
+
+async def _get_nordpool_archive_prices(
+    sessions,
+    effective_prices,
+    effective_price_times,
+    legacy_prices,
+    legacy_price_times,
+    settings,
+):
+    """Fetch only missing historical slots from the official Nord Pool API."""
+    dates = _archive_query_dates(
+        sessions,
+        effective_prices,
+        effective_price_times,
+        legacy_prices,
+        legacy_price_times,
+    )
+    if not dates:
+        return []
+
+    client = async_get_clientsession(Function.hass)
+    vat_percent = settings["vat_percent"]
+
+    async def fetch_date(delivery_date):
+        cache_key = (
+            delivery_date.isoformat()
+            + "|"
+            + str(round(vat_percent, 4))
+        )
+        cached = _nordpool_archive_cache.get(cache_key)
+        if cached is not None:
+            return cached
+        try:
+            async with client.get(
+                NORDPOOL_ARCHIVE_API_URL,
+                params={
+                    "currency": "EUR",
+                    "market": "DayAhead",
+                    "deliveryArea": NORDPOOL_ARCHIVE_AREA,
+                    "date": delivery_date.isoformat(),
+                },
+                timeout=20,
+            ) as response:
+                response.raise_for_status()
+                payload = await response.json(content_type=None)
+            parsed = parse_nordpool_day_ahead_prices(
+                payload,
+                vat_percent=vat_percent,
+                area=NORDPOOL_ARCHIVE_AREA,
+            )
+            _nordpool_archive_cache[cache_key] = parsed
+            return parsed
+        except Exception as exc:
+            log.warning(
+                "Nord Pool archive update failed for "
+                + delivery_date.isoformat()
+                + ": "
+                + str(exc)[:180]
+            )
+            return []
+
+    result = []
+    for delivery_date in dates:
+        day_prices = await fetch_date(delivery_date)
+        result.extend(day_prices)
+
+    unique = {}
+    for item in result:
+        unique[item["time"]] = item
+    return sorted(unique.values(), key=lambda item: item["time"])
+
+
 def _add_session_cost(
     session,
     effective_prices,
@@ -401,7 +538,7 @@ def _add_session_cost(
         )
         return result
 
-    legacy_rate, legacy_covered, _legacy_attrs = _weighted_price(
+    legacy_rate, legacy_covered, legacy_attrs = _weighted_price(
         start,
         end,
         legacy_prices,
@@ -414,6 +551,7 @@ def _add_session_cost(
     delivery_rate = settings["delivery_price_incl_vat_eur_per_kwh"]
     delivery_cost = grid_energy * delivery_rate
     total_cost = spot_cost + delivery_cost
+    legacy_source = legacy_attrs.get("price_source") or "legacy_nord_pool"
     result.update(
         {
             "grid_energy_kwh": round(grid_energy, 2),
@@ -428,8 +566,15 @@ def _add_session_cost(
                 min(1.0, legacy_covered / duration_seconds) * 100.0, 1
             ),
             "energy_source": energy_source,
-            "price_source": "legacy_nord_pool",
-            "price_entity": _resolve_nordpool_price_entity(),
+            "price_source": legacy_source,
+            "price_entity": (
+                NORDPOOL_ARCHIVE_API_URL
+                if legacy_source == "home_nord_pool_archive"
+                else _resolve_nordpool_price_entity()
+            ),
+            "price_from_official_archive": (
+                legacy_source == "home_nord_pool_archive"
+            ),
         }
     )
     return result
@@ -873,6 +1018,25 @@ async def zoe_charge_sessions_update():
             )
         except Exception as exc:
             log.warning("Zoe Nord Pool price history update failed: " + str(exc)[:240])
+        archive_price_history = await _get_nordpool_archive_prices(
+            meaningful_sessions,
+            effective_price_history,
+            [item["time"] for item in effective_price_history],
+            legacy_price_history,
+            [item["time"] for item in legacy_price_history],
+            settings,
+        )
+        if archive_price_history:
+            # Recorder values win on overlap; the archive only fills gaps.
+            merged_legacy_prices = {
+                item["time"]: item for item in archive_price_history
+            }
+            for item in legacy_price_history:
+                merged_legacy_prices[item["time"]] = item
+            legacy_price_history = sorted(
+                merged_legacy_prices.values(),
+                key=lambda item: item["time"],
+            )
         phase_durations["price_history"] = round(
             time.monotonic() - phase_started, 3
         )
@@ -900,12 +1064,12 @@ async def zoe_charge_sessions_update():
             meaningful_sessions,
             settings,
         )
-        meaningful_sessions = combine_charge_fragments(meaningful_sessions)
         provider_transactions = _provider_transactions()
         meaningful_sessions = apply_provider_transactions(
             meaningful_sessions,
             provider_transactions,
         )
+        meaningful_sessions = combine_charge_fragments(meaningful_sessions)
         visible_sessions = [
             item
             for item in meaningful_sessions
@@ -922,6 +1086,7 @@ async def zoe_charge_sessions_update():
             "pyscript_revision": PYSCRIPT_REVISION,
             "stored_elektrum_session_count": len(stored_elektrum),
             "provider_transaction_count": len(provider_transactions),
+            "nordpool_archive_slot_count": len(archive_price_history),
             "charging_accounts_entity": CHARGING_ACCOUNTS_ENTITY,
             "last_api_update": updated,
             "period_days": VISIBLE_HISTORY_DAYS,
@@ -949,7 +1114,7 @@ async def zoe_charge_sessions_update():
             "fallback_consumption_kwh_per_100km": settings[
                 "fallback_consumption_kwh_per_100km"
             ],
-            "cost_note": "Grid energy divides Renault battery-side energy by charging efficiency, then applies the recorded all-in Elektrum Drive or home Nord Pool price",
+            "cost_note": "Grid energy divides Renault battery-side energy by charging efficiency, then applies an exact operator transaction, recorded home price, or official Nord Pool archive price",
             "profile_phase_durations_s": dict(phase_durations),
         }
 

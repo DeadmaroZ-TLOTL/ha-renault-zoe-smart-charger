@@ -202,6 +202,55 @@ class MobillyDataTest(unittest.TestCase):
         self.assertEqual(13.17, merged[0]["energy_kwh"])
         self.assertEqual(2.5, merged[0]["total_cost_eur"])
 
+    def test_partial_refresh_keeps_app_energy_without_doubling_commission(self) -> None:
+        fresh = {
+            "account_id": "mobilly-1",
+            "transaction_id": "web-42",
+            "source_page": "payments_mobile",
+            "source_pages": ["payments", "payments_mobile"],
+            "provider": "Eleport SIA",
+            "start": "2026-08-07T16:12:00+00:00",
+            "end": "2026-08-07T16:29:00+00:00",
+            "energy_kwh": None,
+            "cost_eur": 5.19,
+            "commission_cost_eur": 0.2,
+            "total_cost_eur": 5.39,
+        }
+        cached = {
+            "account_id": "mobilly-1",
+            "transaction_id": "app-42",
+            "session_id": "session-42",
+            "source_page": "mobilly_app_charge_sessions",
+            "provider": "Eleport SIA",
+            "station_name": "t/c Saga",
+            "connector_code": "LV*ELE*E42",
+            "start": "2026-08-07T16:12:00+00:00",
+            "end": "2026-08-07T16:29:00+00:00",
+            "energy_kwh": 11.8,
+            "cost_eur": 5.19,
+            "commission_cost_eur": 0.0,
+            "total_cost_eur": 5.19,
+        }
+        older = {
+            **cached,
+            "transaction_id": "app-older",
+            "start": "2026-07-10T12:00:00+00:00",
+            "end": "2026-07-10T12:20:00+00:00",
+        }
+
+        result = mobilly_data.merge_cached_app_history(
+            [fresh],
+            [cached, older],
+        )
+
+        self.assertEqual(2, len(result))
+        merged = next(item for item in result if item["transaction_id"] == "web-42")
+        self.assertEqual(11.8, merged["energy_kwh"])
+        self.assertEqual("t/c Saga", merged["station_name"])
+        self.assertEqual(0.2, merged["commission_cost_eur"])
+        self.assertEqual(5.39, merged["total_cost_eur"])
+        self.assertEqual(45.678, merged["total_rate_c_per_kwh"])
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -91,6 +91,62 @@ class AmpecoHistoryTest(unittest.TestCase):
         self.assertEqual(7.2, records[0]["energy_kwh"])
         self.assertEqual(2.45, records[0]["cost_eur"])
 
+    def test_normalizes_live_ampeco_session_shape_and_location(self) -> None:
+        raw = {
+            "address": "Vilniaus Ave 7, Druskininkai 66119, Lithuania",
+            "evse": {"identifier": "5003", "label": None},
+            "note": "Vilniaus Ave 7, Druskininkai 66119, Lithuania",
+            "receiptUrl": "https://example.test/receipt/103093",
+            "session": {
+                "id": "103093",
+                "startedAt": "2026-08-10T17:06:10+00:00",
+                "stoppedAt": "2026-08-10T19:36:05+00:00",
+                "energy": 46460,
+                "totalAmount": 21.21,
+                "duration": 8995,
+                "totalDuration": 8995,
+                "locationId": 21,
+                "evseId": "5003",
+                "status": "finished",
+                "currency": {"code": "EUR"},
+            },
+            "type": "public",
+        }
+        locations = ampeco_history.ampeco_location_lookup(
+            {
+                "locations": [
+                    {
+                        "id": 21,
+                        "name": "Druskininkai charging site",
+                        "address": "Vilniaus Ave 7, Druskininkai",
+                    }
+                ]
+            }
+        )
+
+        records = ampeco_history.parse_ampeco_transactions(
+            [raw],
+            account_id="account-live",
+            account_name="IKRAUTAS",
+            account_type="ikrautas",
+            provider_name="IKRAUTAS",
+            locations=locations,
+        )
+
+        self.assertEqual(["21"], ampeco_history.ampeco_history_location_ids([raw]))
+        self.assertEqual(1, len(records))
+        record = records[0]
+        self.assertEqual("21", record["station_id"])
+        self.assertEqual("Druskininkai charging site", record["station_name"])
+        self.assertEqual("5003", record["connector_code"])
+        self.assertEqual(150, record["duration_minutes"])
+        self.assertEqual(46.46, record["energy_kwh"])
+        self.assertEqual(21.21, record["cost_eur"])
+        self.assertEqual("EUR", record["currency"])
+        self.assertEqual(
+            "https://example.test/receipt/103093", record["receipt_url"]
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -177,6 +177,13 @@
           "email": "Account email"
         }
       },
+      "ampeco_auth": {
+        "title": "Authenticate operator app",
+        "description": "Choose an authentication method supported by the official {provider} app for the {email} account.",
+        "data": {
+          "auth_method": "Authentication method"
+        }
+      },
       "ampeco_google": {
         "title": "Authenticate operator app with Google",
         "description": "Paste a fresh Google OAuth access token for the {email} account used in {provider}. Home Assistant exchanges it once through the same third-party login used by the official app and does not store the Google token.",

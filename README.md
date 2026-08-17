@@ -29,7 +29,11 @@ used by the included Nord Pool smart charger package.
   Exact completed-session energy and cost are merged across Mobilly statements,
   Elektrum app transactions, and the Ignitis ON or IKRAUTAS app profile. One
   physical charge split into several Renault API rows is shown once, with the
-  direct operator record preferred over reseller data.
+  direct operator record preferred over reseller data. Previously synchronized
+  exact records remain available during temporary login or provider failures,
+  while the account status clearly reports that reauthentication is required.
+- Historical home sessions use recorder prices first and fill missing intervals
+  from the official Nord Pool day-ahead archive, including the configured VAT.
 - One-time Elektrum postpaid-agreement linking in integration options. The
   personal code is sent directly to Elektrum over HTTPS for Smart-ID approval
   and is never stored by Home Assistant.
@@ -106,8 +110,10 @@ Assistant config-entry store and are not exposed as entity attributes or saved
 in this repository. Ignitis ON and IKRAUTAS use the official app's Google
 `third-party` token exchange. Paste a fresh Google OAuth access token for the
 same Google account once; the Google token is discarded immediately and only
-the operator's renewable AMPECO session is stored. Repeated setup attempts for
-the same operator identity are merged instead of creating duplicate accounts.
+  the operator's renewable AMPECO session is stored. Authentication can use an
+  official one-time email link or a fresh Google OAuth access token. Repeated
+  setup attempts for the same operator identity are merged instead of creating
+  duplicate accounts.
 **Renault account login** signs the selected official
 Renault entry in again with country/locale, username, and password. It uses the
 same Renault API client as Home Assistant Core and stores the resulting

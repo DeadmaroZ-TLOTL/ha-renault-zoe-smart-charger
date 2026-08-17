@@ -59,6 +59,42 @@ def ampeco_history_page(
     return records, len(records) >= per_page
 
 
+def ampeco_history_location_ids(
+    records: list[dict[str, Any]],
+) -> list[str]:
+    """Return unique AMPECO location IDs referenced by history records."""
+    return sorted(
+        {
+            str(location_id)
+            for record in records
+            if (
+                location_id := _path_first(
+                    record,
+                    "locationId",
+                    "location_id",
+                    "session.locationId",
+                    "session.location_id",
+                )
+            )
+            is not None
+        }
+    )
+
+
+def ampeco_location_lookup(payload: Any) -> dict[str, dict[str, Any]]:
+    """Index AMPECO location details returned by the locations endpoint."""
+    if not isinstance(payload, Mapping):
+        return {}
+    locations = payload.get("locations")
+    if not isinstance(locations, list):
+        return {}
+    return {
+        str(location["id"]): dict(location)
+        for location in locations
+        if isinstance(location, Mapping) and location.get("id") is not None
+    }
+
+
 def parse_ampeco_transactions(
     records: list[dict[str, Any]],
     *,
@@ -66,6 +102,7 @@ def parse_ampeco_transactions(
     account_name: str,
     account_type: str,
     provider_name: str,
+    locations: Mapping[str, Mapping[str, Any]] | None = None,
 ) -> list[dict[str, Any]]:
     """Normalize exact completed sessions returned by an AMPECO app account."""
     result: list[dict[str, Any]] = []
@@ -104,7 +141,7 @@ def parse_ampeco_transactions(
         energy_kwh = _energy_kwh(raw)
         cost_eur = _cost_eur(raw)
         duration = _duration_minutes(raw, start, end)
-        station = _station_values(raw)
+        station = _station_values(raw, locations=locations or {})
         transaction_id = _path_first(
             raw,
             "id",
@@ -122,6 +159,7 @@ def parse_ampeco_transactions(
             "currency_code",
             "price.currency",
             "transaction.currency",
+            "session.currency.code",
         )
         rate = (
             round(cost_eur / energy_kwh * 100.0, 3)
@@ -150,6 +188,9 @@ def parse_ampeco_transactions(
                 "total_rate_c_per_kwh": rate,
                 "currency": str(currency or "EUR").upper(),
                 "transaction_status": str(status or "completed"),
+                "receipt_url": _text(
+                    _path_first(raw, "receiptUrl", "session.receiptUrl")
+                ),
                 "price_source": f"{account_type}_app",
                 "provider_reported_cost": cost_eur is not None,
                 "provider_reported_energy": energy_kwh is not None,
@@ -244,9 +285,25 @@ def _cost_eur(record: Mapping[str, Any]) -> float | None:
     return round(max(0.0, number), 4)
 
 
-def _station_values(record: Mapping[str, Any]) -> dict[str, str | None]:
+def _station_values(
+    record: Mapping[str, Any],
+    *,
+    locations: Mapping[str, Mapping[str, Any]],
+) -> dict[str, str | None]:
     location = _path_first(record, "location", "station", "session.location")
     location = location if isinstance(location, Mapping) else {}
+    station_id = _text(
+        _first(location, "id", "locationId", "location_id")
+        or _path_first(
+            record,
+            "locationId",
+            "location_id",
+            "stationId",
+            "session.locationId",
+            "session.location_id",
+        )
+    )
+    location_detail = locations.get(station_id or "", {})
     evse = _path_first(record, "evse", "connector", "session.evse")
     evse = evse if isinstance(evse, Mapping) else {}
     address_value = _first(
@@ -256,16 +313,22 @@ def _station_values(record: Mapping[str, Any]) -> dict[str, str | None]:
         "full_address",
         "streetAddress",
     ) or _path_first(record, "stationAddress", "station_address", "address")
+    if not address_value:
+        address_value = _first(
+            location_detail,
+            "address",
+            "fullAddress",
+            "full_address",
+            "streetAddress",
+        )
     if isinstance(address_value, list):
         address_value = ", ".join(str(item) for item in address_value if item)
     return {
-        "station_id": _text(
-            _first(location, "id", "locationId", "location_id")
-            or _path_first(record, "locationId", "location_id", "stationId")
-        ),
+        "station_id": station_id,
         "station_name": _text(
             _first(location, "name", "title")
             or _path_first(record, "stationName", "station_name", "locationName")
+            or _first(location_detail, "name", "title")
         ),
         "station_address": _text(address_value),
         "connector_code": _text(
@@ -288,8 +351,33 @@ def _duration_minutes(record: Mapping[str, Any], start: str, end: str) -> int:
         "duration_minutes",
         "durationMin",
         "duration_min",
-        "duration",
     )
+    number, unit = _quantity(value)
+    if number is not None:
+        if unit.casefold() in {"s", "sec", "second", "seconds"}:
+            number /= 60.0
+        elif unit.casefold() in {"h", "hour", "hours"}:
+            number *= 60.0
+        return max(0, round(number))
+
+    seconds = _path_first(
+        record,
+        "durationSeconds",
+        "duration_seconds",
+        "durationInSeconds",
+        "duration_in_seconds",
+        "session.duration",
+        "session.totalDuration",
+    )
+    second_number, second_unit = _quantity(seconds)
+    if second_number is not None:
+        if second_unit.casefold() in {"m", "min", "minute", "minutes"}:
+            return max(0, round(second_number))
+        if second_unit.casefold() in {"h", "hour", "hours"}:
+            second_number *= 3600.0
+        return max(0, round(second_number / 60.0))
+
+    value = _path_first(record, "duration")
     number, unit = _quantity(value)
     if number is not None:
         if unit.casefold() in {"s", "sec", "second", "seconds"}:
