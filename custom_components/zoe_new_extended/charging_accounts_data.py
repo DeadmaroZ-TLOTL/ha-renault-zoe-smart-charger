@@ -122,6 +122,8 @@ def deduplicate_account_records(
 def elektrum_profile_state(payload: Mapping[str, Any]) -> dict[str, Any]:
     """Return a sanitized Elektrum profile/authentication state."""
     data = payload.get("data")
+    if isinstance(data, Mapping) and isinstance(data.get("user"), Mapping):
+        data = data["user"]
     if not isinstance(data, Mapping):
         return {
             "auth_state": "unknown",

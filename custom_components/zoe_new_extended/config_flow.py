@@ -1,6 +1,7 @@
 """Config flow for Zoe New Extended."""
 
 import asyncio
+from datetime import UTC, datetime
 import json
 import logging
 
@@ -206,10 +207,12 @@ from .elektrum_login import (
     elektrum_sms_form,
     elektrum_verify_form,
     normalize_elektrum_phone,
+    parse_elektrum_app_link,
 )
 from .charging_accounts_data import (
     charging_account_identity,
     deduplicate_account_records,
+    elektrum_profile_state,
     elektrum_token_can_replace,
 )
 from .mobilly_auth import (
@@ -250,6 +253,7 @@ ELEKTRUM_SMART_ID_POLL_ATTEMPTS = 6
 ELEKTRUM_SMART_ID_POLL_INTERVAL = 2
 ELEKTRUM_CAPTCHA_SOLUTION = "captcha_solution"
 ELEKTRUM_SMS_CODE = "sms_code"
+ELEKTRUM_APP_LINK = "app_link"
 RENAULT_ENTRY_SELECTION = "renault_entry_selection"
 RENAULT_LOCALE = "renault_locale"
 RENAULT_USERNAME = "renault_username"
@@ -686,6 +690,16 @@ class ZoeNewExtendedOptionsFlow(config_entries.OptionsFlow):
             if account_type == ACCOUNT_TYPE_ELEKTRUM_DRIVE:
                 actions.append(
                     {
+                        "value": f"import:{account_id}",
+                        "label": (
+                            f"Importēt piesaistīto Elektrum lietotnes profilu kontam {name}"
+                            if is_lv
+                            else f"Import linked Elektrum app profile for {name}"
+                        ),
+                    }
+                )
+                actions.append(
+                    {
                         "value": f"link:{account_id}",
                         "label": (
                             f"Piesaistīt Elektrum Drive līgumu kontam {name}"
@@ -742,6 +756,8 @@ class ZoeNewExtendedOptionsFlow(config_entries.OptionsFlow):
                 return await self.async_step_remove_charging_account()
             if action == "link":
                 return await self.async_step_elektrum_link_agreement()
+            if action == "import":
+                return await self.async_step_elektrum_app_link()
             if action == "login":
                 return await self.async_step_elektrum_mobile_login()
             if action == "mobile":
@@ -1577,6 +1593,124 @@ class ZoeNewExtendedOptionsFlow(config_entries.OptionsFlow):
             ),
             errors=errors,
             description_placeholders={"phone_suffix": phone[-4:]},
+        )
+
+    async def async_step_elektrum_app_link(self, user_input=None):
+        """Import the agreement-linked session handed off by the Elektrum app."""
+        account = self._selected_account()
+        if (
+            account is None
+            or account.get(CONF_ACCOUNT_TYPE) != ACCOUNT_TYPE_ELEKTRUM_DRIVE
+        ):
+            return await self.async_step_charging_accounts()
+
+        errors = {}
+        if user_input is not None:
+            try:
+                app_session = parse_elektrum_app_link(
+                    user_input.get(ELEKTRUM_APP_LINK)
+                )
+            except ValueError:
+                errors["base"] = "elektrum_app_link_invalid"
+            else:
+                access_token = app_session["access_token"]
+                try:
+                    profile_payload, profile_status = (
+                        await self._async_elektrum_api_raw(
+                            "GET", "user", access_token
+                        )
+                    )
+                    history_payload = {}
+                    history_status = 599
+                    if profile_status < 400:
+                        month = datetime.now(UTC).strftime("%Y-%m")
+                        history_payload, history_status = (
+                            await self._async_elektrum_api_raw(
+                                "GET",
+                                f"transactions?date={month}",
+                                access_token,
+                            )
+                        )
+                        if history_status == 404:
+                            history_payload, history_status = (
+                                await self._async_elektrum_api_raw(
+                                    "GET", "transactions", access_token
+                                )
+                            )
+                except (ClientError, TimeoutError):
+                    errors["base"] = "elektrum_connection_failed"
+                else:
+                    profile_state = elektrum_profile_state(profile_payload)
+                    if profile_status == 401:
+                        errors["base"] = "elektrum_session_expired"
+                    elif profile_status >= 400:
+                        errors["base"] = "elektrum_connection_failed"
+                    elif not profile_state["agreement_linked"]:
+                        errors["base"] = "elektrum_app_link_unlinked"
+                    elif history_status == 401:
+                        errors["base"] = "elektrum_session_expired"
+                    elif history_status >= 400:
+                        _LOGGER.warning(
+                            "Elektrum linked-session history validation failed "
+                            "with HTTP %s (API error %s)",
+                            history_status,
+                            self._elektrum_error_code(history_payload),
+                        )
+                        errors["base"] = "elektrum_history_validation_failed"
+                    else:
+                        updated = dict(account)
+                        updated[CONF_ELEKTRUM_ACCESS_TOKEN] = access_token
+                        updated[CONF_ELEKTRUM_DEVICE_UUID] = app_session[
+                            "device_uuid"
+                        ]
+                        if app_session["phone"]:
+                            country_code = str(
+                                updated.get(CONF_ELEKTRUM_COUNTRY_CODE)
+                                or DEFAULT_ELEKTRUM_COUNTRY_CODE
+                            ).lstrip("+")
+                            updated[CONF_ELEKTRUM_PHONE] = (
+                                normalize_elektrum_phone(
+                                    app_session["phone"], country_code
+                                )
+                            )
+
+                        agreements = self._elektrum_agreements(profile_payload)
+                        selected = next(
+                            (
+                                item for item in agreements if item.get("selected")
+                            ),
+                            agreements[0] if len(agreements) == 1 else None,
+                        )
+                        if selected is not None:
+                            updated[CONF_ELEKTRUM_AGREEMENT_ID] = str(
+                                selected["id"]
+                            )
+                            updated[CONF_ELEKTRUM_AGREEMENT_NUMBER] = str(
+                                selected.get("number") or ""
+                            )
+
+                        accounts = [
+                            updated
+                            if item.get(CONF_ACCOUNT_ID)
+                            == account.get(CONF_ACCOUNT_ID)
+                            else item
+                            for item in self._charging_accounts
+                        ]
+                        return self._save_charging_accounts(accounts)
+
+        return self.async_show_form(
+            step_id="elektrum_app_link",
+            data_schema=vol.Schema(
+                {
+                    vol.Required(ELEKTRUM_APP_LINK): TextSelector(
+                        TextSelectorConfig(type=TextSelectorType.PASSWORD)
+                    )
+                }
+            ),
+            errors=errors,
+            description_placeholders={
+                "account_name": str(account.get(CONF_ACCOUNT_NAME) or ""),
+            },
         )
 
     async def async_step_elektrum_account(self, user_input=None):

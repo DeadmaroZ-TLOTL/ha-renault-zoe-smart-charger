@@ -134,6 +134,13 @@
           "sms_code": "SMS kods"
         }
       },
+      "elektrum_app_link": {
+        "title": "Importēt piesaistīto Elektrum Drive profilu",
+        "description": "Ielīmē pilno elektrumdrive:// saiti, kuru ielogotā Elektrum lietotne nodod Elektrum Drive kontam {account_name}. Pirms saglabāšanas Home Assistant pārbauda piesaistīto līgumu un darījumu API. Saite netiek reģistrēta žurnālā vai saglabāta.",
+        "data": {
+          "app_link": "Elektrum Drive lietotnes saite"
+        }
+      },
       "elektrum_account": {
         "title": "Elektrum Drive konts",
         "description": "{mode} Elektrum Drive lietotnes kontu. Labojot kontu, atstāj piekļuves tokenu un ierīces ID tukšu, lai saglabātu esošos. Ja pēcapmaksas līgums jau ir redzams oficiālajā lietotnē, atkārtotas līguma piesaistes vietā izmanto tā lietotnes profila piekļuves tokenu un ierīces ID.",
@@ -271,11 +278,14 @@
       "ampeco_login_link_invalid": "Ielīmē pilnu pieteikšanās saiti no operatora e-pasta.",
       "elektrum_agreement_link_failed": "Elektrum nepārslēdza kontu uz izvēlēto pēcapmaksas līgumu.",
       "elektrum_agreement_required": "Izvēlies Elektrum līgumu.",
+      "elektrum_app_link_invalid": "Ielīmē pilno elektrumdrive://app/open saiti no oficiālās Elektrum lietotnes.",
+      "elektrum_app_link_unlinked": "Šī lietotnes saite pieder Elektrum Drive profilam bez pēcapmaksas līguma. Saglabātā sesija netika mainīta.",
       "elektrum_authorization_failed": "Smart-ID pārbaude izdevās, bet Elektrum nevarēja piesaistīt līgumu šim Drive lietotnes profilam. Ja līgums jau redzams oficiālajā lietotnē, importē tās profila piekļuves tokenu un ierīces ID.",
       "elektrum_connection_failed": "Neizdevās savienoties ar Elektrum Drive servisu.",
       "elektrum_captcha_required": "Izpildi Elektrum FriendlyCaptcha un ievadi tās derīgo vienreizējo risinājumu.",
       "elektrum_linked_session_required": "Jaunā lietotnes sesija pieder Elektrum profilam bez piesaistīta līguma. Esošā piesaistītā Drive sesija tika saglabāta.",
       "elektrum_no_agreements": "Elektrum šai personai neatgrieza nevienu pēcapmaksas līgumu.",
+      "elektrum_history_validation_failed": "Piesaistītais Elektrum profils atvērās, bet tā darījumu vēstures API neatbildēja. Saglabātā sesija netika mainīta.",
       "elektrum_phone_invalid": "Ievadi derīgu Elektrum Drive tālruņa numuru un valsts tālruņa kodu.",
       "elektrum_personal_code_invalid": "Ievadi derīgu Latvijas personas kodu ar 11 cipariem.",
       "elektrum_personal_code_required": "Ievadi Elektrum līgumam izmantoto personas kodu.",

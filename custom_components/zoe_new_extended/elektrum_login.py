@@ -4,10 +4,41 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from typing import Any
+from urllib.parse import parse_qs, urlparse
 
 
 ELEKTRUM_LATVIA_COUNTRY_ID = "067d8613-b4ef-4db5-977c-810a942aa3c4"
 ELEKTRUM_MOBILE_VERSION = "2.11.0"
+
+
+def parse_elektrum_app_link(value: object) -> dict[str, str]:
+    """Extract the linked Drive session passed by the official Elektrum app."""
+    text = str(value or "").strip().strip("\"'").replace("&amp;", "&")
+    parsed = urlparse(text)
+    if (
+        parsed.scheme.casefold() != "elektrumdrive"
+        or parsed.netloc.casefold() != "app"
+        or parsed.path.rstrip("/").casefold() != "/open"
+    ):
+        raise ValueError("Not an Elektrum Drive app link")
+
+    query = parse_qs(parsed.query, keep_blank_values=True)
+
+    def first(*names: str) -> str:
+        for name in names:
+            values = query.get(name)
+            if values and str(values[0]).strip():
+                return str(values[0]).strip()
+        return ""
+
+    result = {
+        "access_token": first("access_token", "accessToken", "token"),
+        "phone": first("phone_number", "phoneNumber", "phone"),
+        "device_uuid": first("deviceUuid", "deviceUUID", "device_uuid"),
+    }
+    if not result["access_token"] or not result["device_uuid"]:
+        raise ValueError("Elektrum Drive app link is incomplete")
+    return result
 
 
 def normalize_elektrum_phone(value: object, country_code: object = "371") -> str:

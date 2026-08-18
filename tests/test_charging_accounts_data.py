@@ -150,6 +150,22 @@ class ChargingAccountsDataTest(unittest.TestCase):
         self.assertEqual("agreement_linked", state["auth_state"])
         self.assertTrue(state["agreement_linked"])
 
+    def test_elektrum_nested_linked_profile_is_detected(self) -> None:
+        state = charging_data.elektrum_profile_state(
+            {
+                "data": {
+                    "user": {
+                        "type": 3,
+                        "agreements": [{"id": "one", "selected": True}],
+                    }
+                }
+            }
+        )
+
+        self.assertEqual("agreement_linked", state["auth_state"])
+        self.assertEqual(3, state["profile_type"])
+        self.assertEqual(1, state["agreement_count"])
+
     def test_anonymous_token_cannot_replace_linked_profile(self) -> None:
         self.assertFalse(
             charging_data.elektrum_token_can_replace(

@@ -134,6 +134,13 @@
           "sms_code": "SMS code"
         }
       },
+      "elektrum_app_link": {
+        "title": "Import linked Elektrum Drive profile",
+        "description": "Paste the complete elektrumdrive:// app link handed from the signed-in Elektrum app to Elektrum Drive for {account_name}. Home Assistant validates the linked agreement and transaction API before replacing the saved session. The link is never logged or stored.",
+        "data": {
+          "app_link": "Elektrum Drive app link"
+        }
+      },
       "elektrum_account": {
         "title": "Elektrum Drive account",
         "description": "{mode} an Elektrum Drive app account. Leave the access token and device ID empty while editing to keep their saved values. If a postpaid agreement is already visible in the official app, use that app profile's access token and device ID instead of linking the agreement again.",
@@ -271,11 +278,14 @@
       "ampeco_login_link_invalid": "Paste the complete sign-in link from the operator email.",
       "elektrum_agreement_link_failed": "Elektrum did not switch the account to the selected postpaid agreement.",
       "elektrum_agreement_required": "Select an Elektrum agreement.",
+      "elektrum_app_link_invalid": "Paste the complete elektrumdrive://app/open link from the official Elektrum app.",
+      "elektrum_app_link_unlinked": "This app link belongs to an Elektrum Drive profile without a postpaid agreement. The saved session was not changed.",
       "elektrum_authorization_failed": "Smart-ID succeeded, but Elektrum could not attach the agreement to this Drive app profile. If the agreement already appears in the official app, import that app profile's access token and device ID instead.",
       "elektrum_connection_failed": "Could not connect to the Elektrum Drive service.",
       "elektrum_captcha_required": "Complete the Elektrum FriendlyCaptcha and provide its valid one-time solution.",
       "elektrum_linked_session_required": "The new app session belongs to an unlinked Elektrum profile. The existing linked Drive session was kept.",
       "elektrum_no_agreements": "Elektrum did not return any postpaid agreements for this person.",
+      "elektrum_history_validation_failed": "The linked Elektrum profile opened, but its transaction history endpoint did not. The saved session was not changed.",
       "elektrum_phone_invalid": "Enter a valid Elektrum Drive phone number and country calling code.",
       "elektrum_personal_code_invalid": "Enter a valid 11-digit Latvian personal code.",
       "elektrum_personal_code_required": "Enter the personal code used for the Elektrum agreement.",

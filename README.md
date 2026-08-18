@@ -102,12 +102,18 @@ planner's Nord Pool country, targets, price cap, and allowed zones. Use
 **Energy cost model** for delivery price, VAT, usable capacity, efficiency, and
 fallback consumption. **Charging accounts** adds, edits, disables, or removes
 multiple Mobilly, Elektrum Drive, Ignitis ON, and IKRAUTAS accounts. After
-authenticating an Elektrum
-app account, choose **Link Elektrum agreement**, enter the agreement holder's
-personal code, approve Smart-ID, and select an agreement when several exist.
-The personal code is discarded immediately. Account secrets stay in the Home
-Assistant config-entry store and are not exposed as entity attributes or saved
-in this repository. Ignitis ON and IKRAUTAS use the official app's Google
+authenticating an Elektrum app account, use **Import linked Elektrum app
+profile** with the complete `elektrumdrive://app/open` hand-off link from the
+signed-in Elektrum app. The integration verifies that the profile has a
+postpaid agreement and that its transaction endpoint is available before it
+replaces the saved session. This is preferred over SMS login because a fresh
+Drive-only SMS profile can be valid while still having no Elektrum agreement.
+The app link is neither logged nor retained after its token, phone, and device
+ID are stored in the Home Assistant config entry. The older **Link Elektrum
+agreement** Smart-ID flow remains available for profiles where Elektrum offers
+agreement enrollment. Personal codes are discarded immediately. Account
+secrets are not exposed as entity attributes or saved in this repository.
+Ignitis ON and IKRAUTAS use the official app's Google
 `third-party` token exchange. Paste a fresh Google OAuth access token for the
 same Google account once; the Google token is discarded immediately and only
   the operator's renewable AMPECO session is stored. Authentication can use an
