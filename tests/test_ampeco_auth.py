@@ -35,6 +35,17 @@ class AmpecoAuthTest(unittest.TestCase):
             )
         )
 
+    def test_rejects_disabled_zero_lifetime_login_link(self) -> None:
+        self.assertFalse(
+            ampeco_auth.ampeco_login_link_requested(
+                {
+                    "createdAt": "2026-08-19T13:00:00+00:00",
+                    "email": "person@example.test",
+                    "lifetimeInMinutes": 0,
+                }
+            )
+        )
+
     def test_official_app_versions_and_headers(self) -> None:
         self.assertEqual("8.182.0", ampeco_auth.IGNITIS_ON.app_version)
         self.assertEqual("3.149.1", ampeco_auth.IKRAUTAS.app_version)

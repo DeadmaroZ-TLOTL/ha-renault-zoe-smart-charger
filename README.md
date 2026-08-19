@@ -32,6 +32,9 @@ used by the included Nord Pool smart charger package.
   direct operator record preferred over reseller data. Previously synchronized
   exact records remain available during temporary login or provider failures,
   while the account status clearly reports that reauthentication is required.
+  Optional private operator-receipt overrides can supply exact metered energy
+  and charged cost when a provider account cannot expose live history; those
+  values remain marked as operator data instead of calculated estimates.
 - Historical home sessions use recorder prices first and fill missing intervals
   from the official Nord Pool day-ahead archive, including the configured VAT.
 - One-time Elektrum postpaid-agreement linking in integration options. The
@@ -120,13 +123,14 @@ ID are stored in the Home Assistant config entry. The older **Link Elektrum
 agreement** Smart-ID flow remains available for profiles where Elektrum offers
 agreement enrollment. Personal codes are discarded immediately. Account
 secrets are not exposed as entity attributes or saved in this repository.
-Ignitis ON and IKRAUTAS use the official app's Google
-`third-party` token exchange. Paste a fresh Google OAuth access token for the
-same Google account once; the Google token is discarded immediately and only
-  the operator's renewable AMPECO session is stored. Authentication can use an
-  official one-time email link or a fresh Google OAuth access token. Repeated
-  setup attempts for the same operator identity are merged instead of creating
-  duplicate accounts.
+Ignitis ON and IKRAUTAS use the official Android app's Google `third-party`
+token exchange. The one-time token must be issued to the official Android app;
+a normal Google OAuth or OAuth Playground token belongs to a different client
+and is rejected by the operator. The token is discarded immediately and only
+the operator's renewable AMPECO session is stored. A one-time email link is
+also offered when the operator tenant enables it with a non-zero lifetime.
+Repeated setup attempts for the same operator identity are merged instead of
+creating duplicate accounts.
 **Renault account login** signs the selected official
 Renault entry in again with country/locale, username, and password. It uses the
 same Renault API client as Home Assistant Core and stores the resulting

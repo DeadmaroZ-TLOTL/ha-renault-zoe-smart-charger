@@ -103,6 +103,14 @@ def ampeco_login_link_requested(payload: Any) -> bool:
     if not isinstance(data, dict):
         return payload.get("success") is True
 
+    lifetime = data.get("lifetimeInMinutes")
+    if lifetime is not None:
+        try:
+            if float(lifetime) <= 0:
+                return False
+        except (TypeError, ValueError):
+            return False
+
     if data.get("success") is True or data.get("sent") is True:
         return True
     if data.get("activeLoginLink"):

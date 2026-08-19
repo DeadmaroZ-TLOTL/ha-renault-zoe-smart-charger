@@ -4,7 +4,9 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 import importlib.util
+import json
 from pathlib import Path
+import tempfile
 import unittest
 
 
@@ -561,6 +563,133 @@ class ChargingAccountsDataTest(unittest.TestCase):
         self.assertEqual("ignitis_on_app", merged[0]["price_source"])
         self.assertEqual(6.03, merged[0]["total_cost_eur"])
         self.assertEqual(1, len(merged[0]["alternate_sources"]))
+
+    def test_user_confirmed_provider_keeps_calculated_cost(self) -> None:
+        sessions = [
+            {
+                "start": "2026-08-19T14:04:03+00:00",
+                "end": "2026-08-19T14:56:22+00:00",
+                "connector_code": "PLVSALSKO4004CCS",
+                "price_source": "elektrum_drive",
+                "grid_energy_kwh": 36.72,
+                "total_rate_c_per_kwh": 41.087,
+                "total_cost_eur": 15.0881,
+            }
+        ]
+        overrides = [
+            {
+                "start": "2026-08-19T14:04:03Z",
+                "end": "2026-08-19T14:56:22Z",
+                "connector_code": "PLVSALSKO4004CCS",
+                "provider": "Ignitis ON",
+            }
+        ]
+
+        corrected = charging_data.apply_session_provider_overrides(
+            sessions, overrides
+        )
+
+        self.assertEqual("Ignitis ON", corrected[0]["payment_provider"])
+        self.assertEqual("ignitis_on_confirmed", corrected[0]["price_source"])
+        self.assertEqual("Elektrum Drive", corrected[0]["station_network"])
+        self.assertEqual(15.0881, corrected[0]["total_cost_eur"])
+        self.assertFalse(corrected[0]["provider_reported_cost"])
+        self.assertTrue(corrected[0]["payment_provider_confirmed"])
+
+    def test_exact_provider_transaction_wins_over_manual_override(self) -> None:
+        sessions = [
+            {
+                "start": "2026-08-19T14:04:03+00:00",
+                "end": "2026-08-19T14:56:22+00:00",
+                "connector_code": "PLVSALSKO4004CCS",
+                "provider": "Ignitis ON",
+                "price_source": "ignitis_on_app",
+                "provider_reported_cost": True,
+                "provider_reported_energy": True,
+                "total_cost_eur": 12.34,
+            }
+        ]
+        overrides = [
+            {
+                "start": "2026-08-19T14:04:03Z",
+                "end": "2026-08-19T14:56:22Z",
+                "provider": "Elektrum Drive",
+            }
+        ]
+
+        corrected = charging_data.apply_session_provider_overrides(
+            sessions, overrides
+        )
+
+        self.assertEqual("Ignitis ON", corrected[0]["provider"])
+        self.assertEqual("ignitis_on_app", corrected[0]["price_source"])
+        self.assertEqual(12.34, corrected[0]["total_cost_eur"])
+
+    def test_provider_receipt_override_replaces_calculated_values(self) -> None:
+        sessions = [
+            {
+                "start": "2026-08-19T14:04:03+00:00",
+                "end": "2026-08-19T14:56:22+00:00",
+                "connector_code": "PLVSALSKO4004CCS",
+                "price_source": "elektrum_drive",
+                "grid_energy_kwh": 36.72,
+                "total_rate_c_per_kwh": 41.087,
+                "total_cost_eur": 15.0881,
+            }
+        ]
+        overrides = [
+            {
+                "start": "2026-08-19T14:04:03Z",
+                "end": "2026-08-19T14:56:22Z",
+                "connector_code": "PLVSALSKO4004CCS",
+                "provider": "Ignitis ON",
+                "station_network": "Ignitis ON",
+                "price_source": "ignitis_on_receipt",
+                "grid_energy_kwh": 31.249,
+                "total_cost_eur": 10.94,
+                "provider_transaction_id": "1529087132",
+                "provider_session_id": "1506486",
+                "receipt_number": "0000461022",
+                "receipt_source": "operator_email",
+                "transaction_status": "paid",
+            }
+        ]
+
+        corrected = charging_data.apply_session_provider_overrides(
+            sessions, overrides
+        )
+
+        self.assertEqual("Ignitis ON", corrected[0]["payment_provider"])
+        self.assertEqual("Ignitis ON", corrected[0]["station_network"])
+        self.assertEqual("ignitis_on_receipt", corrected[0]["price_source"])
+        self.assertEqual(31.249, corrected[0]["grid_energy_kwh"])
+        self.assertEqual(10.94, corrected[0]["total_cost_eur"])
+        self.assertAlmostEqual(
+            10.94 / 31.249 * 100,
+            corrected[0]["total_rate_c_per_kwh"],
+        )
+        self.assertTrue(corrected[0]["provider_reported_cost"])
+        self.assertTrue(corrected[0]["provider_reported_energy"])
+        self.assertEqual("0000461022", corrected[0]["receipt_number"])
+
+    def test_load_session_provider_overrides(self) -> None:
+        payload = {
+            "version": 1,
+            "overrides": [
+                {
+                    "start": "2026-08-19T14:04:03Z",
+                    "end": "2026-08-19T14:56:22Z",
+                    "provider": "Ignitis ON",
+                }
+            ],
+        }
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "overrides.json"
+            path.write_text(json.dumps(payload), encoding="utf-8")
+
+            loaded = charging_data.load_session_provider_overrides(str(path))
+
+        self.assertEqual(payload["overrides"], loaded)
 
 
 if __name__ == "__main__":

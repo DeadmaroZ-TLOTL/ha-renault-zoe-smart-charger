@@ -10,7 +10,7 @@
       "cards": [
         {
           "type": "iframe",
-          "url": "/local/renault_trips/control.html?page=charging&v=1.3.3",
+          "url": "/local/renault_trips/control.html?page=charging&v=1.3.4",
           "aspect_ratio": "72%"
         }
       ]
@@ -94,7 +94,7 @@
       "cards": [
         {
           "type": "iframe",
-          "url": "/local/renault_trips/control.html?page=immax&v=1.3.3",
+          "url": "/local/renault_trips/control.html?page=immax&v=1.3.4",
           "aspect_ratio": "72%"
         }
       ]

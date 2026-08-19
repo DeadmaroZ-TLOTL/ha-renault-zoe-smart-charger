@@ -917,9 +917,9 @@ class ZoeNewExtendedOptionsFlow(config_entries.OptionsFlow):
             {
                 "value": "google_token",
                 "label": (
-                    "Google OAuth piekļuves tokens"
+                    f"Oficiālās {provider.display_name} Android lietotnes tokens"
                     if is_lv
-                    else "Google OAuth access token"
+                    else f"Official {provider.display_name} Android app token"
                 ),
             }
         )

@@ -186,16 +186,16 @@
       },
       "ampeco_auth": {
         "title": "Authenticate operator app",
-        "description": "Choose an authentication method supported by the official {provider} app for the {email} account.",
+        "description": "Choose an authentication method supported by the official {provider} app for the {email} account. The operator may disable email sign-in.",
         "data": {
           "auth_method": "Authentication method"
         }
       },
       "ampeco_google": {
-        "title": "Authenticate operator app with Google",
-        "description": "Paste a fresh Google OAuth access token for the {email} account used in {provider}. Home Assistant exchanges it once through the same third-party login used by the official app and does not store the Google token.",
+        "title": "Authenticate with the official Android app token",
+        "description": "Paste a fresh access token issued to the official {provider} Android app for the {email} account. A normal Google OAuth or OAuth Playground token will be rejected. Home Assistant exchanges the token once and does not store it.",
         "data": {
-          "google_access_token": "Google OAuth access token"
+          "google_access_token": "Official Android app access token"
         }
       },
       "ampeco_login_link": {
@@ -271,10 +271,10 @@
       "account_removal_not_confirmed": "Confirm account removal before continuing.",
       "ampeco_connection_failed": "Could not connect to the operator app service.",
       "ampeco_email_invalid": "Enter the email used by this operator account.",
-      "ampeco_google_exchange_failed": "The operator rejected this Google sign-in token. Generate a fresh access token for the same Google account and try again.",
-      "ampeco_google_token_invalid": "Enter a fresh Google OAuth access token.",
+      "ampeco_google_exchange_failed": "The operator rejected this token. A normal Google OAuth or OAuth Playground token is not accepted; use a fresh token issued to the official Android app.",
+      "ampeco_google_token_invalid": "Enter a fresh access token issued to the official Android app.",
       "ampeco_login_link_exchange_failed": "The operator rejected or expired this sign-in link. Request a new link and try again.",
-      "ampeco_login_link_failed": "The operator could not send a sign-in link to this email.",
+      "ampeco_login_link_failed": "The operator did not send a sign-in link. Email sign-in may be disabled for this account.",
       "ampeco_login_link_invalid": "Paste the complete sign-in link from the operator email.",
       "elektrum_agreement_link_failed": "Elektrum did not switch the account to the selected postpaid agreement.",
       "elektrum_agreement_required": "Select an Elektrum agreement.",

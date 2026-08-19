@@ -15,7 +15,9 @@ from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from custom_components.zoe_new_extended.charging_accounts_data import (
     apply_provider_transactions,
+    apply_session_provider_overrides,
     combine_charge_fragments,
+    load_session_provider_overrides,
     parse_nordpool_day_ahead_prices,
 )
 
@@ -36,6 +38,7 @@ DYNAMIC_PRICE_ENTITY = "sensor.renault_zoe_new_nord_pool_price"
 LEGACY_PRICE_ENTITY = "sensor.nordpool_kwh_lv_eur_3_10_021"
 COST_SETTINGS_ENTITY = "sensor.renault_zoe_new_cost_settings"
 CHARGING_ACCOUNTS_ENTITY = "sensor.renault_zoe_new_charging_accounts"
+SESSION_PROVIDER_OVERRIDES_FILE = "zoe_charge_session_overrides.json"
 NORDPOOL_ARCHIVE_API_URL = (
     "https://dataportal-api.nordpoolgroup.com/api/DayAheadPrices"
 )
@@ -44,9 +47,11 @@ EXACT_PROVIDER_PRICE_SOURCES = {
     "elektrum_drive_app",
     "mobilly",
     "ignitis_on_app",
+    "ignitis_on_receipt",
     "ikrautas_app",
+    "ikrautas_receipt",
 }
-PYSCRIPT_REVISION = "operator_transactions_v5"
+PYSCRIPT_REVISION = "provider_attribution_v7"
 
 _refresh_in_progress = False
 _nordpool_archive_cache = {}
@@ -61,6 +66,15 @@ def _attributes(result):
         return {}
     attrs = data.get("attributes", data)
     return attrs if isinstance(attrs, dict) else {}
+
+
+async def _session_provider_overrides():
+    """Read private, user-confirmed attribution corrections from HA config."""
+    path = Function.hass.config.path(SESSION_PROVIDER_OVERRIDES_FILE)
+    return await Function.hass.async_add_executor_job(
+        load_session_provider_overrides,
+        path,
+    )
 
 
 def _number(value, default=0.0):
@@ -1070,6 +1084,11 @@ async def zoe_charge_sessions_update():
             provider_transactions,
         )
         meaningful_sessions = combine_charge_fragments(meaningful_sessions)
+        provider_overrides = await _session_provider_overrides()
+        meaningful_sessions = apply_session_provider_overrides(
+            meaningful_sessions,
+            provider_overrides,
+        )
         visible_sessions = [
             item
             for item in meaningful_sessions
@@ -1086,6 +1105,7 @@ async def zoe_charge_sessions_update():
             "pyscript_revision": PYSCRIPT_REVISION,
             "stored_elektrum_session_count": len(stored_elektrum),
             "provider_transaction_count": len(provider_transactions),
+            "provider_override_count": len(provider_overrides),
             "nordpool_archive_slot_count": len(archive_price_history),
             "charging_accounts_entity": CHARGING_ACCOUNTS_ENTITY,
             "last_api_update": updated,

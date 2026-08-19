@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable, Mapping
 from datetime import UTC, datetime, timedelta
+import json
 import math
 import re
 import unicodedata
@@ -19,6 +20,26 @@ DIRECT_OPERATOR_SOURCES = frozenset(
 )
 _ELEKTRUM_MATCH_SECONDS = 20 * 60
 _CHARGE_FRAGMENT_GAP_SECONDS = 30 * 60
+_SESSION_OVERRIDE_MATCH_SECONDS = 5 * 60
+_EXACT_PROVIDER_PRICE_SOURCES = frozenset(
+    {
+        "elektrum_drive_app",
+        "mobilly",
+        "ignitis_on_app",
+        "ignitis_on_receipt",
+        "ikrautas_app",
+        "ikrautas_receipt",
+    }
+)
+_STATION_NETWORK_BY_PRICE_SOURCE = {
+    "elektrum_drive": "Elektrum Drive",
+}
+_CONFIRMED_PRICE_SOURCE_BY_PROVIDER = {
+    "elektrumdrive": "elektrum_drive_confirmed",
+    "mobilly": "mobilly_confirmed",
+    "ignitison": "ignitis_on_confirmed",
+    "ikrautas": "ikrautas_confirmed",
+}
 
 
 def parse_nordpool_day_ahead_prices(
@@ -399,6 +420,176 @@ def apply_provider_transactions(
         result,
         key=lambda item: item.get("end") or item.get("start") or "",
         reverse=True,
+    )
+
+
+def apply_session_provider_overrides(
+    sessions: Iterable[Mapping[str, Any]],
+    overrides: Iterable[Mapping[str, Any]],
+) -> list[dict[str, Any]]:
+    """Apply user-confirmed provider attribution and exact receipt values.
+
+    A public charging catalog identifies the physical station network, not
+    necessarily the roaming provider used to pay for a charge. Exact provider
+    transactions always win. Attribution-only overrides keep calculated values
+    marked as estimates. Overrides containing receipt energy or cost replace
+    those estimates and are marked as provider-reported values.
+    """
+    valid_overrides = [dict(item) for item in overrides if isinstance(item, Mapping)]
+    result: list[dict[str, Any]] = []
+    for raw_session in sessions:
+        session = dict(raw_session)
+        if _session_has_exact_provider_data(session):
+            result.append(session)
+            continue
+
+        matches = [
+            override
+            for override in valid_overrides
+            if _session_provider_override_matches(session, override)
+        ]
+        if not matches:
+            result.append(session)
+            continue
+
+        override = min(matches, key=lambda item: _interval_distance(session, item))
+        provider = str(
+            override.get("provider") or override.get("operator") or ""
+        ).strip()
+        if not provider:
+            result.append(session)
+            continue
+
+        original_source = str(session.get("price_source") or "")
+        station_network = (
+            override.get("station_network")
+            or session.get("station_network")
+            or _STATION_NETWORK_BY_PRICE_SOURCE.get(original_source)
+        )
+        if station_network:
+            session["station_network"] = station_network
+            session.setdefault("station_operator", station_network)
+
+        provider_key = _normalize(override.get("provider_key") or provider)
+        exact_energy = _as_float(
+            override.get("grid_energy_kwh", override.get("energy_kwh"))
+        )
+        exact_cost = _as_float(
+            override.get("total_cost_eur", override.get("cost_eur"))
+        )
+        has_exact_energy = exact_energy is not None and exact_energy >= 0
+        has_exact_cost = exact_cost is not None and exact_cost >= 0
+        has_exact_data = has_exact_energy or has_exact_cost
+        session.update(
+            {
+                "provider": provider,
+                "operator": provider,
+                "payment_provider": provider,
+                "payment_provider_confirmed": True,
+                "provider_attribution_source": override.get(
+                    "attribution_source", "user_confirmed"
+                ),
+                "operator_data_available": has_exact_data,
+                "price_source": override.get("price_source")
+                or _CONFIRMED_PRICE_SOURCE_BY_PROVIDER.get(
+                    provider_key, "provider_confirmed"
+                ),
+                "provider_reported_cost": has_exact_cost,
+                "provider_reported_energy": has_exact_energy,
+                "provider_override_start": override.get("start"),
+                "provider_override_end": override.get("end"),
+            }
+        )
+        if has_exact_energy:
+            session["grid_energy_kwh"] = exact_energy
+            session["provider_total_grid_energy_kwh"] = exact_energy
+            session["energy_source"] = override.get(
+                "energy_source", "provider_receipt"
+            )
+        if has_exact_cost:
+            session["total_cost_eur"] = exact_cost
+            session["provider_total_cost_eur"] = exact_cost
+            session["price_coverage_percent"] = 100.0
+        exact_rate = _as_float(override.get("total_rate_c_per_kwh"))
+        if exact_rate is None and has_exact_energy and exact_energy > 0 and has_exact_cost:
+            exact_rate = exact_cost / exact_energy * 100.0
+        if exact_rate is not None and exact_rate >= 0:
+            session["total_rate_c_per_kwh"] = exact_rate
+        if has_exact_data:
+            session["provider_allocation_fraction"] = 1.0
+            session["provider_split_session_count"] = 1
+
+        for field in (
+            "provider_transaction_id",
+            "provider_session_id",
+            "receipt_number",
+            "receipt_url",
+            "receipt_source",
+            "station_name",
+            "station_address",
+            "connector_name",
+            "transaction_status",
+        ):
+            if override.get(field) not in (None, ""):
+                session[field] = override[field]
+        result.append(session)
+
+    return sorted(
+        result,
+        key=lambda item: item.get("end") or item.get("start") or "",
+        reverse=True,
+    )
+
+
+def load_session_provider_overrides(path: str) -> list[dict[str, Any]]:
+    """Load private provider corrections without exposing them in source."""
+    try:
+        with open(path, encoding="utf-8") as handle:
+            payload = json.load(handle)
+    except FileNotFoundError:
+        return []
+    except (OSError, TypeError, ValueError):
+        return []
+
+    rows = payload.get("overrides", payload) if isinstance(payload, dict) else payload
+    if not isinstance(rows, list):
+        return []
+    return [dict(item) for item in rows if isinstance(item, Mapping)]
+
+
+def _session_has_exact_provider_data(session: Mapping[str, Any]) -> bool:
+    return bool(
+        session.get("provider_reported_cost") is True
+        or session.get("provider_reported_energy") is True
+        or session.get("price_source") in _EXACT_PROVIDER_PRICE_SOURCES
+    )
+
+
+def _session_provider_override_matches(
+    session: Mapping[str, Any], override: Mapping[str, Any]
+) -> bool:
+    session_start = _parse_datetime(session.get("start"))
+    session_end = _parse_datetime(session.get("end"))
+    override_start = _parse_datetime(override.get("start"))
+    override_end = _parse_datetime(override.get("end"))
+    if None in {session_start, session_end, override_start, override_end}:
+        return False
+
+    tolerance = _as_float(override.get("match_tolerance_seconds"))
+    if tolerance is None:
+        tolerance = _SESSION_OVERRIDE_MATCH_SECONDS
+    if (
+        abs((session_start - override_start).total_seconds()) > tolerance
+        or abs((session_end - override_end).total_seconds()) > tolerance
+    ):
+        return False
+
+    expected_connector = _normalize(override.get("connector_code"))
+    actual_connector = _normalize(session.get("connector_code"))
+    return not (
+        expected_connector
+        and actual_connector
+        and expected_connector != actual_connector
     )
 
 

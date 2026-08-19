@@ -186,16 +186,16 @@
       },
       "ampeco_auth": {
         "title": "Pieslēgt operatora lietotni",
-        "description": "Izvēlies oficiālās {provider} lietotnes atbalstītu autorizācijas metodi kontam {email}.",
+        "description": "Izvēlies oficiālās {provider} lietotnes atbalstītu autorizācijas metodi kontam {email}. Operators var būt atslēdzis pieteikšanos ar e-pasta saiti.",
         "data": {
           "auth_method": "Autorizācijas metode"
         }
       },
       "ampeco_google": {
-        "title": "Pieslēgt operatora lietotni ar Google",
-        "description": "Ielīmē svaigu Google OAuth piekļuves tokenu {email} kontam, ko izmanto {provider}. Home Assistant to vienreiz apmaina ar to pašu third-party pieteikšanos, ko lieto oficiālā lietotne, un Google tokenu nesaglabā.",
+        "title": "Pieslēgt ar oficiālās Android lietotnes tokenu",
+        "description": "Ielīmē svaigu piekļuves tokenu, kas izsniegts oficiālajai {provider} Android lietotnei kontam {email}. Parasts Google OAuth vai OAuth Playground tokens tiks noraidīts. Home Assistant tokenu izmanto vienreiz un nesaglabā.",
         "data": {
-          "google_access_token": "Google OAuth piekļuves tokens"
+          "google_access_token": "Oficiālās Android lietotnes piekļuves tokens"
         }
       },
       "ampeco_login_link": {
@@ -271,10 +271,10 @@
       "account_removal_not_confirmed": "Pirms turpināšanas apstiprini konta noņemšanu.",
       "ampeco_connection_failed": "Neizdevās savienoties ar operatora lietotnes servisu.",
       "ampeco_email_invalid": "Ievadi šim operatora kontam izmantoto e-pastu.",
-      "ampeco_google_exchange_failed": "Operators noraidīja šo Google pieteikšanās tokenu. Izveido svaigu piekļuves tokenu tam pašam Google kontam un mēģini vēlreiz.",
-      "ampeco_google_token_invalid": "Ievadi svaigu Google OAuth piekļuves tokenu.",
+      "ampeco_google_exchange_failed": "Operators noraidīja šo tokenu. Parasts Google OAuth vai OAuth Playground tokens netiek pieņemts; izmanto svaigu oficiālajai Android lietotnei izsniegtu tokenu.",
+      "ampeco_google_token_invalid": "Ievadi svaigu oficiālajai Android lietotnei izsniegtu piekļuves tokenu.",
       "ampeco_login_link_exchange_failed": "Operators noraidīja šo pieteikšanās saiti vai tai beidzies termiņš. Pieprasi jaunu saiti.",
-      "ampeco_login_link_failed": "Operators nevarēja nosūtīt pieteikšanās saiti uz šo e-pastu.",
+      "ampeco_login_link_failed": "Operators nenosūtīja pieteikšanās saiti. Šim kontam pieteikšanās ar e-pastu var būt atslēgta.",
       "ampeco_login_link_invalid": "Ielīmē pilnu pieteikšanās saiti no operatora e-pasta.",
       "elektrum_agreement_link_failed": "Elektrum nepārslēdza kontu uz izvēlēto pēcapmaksas līgumu.",
       "elektrum_agreement_required": "Izvēlies Elektrum līgumu.",

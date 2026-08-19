@@ -157,11 +157,13 @@ const I18N = {
     connector: "Konektors",
     homeNordPool: "Mājas / Nord Pool",
     elektrumDrive: "Elektrum Drive",
+    elektrumStationTariff: "Elektrum stacijas tarifs",
     elektrumDriveApp: "Elektrum Drive",
     mobilly: "Mobilly",
     ignitisOnApp: "Ignitis ON",
     ikrautasApp: "IKRAUTAS",
     operatorExact: "operatora dati",
+    operatorConfirmedPriceCalculated: "operators apstiprināts; cena aprēķināta",
     calculatedFallback: "aprēķināts, operatora dati nav pieejami",
     duration: "Ilgums",
     batteryEnergy: "Baterijas enerģija",
@@ -329,11 +331,13 @@ const I18N = {
     connector: "Connector",
     homeNordPool: "Home / Nord Pool",
     elektrumDrive: "Elektrum Drive",
+    elektrumStationTariff: "Elektrum station tariff",
     elektrumDriveApp: "Elektrum Drive",
     mobilly: "Mobilly",
     ignitisOnApp: "Ignitis ON",
     ikrautasApp: "IKRAUTAS",
     operatorExact: "operator data",
+    operatorConfirmedPriceCalculated: "operator confirmed; price calculated",
     calculatedFallback: "calculated; operator data unavailable",
     duration: "Duration",
     batteryEnergy: "Battery energy",
@@ -2203,10 +2207,14 @@ function sessionStationLabel(session) {
 }
 
 function sessionPriceSourceLabel(session) {
-  if (session.price_source === "elektrum_drive") return t("elektrumDrive");
+  if (session.payment_provider_confirmed && (session.payment_provider || session.provider)) {
+    return session.payment_provider || session.provider;
+  }
+  if (session.price_source === "elektrum_drive") return t("elektrumStationTariff");
   if (session.price_source === "elektrum_drive_app") return t("elektrumDriveApp");
   if (session.price_source === "mobilly") return t("mobilly");
   if (session.price_source === "ignitis_on_app") return t("ignitisOnApp");
+  if (session.price_source === "ignitis_on_confirmed") return t("ignitisOnApp");
   if (session.price_source === "ikrautas_app") return t("ikrautasApp");
   if (["home_nord_pool", "legacy_nord_pool"].includes(session.price_source)) {
     return t("homeNordPool");
@@ -2247,7 +2255,11 @@ function renderSessions() {
       || session.energy_source === "provider_meter";
     const exactCost = session.provider_reported_cost === true;
     const exactRate = exactEnergy && exactCost;
-    const sourceNote = exactRate ? t("operatorExact") : t("calculatedFallback");
+    const sourceNote = exactRate
+      ? t("operatorExact")
+      : session.payment_provider_confirmed
+        ? t("operatorConfirmedPriceCalculated")
+        : t("calculatedFallback");
     totalBattery += battery;
     if (Number.isFinite(grid)) {
       totalGrid += grid;
