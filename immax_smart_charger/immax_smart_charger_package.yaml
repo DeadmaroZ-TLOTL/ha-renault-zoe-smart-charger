@@ -36,6 +36,70 @@ template:
           calculation: >-
             SOC and Renault charge-session model while charging; zero otherwise
 
+      - name: IMMAX Paeglisi power
+        unique_id: immax_paeglisi_power
+        icon: mdi:home-lightning-bolt
+        unit_of_measurement: "W"
+        device_class: power
+        state_class: measurement
+        availability: >-
+          {{ states('device_tracker.location')
+             not in ['unknown', 'unavailable', 'none', ''] and
+             (not is_state('device_tracker.location', 'home') or
+              states('sensor.immax_ev_charger_total_power') | is_number) }}
+        state: >-
+          {{ states('sensor.immax_ev_charger_total_power') | float(0) | round(1)
+             if is_state('device_tracker.location', 'home') else 0 }}
+        attributes:
+          source_entity_id: sensor.immax_ev_charger_total_power
+          location_entity_id: device_tracker.location
+          counted_at_paeglisi: >-
+            {{ is_state('device_tracker.location', 'home') }}
+
+  - triggers:
+      - trigger: homeassistant
+        event: start
+        id: startup
+      - trigger: event
+        event_type: immax_paeglisi_energy_initialize
+        id: initialize
+      - trigger: state
+        entity_id: sensor.immax_ev_charger_energy
+        id: energy
+    sensor:
+      - name: IMMAX Paeglisi energy
+        unique_id: immax_paeglisi_energy
+        icon: mdi:home-lightning-bolt
+        unit_of_measurement: "kWh"
+        device_class: energy
+        state_class: total_increasing
+        state: >-
+          {% set previous = this.state | float(0) %}
+          {% if trigger.id == 'initialize' %}
+            {{ trigger.event.data.total_energy_kwh |
+               default(previous) | float(previous) | round(3) }}
+          {% elif trigger.id == 'energy' and
+                trigger.from_state is not none and
+                trigger.to_state is not none and
+                trigger.from_state.state | is_number and
+                trigger.to_state.state | is_number and
+                is_state('device_tracker.location', 'home') %}
+            {% set delta = (trigger.to_state.state | float(0)) -
+                           (trigger.from_state.state | float(0)) %}
+            {{ (previous + delta) | round(3) if delta > 0 else
+               previous | round(3) }}
+          {% else %}
+            {{ previous | round(3) }}
+          {% endif %}
+        attributes:
+          source_entity_id: sensor.immax_ev_charger_energy
+          location_entity_id: device_tracker.location
+          counted_at_paeglisi: >-
+            {{ is_state('device_tracker.location', 'home') }}
+          accounting: >-
+            Positive source deltas are accumulated only while the Renault
+            location tracker is inside zone.home (Paeglisi).
+
 input_select:
   immax_smart_charging_mode:
     name: IMMAX smart charging mode

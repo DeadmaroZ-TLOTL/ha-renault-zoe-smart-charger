@@ -67,6 +67,10 @@ used by the included Nord Pool smart charger package.
   charger-specific 6-32 A command conversion stays internal. Charger, solar,
   battery, solar production, vehicle SOC, and price entities are selected in
   integration options. Measurement and status sources can be left empty.
+- Location-aware `sensor.immax_paeglisi_power` and
+  `sensor.immax_paeglisi_energy` account for IMMAX charging at the home zone
+  only. Charging performed elsewhere therefore cannot inflate the site's
+  Home Assistant Energy total.
 - Optional automatic Renault Trips dashboard with day selection, route maps,
   speed samples, distance, and estimated energy consumption.
 - Separate mileage dashboard view with daily totals, odometer-based paved and
@@ -166,6 +170,12 @@ and solar values as read-only sensors; only actual settings remain editable.
 Read [`immax_smart_charger/README.md`](immax_smart_charger/README.md), select
 the source entities in the integration options, and verify their live values
 before enabling either smart mode.
+
+For Energy dashboard accounting, use `sensor.immax_paeglisi_energy` as the
+IMMAX consumption statistic and `sensor.immax_paeglisi_power` as its power
+sensor. Keep the raw whole-site electricity meter as a separate device without
+an `included_in_stat` parent relationship; Home Assistant otherwise subtracts
+the child device totals from that meter's displayed history.
 
 ## Renault Dashboard
 

@@ -100,6 +100,29 @@ The configured meter source is exposed through
 this installation it points to the Tuya Local meter source. A similarly named
 Tuya cloud entity is not used for the safety limit.
 
+## Location-aware Energy accounting
+
+The package publishes two dedicated Home Assistant Energy sources:
+
+- `sensor.immax_paeglisi_power` reports the charger's live power only while
+  `device_tracker.location` is in `zone.home`; it reports zero while away.
+- `sensor.immax_paeglisi_energy` accumulates only positive charger-energy
+  counter deltas recorded at home. Reconnects, unavailable source states, and
+  source-counter resets cannot create a false increase.
+
+Use `sensor.immax_paeglisi_energy` as the IMMAX device consumption statistic
+and `sensor.immax_paeglisi_power` as its power sensor in the Energy dashboard.
+The raw whole-site meter must remain an independent consumption source. Do not
+set IMMAX or other downstream device rows as `included_in_stat` children of the
+whole-site meter unless the intended dashboard value is the meter total minus
+all of those children. Home Assistant applies that subtraction to historical
+periods as well.
+
+The energy sensor restores its accumulated value across Home Assistant
+restarts. A one-time `immax_paeglisi_energy_initialize` event can initialize a
+known baseline by supplying `total_energy_kwh`; normal operation never needs
+that event.
+
 The stationary battery guard reads `sensor.unibms_soc`. Its editable defaults
 pause smart charging at 50% and keep it in the twelve-hour Delay mode until the
 battery reaches 60%. The separate stop and resume values provide hysteresis, so
