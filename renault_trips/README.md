@@ -46,11 +46,13 @@ existing charge-session card used by that dashboard.
 ## Dashboard views
 
 Charging, Trips, Mileage, Costs, Info, Stations, and IMMAX share one responsive
-visual system and Latvian/English labels. Charging and IMMAX include full-width
-history charts, current-value controls, and 24-hour, 48-hour, 7-day, 30-day, or
-calendar-date history selection. Chart lines stop across missing Recorder
-samples instead of drawing misleading connections. On narrow screens each
-panel uses the full viewport width and the control columns stack vertically.
+visual system, Latvian/English labels, and a persisted period selector. It
+offers today, 3/7/14/30/90 calendar days, the current month, all available
+history, or an inclusive custom **From/To** date range. Charging sessions,
+trips, mileage, costs, and chart history follow that selected range. Chart
+lines stop across missing Recorder samples instead of drawing misleading
+connections. On narrow screens each panel uses the full viewport width and the
+control columns stack vertically.
 
 ## Charging stations
 

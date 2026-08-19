@@ -378,7 +378,7 @@
       }
     }
   </style>
-  <link rel="stylesheet" href="./shared-theme.css?v=2.1.1" />
+  <link rel="stylesheet" href="./shared-theme.css?v=2.3.2" />
 </head>
 <body>
   <main class="app trips-app">
@@ -400,11 +400,17 @@
         <select id="days" title="Periods līdz šodienai">
           <option value="1" data-i18n="day1">Šodiena (00–24)</option>
           <option value="3" data-i18n="days3">3 kalendāra dienas</option>
-          <option value="7" selected data-i18n="days7">7 kalendāra dienas</option>
+          <option value="7" data-i18n="days7">7 kalendāra dienas</option>
           <option value="14" data-i18n="days14">14 kalendāra dienas</option>
           <option value="30" data-i18n="days30">30 kalendāra dienas</option>
+          <option value="current_month" selected data-i18n="currentMonth">Tekošais mēnesis</option>
+          <option value="90" data-i18n="days90">90 kalendāra dienas</option>
+          <option value="all" data-i18n="allHistory">Visa pieejamā vēsture</option>
         </select>
-        <input id="dayDate" type="date" title="Konkrēts datums" aria-label="Konkrēts datums">
+        <span class="date-range-fields">
+          <label class="date-range-field"><span data-range-label="start">No</span><input id="dayDate" type="date" aria-label="No datuma"></label>
+          <label class="date-range-field"><span data-range-label="end">Līdz</span><input id="dayDateTo" type="date" aria-label="Līdz datumam"></label>
+        </span>
         <button class="icon-command clear-date" id="clearDate" type="button" title="Atgriezties pie perioda" aria-label="Atgriezties pie perioda" hidden>
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>
         </button>
@@ -477,6 +483,7 @@
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="./dashboard-tabs.js?v=1.2.0"></script>
+  <script src="./date-range.js?v=1.0.2"></script>
   <script>
     const ENTITY = {
       location: "device_tracker.location",
@@ -502,6 +509,7 @@
         stopCharge: "Apturēt uzlādi", tripsTitle: "Renault braucieni",
         day1: "Šodiena (00–24)", days3: "3 kalendāra dienas", days7: "7 kalendāra dienas",
         days14: "14 kalendāra dienas", days30: "30 kalendāra dienas",
+        currentMonth: "Tekošais mēnesis", days90: "90 kalendāra dienas", allHistory: "Visa pieejamā vēsture",
         periodToToday: "Kalendāra dienas līdz šodienai", specificDate: "Konkrēts datums",
         returnToPeriod: "Atgriezties pie perioda", allOnMap: "Visi kartē",
         settings: "Iestatījumi", refresh: "Atjaunot", trips: "Braucieni",
@@ -533,6 +541,7 @@
         startCharge: "Start charging", stopCharge: "Stop charging",
         tripsTitle: "Renault trips", day1: "Today (00–24)", days3: "3 calendar days",
         days7: "7 calendar days", days14: "14 calendar days", days30: "30 calendar days",
+        currentMonth: "Current month", days90: "90 calendar days", allHistory: "All available history",
         periodToToday: "Calendar days ending today", specificDate: "Specific date",
         returnToPeriod: "Return to period", allOnMap: "All on map",
         settings: "Settings", refresh: "Refresh",
@@ -579,6 +588,7 @@
       dayDateEl.setAttribute("aria-label", t("specificDate"));
       clearDateEl.title = t("returnToPeriod");
       clearDateEl.setAttribute("aria-label", t("returnToPeriod"));
+      dateRange?.setLanguage(language);
       const settingsLink = document.getElementById("settings");
       settingsLink.title = t("settings");
       settingsLink.setAttribute("aria-label", t("settings"));
@@ -606,6 +616,7 @@
     const emptyEl = document.getElementById("empty");
     const daysEl = document.getElementById("days");
     const dayDateEl = document.getElementById("dayDate");
+    const dayDateToEl = document.getElementById("dayDateTo");
     const clearDateEl = document.getElementById("clearDate");
     const reloadEl = document.getElementById("reload");
     const showAllEl = document.getElementById("showAll");
@@ -619,19 +630,11 @@
     let routeRequestId = 0;
     let currentVehicleLocation = null;
     let cachedParentHass = null;
+    let dateRange = null;
 
     function localDateValue(date) {
       const local = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
       return local.toISOString().slice(0, 10);
-    }
-
-    dayDateEl.max = localDateValue(new Date());
-
-    function updateCalendarMode() {
-      const active = Boolean(dayDateEl.value);
-      dayDateEl.classList.toggle("active", active);
-      clearDateEl.hidden = !active;
-      return active;
     }
 
     function setStatus(text, warn = false) {
@@ -1360,11 +1363,16 @@
       markerLayer.clearLayers();
 
       if (!trips.length) return;
-      const selectedDate = new Date(`${dayDateEl.value}T12:00:00`);
-      mapTripTitle.textContent = new Intl.DateTimeFormat(
+      const range = dateRange.range(new Date(), Date.now() - 400 * 86400000);
+      const formatter = new Intl.DateTimeFormat(
         language === "lv" ? "lv-LV" : "en-GB",
         { dateStyle: "long" },
-      ).format(selectedDate);
+      );
+      const rangeStart = new Date(range.start);
+      const rangeEnd = new Date(range.end - 1);
+      mapTripTitle.textContent = localDateValue(rangeStart) === localDateValue(rangeEnd)
+        ? formatter.format(rangeStart)
+        : `${formatter.format(rangeStart)} – ${formatter.format(rangeEnd)}`;
       mapTripInfo.textContent = t("allTripsInfo", { count: trips.length });
       showAllEl.disabled = true;
 
@@ -1444,7 +1452,7 @@
     function render() {
       tripsEl.innerHTML = "";
       emptyEl.hidden = trips.length !== 0;
-      const allDayMode = Boolean(dayDateEl.value);
+      const allDayMode = Boolean(dayDateEl.value && dayDateToEl.value);
       showAllEl.hidden = !allDayMode || trips.length === 0;
 
       const totalKm = trips.reduce((sum, trip) => sum + trip.km, 0);
@@ -1488,27 +1496,14 @@
     }
 
     async function loadTrips() {
-      const days = Number(daysEl.value);
       await loadDashboardLanguage();
       setStatus(t("loading"));
       reloadEl.disabled = true;
       loadVehicleStatus().catch((err) => console.warn("Vehicle status unavailable", err));
       try {
-        const now = new Date();
-        let end = now;
-        let start;
-        if (dayDateEl.value) {
-          start = new Date(`${dayDateEl.value}T00:00:00`);
-          end = new Date(start);
-          end.setDate(end.getDate() + 1);
-        } else {
-          start = new Date(now);
-          start.setHours(0, 0, 0, 0);
-          start.setDate(start.getDate() - (days - 1));
-          end = new Date(now);
-          end.setHours(0, 0, 0, 0);
-          end.setDate(end.getDate() + 1);
-        }
+        const selected = dateRange.range(new Date(), Date.now() - 400 * 86400000);
+        const start = new Date(selected.start);
+        const end = new Date(Math.min(selected.end, Date.now()));
         const ids = [ENTITY.location, ENTITY.mileage, ENTITY.battery].join(",");
         const url = `/api/history/period/${encodeURIComponent(start.toISOString())}?end_time=${encodeURIComponent(end.toISOString())}&filter_entity_id=${encodeURIComponent(ids)}`;
         const history = await haFetch(url);
@@ -1541,21 +1536,17 @@
     });
     reloadEl.addEventListener("click", loadTrips);
     showAllEl.addEventListener("click", showAllTrips);
-    daysEl.addEventListener("change", () => {
-      dayDateEl.value = "";
-      updateCalendarMode();
-      showAllEl.hidden = true;
-      loadTrips();
-    });
-    dayDateEl.addEventListener("change", () => {
-      updateCalendarMode();
-      loadTrips();
-    });
-    clearDateEl.addEventListener("click", () => {
-      dayDateEl.value = "";
-      updateCalendarMode();
-      showAllEl.hidden = true;
-      loadTrips();
+    dateRange = window.RenaultDateRange.attach({
+      periodEl: daysEl,
+      startEl: dayDateEl,
+      endEl: dayDateToEl,
+      clearEl: clearDateEl,
+      defaultPreset: "current_month",
+      language,
+      onChange: () => {
+        showAllEl.hidden = true;
+        loadTrips();
+      },
     });
     document.getElementById("vehicleLocation").addEventListener("click", showVehicleLocation);
     document.querySelectorAll("[data-history-entity]").forEach((button) => {

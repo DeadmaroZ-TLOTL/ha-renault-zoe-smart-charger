@@ -413,7 +413,7 @@
       }
     }
   </style>
-  <link rel="stylesheet" href="./shared-theme.css?v=2.1.1">
+  <link rel="stylesheet" href="./shared-theme.css?v=2.3.2">
 </head>
 <body>
   <main class="app costs-app">
@@ -438,7 +438,10 @@
           <option value="90" data-i18n="days90">90 dienas</option>
           <option value="all" data-i18n="allHistory">Visa pieejamā vēsture</option>
         </select>
-        <input id="dayDate" type="date" aria-label="Konkrēts datums" data-i18n-aria="specificDate">
+        <span class="date-range-fields">
+          <label class="date-range-field"><span data-range-label="start">No</span><input id="dayDate" type="date" aria-label="No datuma"></label>
+          <label class="date-range-field"><span data-range-label="end">Līdz</span><input id="dayDateTo" type="date" aria-label="Līdz datumam"></label>
+        </span>
         <button id="clearDate" class="icon-command" type="button" hidden title="Notīrīt datumu" data-i18n-aria="clear">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>
         </button>
@@ -559,6 +562,7 @@
   </main>
 
   <script src="./dashboard-tabs.js?v=1.2.0"></script>
-  <script src="./costs.js?v=1.5.2"></script>
+  <script src="./date-range.js?v=1.0.2"></script>
+  <script src="./costs.js?v=1.6.1"></script>
 </body>
 </html>

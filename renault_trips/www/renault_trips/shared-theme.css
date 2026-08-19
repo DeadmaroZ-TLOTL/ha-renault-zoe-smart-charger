@@ -464,6 +464,65 @@ button svg,
   gap: 8px;
 }
 
+.date-range-fields {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.date-range-field {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.date-range-field input[type="date"] {
+  min-width: 132px;
+}
+
+.global-period-controls {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  flex-wrap: wrap;
+}
+
+.clear-date[hidden] {
+  display: none !important;
+}
+
+@media (max-width: 720px) {
+  .date-range-fields {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    width: 100%;
+  }
+
+  .date-range-field {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .date-range-field input[type="date"] {
+    min-width: 0;
+    width: 100%;
+  }
+
+  .global-period-controls {
+    width: 100%;
+  }
+
+  .global-period-controls > select {
+    flex: 1 1 180px;
+  }
+}
+
 button,
 select,
 input,

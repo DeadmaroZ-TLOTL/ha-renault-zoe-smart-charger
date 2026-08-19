@@ -5,8 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="light dark">
   <title>Renault ZOE</title>
-  <link rel="stylesheet" href="./control-pages.css?v=1.2.11">
-  <link rel="stylesheet" href="./shared-theme.css?v=2.1.1">
+  <link rel="stylesheet" href="./control-pages.css?v=1.2.12">
+  <link rel="stylesheet" href="./shared-theme.css?v=2.3.2">
 </head>
 <body>
   <main class="app control-app">
@@ -20,12 +20,19 @@
       </div>
       <div class="filters">
         <select id="period" aria-label="Vēstures periods">
-          <option value="24h">Šodiena (00–24)</option>
-          <option value="48h" selected>2 kalendāra dienas</option>
-          <option value="7d">7 kalendāra dienas</option>
-          <option value="30d">30 kalendāra dienas</option>
+          <option value="1">Šodiena (00–24)</option>
+          <option value="3">3 kalendāra dienas</option>
+          <option value="7">7 kalendāra dienas</option>
+          <option value="14">14 kalendāra dienas</option>
+          <option value="30">30 kalendāra dienas</option>
+          <option value="current_month" selected>Tekošais mēnesis</option>
+          <option value="90">90 kalendāra dienas</option>
+          <option value="all">Visa pieejamā vēsture</option>
         </select>
-        <input id="dayDate" type="date" aria-label="Konkrēts datums">
+        <span class="date-range-fields">
+          <label class="date-range-field"><span data-range-label="start">No</span><input id="dayDate" type="date" aria-label="No datuma"></label>
+          <label class="date-range-field"><span data-range-label="end">Līdz</span><input id="dayDateTo" type="date" aria-label="Līdz datumam"></label>
+        </span>
         <button id="clearDate" class="icon-command" type="button" hidden title="Notīrīt datumu" aria-label="Notīrīt datumu">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>
         </button>
@@ -92,6 +99,7 @@
   </main>
 
   <script src="./dashboard-tabs.js?v=1.2.0"></script>
-  <script src="./control-pages.js?v=1.2.11"></script>
+  <script src="./date-range.js?v=1.0.2"></script>
+  <script src="./control-pages.js?v=1.3.1"></script>
 </body>
 </html>

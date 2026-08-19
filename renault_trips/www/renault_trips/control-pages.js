@@ -52,7 +52,7 @@ const I18N = {
     phaseHistory: "Fāžu strāvas un sprieguma vēsture",
     phaseHistoryNote: "Strāva A, spriegums V",
     chargeSessions: "Renault API uzlādes sesijas",
-    chargeSessionsNote: "Tekošā mēneša pabeigtās sesijas",
+    chargeSessionsNote: "Izvēlētā perioda pabeigtās sesijas",
     entityHistory: "IMMAX datu svaigums",
     entityHistoryNote: "Klikšķini uz vērtības, lai atvērtu HA vēsturi.",
     battery: "Baterija",
@@ -170,7 +170,7 @@ const I18N = {
     cost: "Izmaksas",
     status: "Statuss",
     total: "Kopā",
-    noSessions: "Šajā mēnesī pabeigtu uzlādes sesiju nav.",
+    noSessions: "Izvēlētajā periodā pabeigtu uzlādes sesiju nav.",
     valueSaved: "Saglabāts: {value}",
     commandDone: "Komanda izpildīta.",
     commandNotConfirmed: "IMMAX komandu neapstiprināja. Pašreizējais stāvoklis: {state}.",
@@ -224,7 +224,7 @@ const I18N = {
     phaseHistory: "Phase current and voltage history",
     phaseHistoryNote: "Current A, voltage V",
     chargeSessions: "Renault API charge sessions",
-    chargeSessionsNote: "Completed sessions in the current month",
+    chargeSessionsNote: "Completed sessions in the selected period",
     entityHistory: "IMMAX data freshness",
     entityHistoryNote: "Click a value to open its Home Assistant history.",
     battery: "Battery",
@@ -342,7 +342,7 @@ const I18N = {
     cost: "Cost",
     status: "Status",
     total: "Total",
-    noSessions: "No completed charge sessions in the current month.",
+    noSessions: "No completed charge sessions in the selected period.",
     valueSaved: "Saved: {value}",
     commandDone: "Command completed.",
     commandNotConfirmed: "IMMAX did not confirm the command. Current state: {state}.",
@@ -446,7 +446,7 @@ const CONFIG = {
     ],
     actions: [
       [
-        "select.immax_ev_charger_charging_mode",
+        "switch.immax_ev_charger_online_state",
         "chargeNow",
         "start",
         "play",
@@ -455,7 +455,7 @@ const CONFIG = {
         },
       ],
       [
-        "select.immax_ev_charger_charging_mode",
+        "switch.immax_ev_charger_online_state",
         "pause12h",
         "stop",
         "clock",
@@ -494,7 +494,6 @@ const CONFIG = {
         items: [
           ["select.immax_ev_charger_charging_mode", "chargingMode"],
           ["number.immax_ev_charger_current", "currentLimit"],
-          ["number.immax_ev_charger_delay_timer", "delayTimer"],
           ["switch.immax_ev_charger_require_earth", "requireEarth"],
           ["switch.immax_ev_charger_online_state", "onlineControl"],
           ["sensor.immax_ev_charger_status", "chargerStatus"],
@@ -603,6 +602,7 @@ const actionsEl = document.getElementById("actions");
 const controlPanelsEl = document.getElementById("controlPanels");
 const periodEl = document.getElementById("period");
 const dayDateEl = document.getElementById("dayDate");
+const dayDateToEl = document.getElementById("dayDateTo");
 const clearDateEl = document.getElementById("clearDate");
 const settingsEl = document.getElementById("settings");
 const entitySettingsEl = document.getElementById("entitySettings");
@@ -621,12 +621,14 @@ let cachedParentHass = null;
 let currentStates = {};
 let loading = false;
 let historyLoading = false;
+let historyReloadQueued = false;
 let lastHistoryLoad = 0;
 let activeRange = null;
 let statusLockUntil = 0;
 let commandInProgress = false;
 let cachedHistoryMap = new Map();
 let cachedStatisticsMap = new Map();
+let dateRange = null;
 
 function t(key, values = {}) {
   let text = I18N[language][key] ?? I18N.lv[key] ?? key;
@@ -788,11 +790,24 @@ function isStateAvailable(state) {
 }
 
 function immaxControlAvailable() {
-  return [
-    "select.immax_ev_charger_charging_mode",
+  return stateFor("switch.immax_ev_charger_online_state")?.state === "on"
+    && [
     "number.immax_ev_charger_current",
     "text.immax_ev_charger_charge_mode",
   ].every((entityId) => isStateAvailable(stateFor(entityId)));
+}
+
+function immaxEffectiveMode() {
+  const modeState = stateFor("text.immax_ev_charger_charge_mode");
+  if (!isStateAvailable(modeState)) return null;
+  try {
+    return Number(JSON.parse(modeState.state)?.pt) === 1
+      ? "delayed_charge"
+      : "immediate";
+  } catch (error) {
+    const compact = String(modeState.state).replace(/\s/g, "");
+    return compact.includes('"pt":1') ? "delayed_charge" : "immediate";
+  }
 }
 
 function immaxModePayload(delayed) {
@@ -829,12 +844,6 @@ async function setImmaxDelayedMode() {
     "set_value",
     "text.immax_ev_charger_charge_mode",
     { value: immaxModePayload(true) },
-  );
-  await callService(
-    "number",
-    "set_value",
-    "number.immax_ev_charger_delay_timer",
-    { value: 12 },
   );
   await callService(
     "number",
@@ -896,22 +905,23 @@ async function runImmaxCommand(command) {
     await refreshImmaxCommandState();
   }
 
-  const mode = stateFor("select.immax_ev_charger_charging_mode")?.state;
+  const modeEntityId = "text.immax_ev_charger_charge_mode";
+  const mode = immaxEffectiveMode();
   if (command === "immaxDelay") {
     return mode === "delayed_charge"
       ? { message: t("chargerDelayed"), warn: false }
       : {
-        message: t("commandNotConfirmed", { state: displayState(stateFor(
-          "select.immax_ev_charger_charging_mode",
-        )) }),
+        message: t("commandNotConfirmed", {
+          state: mode || displayState(stateFor(modeEntityId)),
+        }),
         warn: true,
       };
   }
   if (mode !== "immediate") {
     return {
-      message: t("commandNotConfirmed", { state: displayState(stateFor(
-        "select.immax_ev_charger_charging_mode",
-      )) }),
+      message: t("commandNotConfirmed", {
+        state: mode || displayState(stateFor(modeEntityId)),
+      }),
       warn: true,
     };
   }
@@ -1345,11 +1355,14 @@ function controlValue(entityId, state) {
   if (domain === "input_select" || domain === "select") {
     const select = document.createElement("select");
     const options = state.attributes?.options || [];
+    const selectedValue = entityId === "select.immax_ev_charger_charging_mode"
+      ? immaxEffectiveMode()
+      : state.state;
     for (const option of options) {
       const item = document.createElement("option");
       item.value = option;
       item.textContent = displayOption(option);
-      item.selected = option === state.state;
+      item.selected = option === selectedValue;
       select.append(item);
     }
     select.addEventListener("change", async () => {
@@ -1466,8 +1479,7 @@ function applyLanguage() {
   clearDateEl.title = t("clearDate");
   clearDateEl.setAttribute("aria-label", t("clearDate"));
   periodEl.setAttribute("aria-label", t("periodLabel"));
-  dayDateEl.title = t("specificDate");
-  dayDateEl.setAttribute("aria-label", t("specificDate"));
+  dateRange?.setLanguage(language);
   metricsEl.setAttribute("aria-label", t("summary"));
   actionsEl.setAttribute("aria-label", t("commands"));
   document.getElementById("mainChart").setAttribute(
@@ -1484,16 +1496,24 @@ function applyLanguage() {
   const selected = periodEl.value;
   const periodLabels = language === "lv"
     ? {
-      "24h": "Šodiena (00–24)",
-      "48h": "2 kalendāra dienas",
-      "7d": "7 kalendāra dienas",
-      "30d": "30 kalendāra dienas",
+      "1": "Šodiena (00–24)",
+      "3": "3 kalendāra dienas",
+      "7": "7 kalendāra dienas",
+      "14": "14 kalendāra dienas",
+      "30": "30 kalendāra dienas",
+      current_month: "Tekošais mēnesis",
+      "90": "90 kalendāra dienas",
+      all: "Visa pieejamā vēsture",
     }
     : {
-      "24h": "Today (00–24)",
-      "48h": "2 calendar days",
-      "7d": "7 calendar days",
-      "30d": "30 calendar days",
+      "1": "Today (00–24)",
+      "3": "3 calendar days",
+      "7": "7 calendar days",
+      "14": "14 calendar days",
+      "30": "30 calendar days",
+      current_month: "Current month",
+      "90": "90 calendar days",
+      all: "All available history",
     };
   for (const option of periodEl.options) option.textContent = periodLabels[option.value];
   periodEl.value = selected;
@@ -1506,33 +1526,7 @@ function applyLanguage() {
 }
 
 function selectedRange() {
-  const now = new Date();
-  if (dayDateEl.value) {
-    const start = new Date(`${dayDateEl.value}T00:00:00`);
-    const end = new Date(start);
-    end.setDate(end.getDate() + 1);
-    return { start: start.getTime(), end: end.getTime() };
-  }
-
-  const start = new Date(now);
-  start.setHours(0, 0, 0, 0);
-  if (PAGE === "charging" && periodEl.value === "48h") {
-    const end = new Date(start);
-    end.setDate(end.getDate() + 2);
-    return { start: start.getTime(), end: end.getTime() };
-  }
-
-  const days = {
-    "24h": 1,
-    "48h": 2,
-    "7d": 7,
-    "30d": 30,
-  }[periodEl.value] || 2;
-  start.setDate(start.getDate() - (days - 1));
-  const end = new Date(now);
-  end.setHours(0, 0, 0, 0);
-  end.setDate(end.getDate() + 1);
-  return { start: start.getTime(), end: end.getTime() };
+  return dateRange.range(new Date(), Date.now() - 400 * DAY_MS);
 }
 
 function normalizeHistory(history) {
@@ -1964,9 +1958,13 @@ const mainChart = new TimeChart("mainChart", "mainTooltip", "mainLegend");
 const secondaryChart = new TimeChart("secondaryChart", "secondaryTooltip", "secondaryLegend");
 
 async function loadHistory() {
-  if (historyLoading) return;
+  if (historyLoading) {
+    historyReloadQueued = true;
+    return;
+  }
   historyLoading = true;
   activeRange = selectedRange();
+  renderDetail();
   const now = Date.now();
   const historyEnd = Math.min(activeRange.end, now);
   const entityIds = PAGE === "charging"
@@ -2038,6 +2036,10 @@ async function loadHistory() {
     secondaryChart.setData([], activeRange);
   } finally {
     historyLoading = false;
+    if (historyReloadQueued) {
+      historyReloadQueued = false;
+      window.setTimeout(loadHistory, 0);
+    }
   }
 }
 
@@ -2175,10 +2177,10 @@ function renderImmaxCharts(historyMap, statisticsMap, range) {
 
 function sessionEntity() {
   return [
+    "sensor.zoe_charge_sessions_history_raw",
+    "sensor.zoe_charge_sessions_history",
     "sensor.zoe_charge_sessions_31d_raw",
     "sensor.zoe_charge_sessions_31d",
-    "sensor.zoe_charge_sessions_history",
-    "sensor.zoe_charge_sessions_history_raw",
   ].map(stateFor).find((state) => Array.isArray(state?.attributes?.sessions));
 }
 
@@ -2214,11 +2216,16 @@ function sessionPriceSourceLabel(session) {
 
 function renderSessions() {
   const state = sessionEntity();
-  const monthStart = new Date();
-  monthStart.setDate(1);
-  monthStart.setHours(0, 0, 0, 0);
+  const range = activeRange || selectedRange();
   const sessions = (state?.attributes?.sessions || [])
-    .filter((session) => new Date(session.end || session.start).getTime() >= monthStart.getTime())
+    .filter((session) => {
+      const sessionStart = new Date(session.start || session.end).getTime();
+      const sessionEnd = new Date(session.end || session.start).getTime();
+      return Number.isFinite(sessionStart)
+        && Number.isFinite(sessionEnd)
+        && sessionEnd > range.start
+        && sessionStart < range.end;
+    })
     .sort((left, right) => new Date(right.start) - new Date(left.start));
   if (!sessions.length) {
     detailContentEl.innerHTML = `<div class="empty">${escapeHtml(t("noSessions"))}</div>`;
@@ -2419,7 +2426,15 @@ function navigateSettings(event) {
 }
 
 titleIconEl.innerHTML = pageConfig.icon;
-if (PAGE === "immax") periodEl.value = "24h";
+dateRange = window.RenaultDateRange.attach({
+  periodEl,
+  startEl: dayDateEl,
+  endEl: dayDateToEl,
+  clearEl: clearDateEl,
+  defaultPreset: "current_month",
+  language,
+  onChange: loadHistory,
+});
 settingsEl.href = "/config/integrations/integration/zoe_new_extended";
 settingsEl.target = "_top";
 entitySettingsEl.href = "/config/integrations/integration/zoe_new_extended";
@@ -2428,23 +2443,7 @@ entitySettingsEl.hidden = PAGE !== "immax";
 document.querySelectorAll("a.settings-link").forEach((link) => {
   link.addEventListener("click", navigateSettings);
 });
-dayDateEl.max = localDateValue(new Date());
 applyLanguage();
-
-periodEl.addEventListener("change", () => {
-  dayDateEl.value = "";
-  clearDateEl.hidden = true;
-  loadHistory();
-});
-dayDateEl.addEventListener("change", () => {
-  clearDateEl.hidden = !dayDateEl.value;
-  if (dayDateEl.value) loadHistory();
-});
-clearDateEl.addEventListener("click", () => {
-  dayDateEl.value = "";
-  clearDateEl.hidden = true;
-  loadHistory();
-});
 reloadEl.addEventListener("click", reloadAll);
 
 window.setInterval(() => {

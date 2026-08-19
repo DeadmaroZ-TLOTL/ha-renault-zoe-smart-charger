@@ -72,8 +72,11 @@ used by the included Nord Pool smart charger package.
 - Separate mileage dashboard view with daily totals, odometer-based paved and
   gravel/unpaved distance, unknown-surface coverage, and approximate average
   and maximum route speeds.
-- Matching full-screen Charging and IMMAX views with responsive controls,
-  configurable history periods, calendar dates, and large interactive charts.
+- Matching full-screen Charging, Trips, Mileage, Costs, Info, Stations, and
+  IMMAX views with responsive controls and one persisted history selector.
+  Choose today, 3/7/14/30/90 calendar days, the current month, all available
+  history, or an inclusive custom **From/To** date range. Charging sessions,
+  trips, mileage, costs, and chart history follow the selected range.
 - Server-side IMMAX **Charge now** and **Delay 12 h** command sequences start
   at 6 A and use Tuya Local only. The controls are disabled while the local
   charger connection is unavailable.

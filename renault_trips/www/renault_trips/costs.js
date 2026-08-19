@@ -28,6 +28,7 @@ const BATTERY_SETTLE_MIN = 12;
 const MILEAGE_SETTLE_MIN = 15;
 const MILEAGE_COVER_MARGIN_MIN = 20;
 const AUTO_REFRESH_MS = 5 * 60 * 1000;
+const SOURCE_CHANGE_CHECK_MS = 15 * 1000;
 const TRANSLATIONS = {
   lv: {
     pageTitle: "Renault ZOE enerģijas izmaksas",
@@ -165,6 +166,7 @@ let costSettings = {
 
 const periodEl = document.getElementById("period");
 const dayDateEl = document.getElementById("dayDate");
+const dayDateToEl = document.getElementById("dayDateTo");
 const clearDateEl = document.getElementById("clearDate");
 const reloadEl = document.getElementById("reload");
 const statusEl = document.getElementById("status");
@@ -179,6 +181,9 @@ const forecastRateToggleEl = document.getElementById("forecastRateToggle");
 const methodEl = document.getElementById("method");
 let cachedParentHass = null;
 let lastModel = null;
+let dateRange = null;
+let loadingModel = false;
+let lastSourceSignature = "";
 
 function t(key, values = {}) {
   let text = TRANSLATIONS[currentLanguage][key] ?? key;
@@ -209,6 +214,7 @@ function applyLanguage() {
     element.setAttribute("aria-label", t(element.dataset.i18nAria));
   }
   document.getElementById("settings").title = t("settings");
+  dateRange?.setLanguage(currentLanguage);
   renderMethod();
   if (lastModel) render(lastModel);
 }
@@ -217,8 +223,6 @@ function localDateValue(date) {
   const local = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
   return local.toISOString().slice(0, 10);
 }
-
-dayDateEl.max = localDateValue(new Date());
 
 function setStatus(text, warn = false) {
   statusEl.textContent = text;
@@ -1109,35 +1113,24 @@ function buildBatteryRateForecast(
 }
 
 function selectedRange(now = new Date()) {
-  if (dayDateEl.value) {
-    const start = new Date(`${dayDateEl.value}T00:00:00`);
-    const end = new Date(start);
-    end.setDate(end.getDate() + 1);
-    return { start: start.getTime(), end: end.getTime() };
-  }
-
-  if (periodEl.value === "all") {
-    return { start: -Infinity, end: now.getTime() };
-  }
-  if (periodEl.value === "current_month") {
-    const start = new Date(now.getFullYear(), now.getMonth(), 1);
-    return { start: start.getTime(), end: now.getTime() };
-  }
-  const days = Number(periodEl.value) || 30;
-  const start = new Date(now);
-  start.setHours(0, 0, 0, 0);
-  start.setDate(start.getDate() - (days - 1));
-  const end = new Date(now);
-  end.setHours(0, 0, 0, 0);
-  end.setDate(end.getDate() + 1);
-  return {
-    start: start.getTime(),
-    end: end.getTime(),
-  };
+  return dateRange.range(now, -Infinity);
 }
 
 function filterModel(model) {
-  const range = selectedRange();
+  let range = selectedRange();
+  if (!Number.isFinite(range.start)) {
+    const availableTimes = [
+      ...model.trips.map((trip) => trip.start),
+      ...model.sessions.map((session) => session.startTime),
+      ...model.batteryRateHistory.map((point) => point.time),
+    ].filter(Number.isFinite);
+    range = {
+      ...range,
+      start: availableTimes.length
+        ? Math.min(...availableTimes)
+        : Date.now() - 400 * 86400000,
+    };
+  }
   return {
     range,
     trips: model.trips.filter(
@@ -1598,6 +1591,8 @@ async function loadOptionalState(entityId) {
 }
 
 async function loadModel() {
+  if (loadingModel) return;
+  loadingModel = true;
   setStatus(t("loading"));
   reloadEl.disabled = true;
   try {
@@ -1650,6 +1645,7 @@ async function loadModel() {
     model.sessionEntityId = sessionState.entityId;
     lastModel = model;
     render(model);
+    lastSourceSignature = await currentSourceSignature();
 
     const lastUpdate = new Intl.DateTimeFormat(LOCALES[currentLanguage], {
       hour: "2-digit",
@@ -1680,12 +1676,36 @@ async function loadModel() {
     renderEmptyChart(batteryCanvas, t("dataUnavailable"));
   } finally {
     reloadEl.disabled = false;
+    loadingModel = false;
   }
 }
 
-function updateDateMode() {
-  clearDateEl.hidden = !dayDateEl.value;
-  periodEl.disabled = Boolean(dayDateEl.value);
+async function currentSourceSignature() {
+  const hass = await getParentHass();
+  if (!hass?.states) return "";
+  const entityIds = [
+    ...ENTITY.sessions,
+    ENTITY.battery,
+    ENTITY.costSettings,
+    ENTITY.nordPoolPrice,
+    ENTITY.plannedCharging,
+    ENTITY.plannedChargeLevel,
+  ];
+  return entityIds.map((entityId) => {
+    const state = hass.states[entityId];
+    return `${entityId}:${state?.state || ""}:${state?.last_updated || ""}`;
+  }).join("|");
+}
+
+async function reloadWhenSourceChanges() {
+  if (document.hidden || loadingModel) return;
+  const signature = await currentSourceSignature();
+  if (!signature) return;
+  if (!lastSourceSignature) {
+    lastSourceSignature = signature;
+    return;
+  }
+  if (signature !== lastSourceSignature) await loadModel();
 }
 
 function navigateSettings(event) {
@@ -1699,19 +1719,16 @@ function navigateSettings(event) {
 document.querySelectorAll("a.settings-link").forEach((link) => {
   link.addEventListener("click", navigateSettings);
 });
-periodEl.addEventListener("change", () => {
-  dayDateEl.value = "";
-  updateDateMode();
-  if (lastModel) render(lastModel);
-});
-dayDateEl.addEventListener("change", () => {
-  updateDateMode();
-  if (lastModel) render(lastModel);
-});
-clearDateEl.addEventListener("click", () => {
-  dayDateEl.value = "";
-  updateDateMode();
-  if (lastModel) render(lastModel);
+dateRange = window.RenaultDateRange.attach({
+  periodEl,
+  startEl: dayDateEl,
+  endEl: dayDateToEl,
+  clearEl: clearDateEl,
+  defaultPreset: "current_month",
+  language: currentLanguage,
+  onChange: () => {
+    if (lastModel) render(lastModel);
+  },
 });
 [actualRateToggleEl, forecastRateToggleEl].forEach((toggle) => {
   toggle?.addEventListener("change", () => {
@@ -1725,8 +1742,8 @@ window.addEventListener("resize", () => {
 window.setInterval(() => {
   if (!document.hidden) loadModel();
 }, AUTO_REFRESH_MS);
+window.setInterval(reloadWhenSourceChanges, SOURCE_CHANGE_CHECK_MS);
 
 applyLanguage();
 setStatus(t("loadingInitial"));
-updateDateMode();
 loadModel();

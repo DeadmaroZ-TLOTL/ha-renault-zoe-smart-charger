@@ -6,6 +6,17 @@
 
 template:
   - sensor:
+      - name: IMMAX EV charger effective charging mode
+        unique_id: immax_ev_charger_effective_charging_mode
+        icon: mdi:ev-station
+        availability: >-
+          {{ states('text.immax_ev_charger_charge_mode')
+             not in ['unknown', 'unavailable', 'none', ''] }}
+        state: >-
+          {% set raw = states('text.immax_ev_charger_charge_mode')
+             | replace(' ', '') %}
+          {{ 'delayed_charge' if '"pt":1' in raw else 'immediate' }}
+
       - name: Zoe active charging power
         unique_id: zoe_active_charging_power
         icon: mdi:ev-station
@@ -350,8 +361,7 @@ script:
     sequence:
       - condition: template
         value_template: >-
-          {{ states('select.immax_ev_charger_charging_mode')
-               not in ['unknown', 'unavailable'] and
+          {{ is_state('switch.immax_ev_charger_online_state', 'on') and
              states('number.immax_ev_charger_current')
                not in ['unknown', 'unavailable'] and
              states('text.immax_ev_charger_charge_mode')
@@ -371,11 +381,6 @@ script:
             {% set target = now() + timedelta(hours=12) %}
             {{ {'pt': 1, 'dt': 24, 'ss': target.strftime('%H:%M'),
                 'se': '00:00'} | to_json }}
-      - action: number.set_value
-        target:
-          entity_id: number.immax_ev_charger_delay_timer
-        data:
-          value: 12
       - action: number.set_value
         target:
           entity_id: number.immax_ev_charger_current
@@ -408,8 +413,7 @@ script:
     sequence:
       - condition: template
         value_template: >-
-          {{ states('select.immax_ev_charger_charging_mode')
-               not in ['unknown', 'unavailable'] and
+          {{ is_state('switch.immax_ev_charger_online_state', 'on') and
              states('number.immax_ev_charger_current')
                not in ['unknown', 'unavailable'] and
              states('text.immax_ev_charger_charge_mode')
@@ -429,11 +433,6 @@ script:
             {% set target = now() + timedelta(hours=12) %}
             {{ {'pt': 1, 'dt': 24, 'ss': target.strftime('%H:%M'),
                 'se': '00:00'} | to_json }}
-      - action: number.set_value
-        target:
-          entity_id: number.immax_ev_charger_delay_timer
-        data:
-          value: 12
       - action: number.set_value
         target:
           entity_id: number.immax_ev_charger_current
@@ -478,11 +477,6 @@ automation:
               hours=states('input_number.immax_delay_period') | int(12)) %}
             {{ {'pt': 1, 'dt': 24, 'ss': target.strftime('%H:%M'),
                 'se': '00:00'} | to_json }}
-      - action: number.set_value
-        target:
-          entity_id: number.immax_ev_charger_delay_timer
-        data:
-          value: "{{ states('input_number.immax_delay_period') | int(12) }}"
       - action: number.set_value
         target:
           entity_id: number.immax_ev_charger_current
@@ -708,7 +702,9 @@ automation:
             Keep SUMMARY under 120 characters and do not use another pipe.
 
             Smart mode={{ states('input_select.immax_smart_charging_mode') }};
-            charger mode={{ states('select.immax_ev_charger_charging_mode') }};
+            charger mode={{ 'delayed_charge'
+              if '"pt":1' in states('text.immax_ev_charger_charge_mode')
+                | replace(' ', '') else 'immediate' }};
             charger status={{ states('sensor.immax_ev_charger_status') }};
             commanded current={{ states('number.immax_ev_charger_current') }} A;
             measured charger power={{ states('sensor.immax_ev_charger_power_a') }} W;
@@ -821,7 +817,7 @@ automation:
           - sensor.immax_ev_charger_status
           - binary_sensor.immax_ev_charger_problem
           - switch.immax_ev_charger_online_state
-          - select.immax_ev_charger_charging_mode
+          - text.immax_ev_charger_charge_mode
           - number.immax_ev_charger_current
           - sensor.immax_ev_charger_power_a
           - sensor.immax_ev_charger_power_b
@@ -843,7 +839,9 @@ automation:
       - variables:
           mode: "{{ states('input_select.immax_smart_charging_mode') }}"
           charger_state: >-
-            {{ states('select.immax_ev_charger_charging_mode') }}
+            {% set raw = states('text.immax_ev_charger_charge_mode')
+               | replace(' ', '') %}
+            {{ 'delayed_charge' if '"pt":1' in raw else 'immediate' }}
           charger_on: >-
             {{ charger_state == 'immediate' }}
           charger_off: >-
@@ -862,7 +860,7 @@ automation:
           charger_state_seconds: >-
             {{ as_timestamp(now()) -
                as_timestamp(
-                 states.select.immax_ev_charger_charging_mode.last_changed
+                 states.text.immax_ev_charger_charge_mode.last_changed
                ) if charger_control_available else 0 }}
           charger_status: >-
             {{ states('sensor.immax_ev_charger_status') }}
@@ -1070,7 +1068,7 @@ automation:
                  states.number.immax_ev_charger_current.last_changed, 0) }}
           charger_mode_changed: >-
             {{ as_timestamp(
-                 states.select.immax_ev_charger_charging_mode.last_changed, 0) }}
+                 states.text.immax_ev_charger_charge_mode.last_changed, 0) }}
       - variables:
           site_measurement_fresh: >-
             {{ site_power_meter_available and
@@ -1458,11 +1456,6 @@ automation:
                       hours=states('input_number.immax_delay_period') | int(12)) %}
                     {{ {'pt': 1, 'dt': 24, 'ss': target.strftime('%H:%M'),
                         'se': '00:00'} | to_json }}
-              - action: number.set_value
-                target:
-                  entity_id: number.immax_ev_charger_delay_timer
-                data:
-                  value: "{{ states('input_number.immax_delay_period') | int(12) }}"
               - action: select.select_option
                 target:
                   entity_id: select.immax_ev_charger_charging_mode
@@ -1485,11 +1478,6 @@ automation:
                       hours=states('input_number.immax_delay_period') | int(12)) %}
                     {{ {'pt': 1, 'dt': 24, 'ss': target.strftime('%H:%M'),
                         'se': '00:00'} | to_json }}
-              - action: number.set_value
-                target:
-                  entity_id: number.immax_ev_charger_delay_timer
-                data:
-                  value: "{{ states('input_number.immax_delay_period') | int(12) }}"
               - action: select.select_option
                 target:
                   entity_id: select.immax_ev_charger_charging_mode
@@ -1514,11 +1502,6 @@ automation:
                       hours=states('input_number.immax_delay_period') | int(12)) %}
                     {{ {'pt': 1, 'dt': 24, 'ss': target.strftime('%H:%M'),
                         'se': '00:00'} | to_json }}
-              - action: number.set_value
-                target:
-                  entity_id: number.immax_ev_charger_delay_timer
-                data:
-                  value: "{{ states('input_number.immax_delay_period') | int(12) }}"
               - action: select.select_option
                 target:
                   entity_id: select.immax_ev_charger_charging_mode
@@ -1542,11 +1525,6 @@ automation:
                       hours=states('input_number.immax_delay_period') | int(12)) %}
                     {{ {'pt': 1, 'dt': 24, 'ss': target.strftime('%H:%M'),
                         'se': '00:00'} | to_json }}
-              - action: number.set_value
-                target:
-                  entity_id: number.immax_ev_charger_delay_timer
-                data:
-                  value: "{{ states('input_number.immax_delay_period') | int(12) }}"
               - action: select.select_option
                 target:
                   entity_id: select.immax_ev_charger_charging_mode
@@ -1583,11 +1561,6 @@ automation:
                                 {{ {'pt': 1, 'dt': 24,
                                     'ss': target.strftime('%H:%M'),
                                     'se': '00:00'} | to_json }}
-                          - action: number.set_value
-                            target:
-                              entity_id: number.immax_ev_charger_delay_timer
-                            data:
-                              value: "{{ states('input_number.immax_delay_period') | int(12) }}"
                           - action: select.select_option
                             target:
                               entity_id: select.immax_ev_charger_charging_mode
@@ -1664,11 +1637,6 @@ automation:
                                 {{ {'pt': 1, 'dt': 24,
                                     'ss': target.strftime('%H:%M'),
                                     'se': '00:00'} | to_json }}
-                          - action: number.set_value
-                            target:
-                              entity_id: number.immax_ev_charger_delay_timer
-                            data:
-                              value: "{{ states('input_number.immax_delay_period') | int(12) }}"
                           - action: select.select_option
                             target:
                               entity_id: select.immax_ev_charger_charging_mode
@@ -1707,11 +1675,6 @@ automation:
                                 {{ {'pt': 1, 'dt': 24,
                                     'ss': target.strftime('%H:%M'),
                                     'se': '00:00'} | to_json }}
-                          - action: number.set_value
-                            target:
-                              entity_id: number.immax_ev_charger_delay_timer
-                            data:
-                              value: "{{ states('input_number.immax_delay_period') | int(12) }}"
                           - action: select.select_option
                             target:
                               entity_id: select.immax_ev_charger_charging_mode
@@ -1788,11 +1751,6 @@ automation:
                                 {{ {'pt': 1, 'dt': 24,
                                     'ss': target.strftime('%H:%M'),
                                     'se': '00:00'} | to_json }}
-                          - action: number.set_value
-                            target:
-                              entity_id: number.immax_ev_charger_delay_timer
-                            data:
-                              value: "{{ states('input_number.immax_delay_period') | int(12) }}"
                           - action: select.select_option
                             target:
                               entity_id: select.immax_ev_charger_charging_mode
@@ -1818,15 +1776,15 @@ automation:
       - trigger: time_pattern
         seconds: /30
       - trigger: state
-        entity_id: select.immax_ev_charger_charging_mode
-        to: delayed_charge
+        entity_id: text.immax_ev_charger_charge_mode
     conditions:
       - condition: state
         entity_id: input_boolean.immax_feature_enabled
         state: "on"
-      - condition: state
-        entity_id: select.immax_ev_charger_charging_mode
-        state: delayed_charge
+      - condition: template
+        value_template: >-
+          {{ '"pt":1' in states('text.immax_ev_charger_charge_mode')
+             | replace(' ', '') }}
       - condition: template
         value_template: >-
           {{ is_state('sensor.immax_ev_charger_status', 'charging') or
@@ -1843,11 +1801,6 @@ automation:
               hours=states('input_number.immax_delay_period') | int(12)) %}
             {{ {'pt': 1, 'dt': 24, 'ss': target.strftime('%H:%M'),
                 'se': '00:00'} | to_json }}
-      - action: number.set_value
-        target:
-          entity_id: number.immax_ev_charger_delay_timer
-        data:
-          value: "{{ states('input_number.immax_delay_period') | int(12) }}"
       - action: select.select_option
         target:
           entity_id: select.immax_ev_charger_charging_mode

@@ -24,6 +24,9 @@ const DEFAULT_CHEAPEST_DISTANCE_KM = 50;
 
 const I18N = {
   lv: {
+    day1: "Šodiena (00–24)", days3: "3 kalendāra dienas", days7: "7 kalendāra dienas",
+    days14: "14 kalendāra dienas", days30: "30 kalendāra dienas", currentMonth: "Tekošais mēnesis",
+    days90: "90 kalendāra dienas", allHistory: "Visa pieejamā vēsture",
     plugFilters: "Spraudņi",
     operatorFilters: "Operatori",
     enableAll: "Ieslēgt visus",
@@ -104,6 +107,9 @@ const I18N = {
     openPlugShare: "Atvērt PlugShare",
   },
   en: {
+    day1: "Today (00–24)", days3: "3 calendar days", days7: "7 calendar days",
+    days14: "14 calendar days", days30: "30 calendar days", currentMonth: "Current month",
+    days90: "90 calendar days", allHistory: "All available history",
     plugFilters: "Plugs",
     operatorFilters: "Operators",
     enableAll: "Enable all",
@@ -214,6 +220,7 @@ let listOrigin = null;
 let stationListLimit = LIST_PAGE_SIZE;
 let disabledConnectorTypes = readStoredSet(CONNECTOR_FILTER_STORAGE);
 let disabledOperators = readStoredSet(OPERATOR_FILTER_STORAGE);
+let dateRange = null;
 
 const statusEl = document.getElementById("status");
 const metricsEl = document.getElementById("metrics");
@@ -226,6 +233,10 @@ const searchEl = document.getElementById("search");
 const powerFilterEl = document.getElementById("powerFilter");
 const availableOnlyEl = document.getElementById("availableOnly");
 const reloadEl = document.getElementById("reload");
+const periodEl = document.getElementById("period");
+const dayDateEl = document.getElementById("dayDate");
+const dayDateToEl = document.getElementById("dayDateTo");
+const clearDateEl = document.getElementById("clearDate");
 const nearestEl = document.getElementById("nearest");
 const cheapestEl = document.getElementById("cheapest");
 const cheapestDistanceEl = document.getElementById("cheapestDistance");
@@ -560,6 +571,7 @@ function applyLanguage() {
     element.setAttribute("aria-label", label);
   }
   searchEl.placeholder = t("searchPlaceholder");
+  dateRange?.setLanguage(language);
   renderFilterMenus();
 }
 
@@ -1617,6 +1629,15 @@ document.addEventListener("click", (event) => {
 window.addEventListener("resize", () => map?.invalidateSize());
 
 searchEl.value = "";
+dateRange = window.RenaultDateRange.attach({
+  periodEl,
+  startEl: dayDateEl,
+  endEl: dayDateToEl,
+  clearEl: clearDateEl,
+  defaultPreset: "current_month",
+  language,
+  onChange: applyFilters,
+});
 applyLanguage();
 ensureMap();
 loadStations();

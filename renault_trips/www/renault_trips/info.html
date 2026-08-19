@@ -228,7 +228,7 @@
       }
     }
   </style>
-  <link rel="stylesheet" href="./shared-theme.css?v=2.1.1">
+  <link rel="stylesheet" href="./shared-theme.css?v=2.3.2">
 </head>
 <body>
   <main class="app info-app">
@@ -243,6 +243,23 @@
         </div>
       </div>
       <div class="filters">
+        <span class="global-period-controls">
+          <select id="period" aria-label="Periods">
+            <option value="1" data-i18n="day1">Šodiena (00–24)</option>
+            <option value="3" data-i18n="days3">3 kalendāra dienas</option>
+            <option value="7" data-i18n="days7">7 kalendāra dienas</option>
+            <option value="14" data-i18n="days14">14 kalendāra dienas</option>
+            <option value="30" data-i18n="days30">30 kalendāra dienas</option>
+            <option value="current_month" selected data-i18n="currentMonth">Tekošais mēnesis</option>
+            <option value="90" data-i18n="days90">90 kalendāra dienas</option>
+            <option value="all" data-i18n="allHistory">Visa pieejamā vēsture</option>
+          </select>
+          <span class="date-range-fields">
+            <label class="date-range-field"><span data-range-label="start">No</span><input id="dayDate" type="date" aria-label="No datuma"></label>
+            <label class="date-range-field"><span data-range-label="end">Līdz</span><input id="dayDateTo" type="date" aria-label="Līdz datumam"></label>
+          </span>
+          <button id="clearDate" class="icon-command" type="button" hidden aria-label="Notīrīt datumu periodu"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
+        </span>
         <input id="search" class="search" type="search" placeholder="Meklēt entītiju vai atribūtu" data-i18n-placeholder="search">
         <select id="domain" aria-label="Domēns" data-i18n-aria="domain">
           <option value="all" data-i18n="allDomains">Visi domēni</option>
@@ -279,6 +296,7 @@
   </main>
 
   <script src="./dashboard-tabs.js?v=1.2.0"></script>
+  <script src="./date-range.js?v=1.0.2"></script>
   <script>
     "use strict";
 
@@ -288,6 +306,9 @@
       lv: {
         pageTitle: "Renault ZOE API informācija",
         pageSubtitle: "Visas no Renault API pieejamās entītijas, stāvokļi un atribūti.",
+        day1: "Šodiena (00–24)", days3: "3 kalendāra dienas", days7: "7 kalendāra dienas",
+        days14: "14 kalendāra dienas", days30: "30 kalendāra dienas", currentMonth: "Tekošais mēnesis",
+        days90: "90 kalendāra dienas", allHistory: "Visa pieejamā vēsture",
         search: "Meklēt entītiju vai atribūtu",
         domain: "Domēns",
         allDomains: "Visi domēni",
@@ -326,6 +347,9 @@
       en: {
         pageTitle: "Renault ZOE API information",
         pageSubtitle: "Every entity, state, and attribute available from the Renault API.",
+        day1: "Today (00–24)", days3: "3 calendar days", days7: "7 calendar days",
+        days14: "14 calendar days", days30: "30 calendar days", currentMonth: "Current month",
+        days90: "90 calendar days", allHistory: "All available history",
         search: "Search entities or attributes",
         domain: "Domain",
         allDomains: "All domains",
@@ -370,7 +394,12 @@
     const searchEl = document.getElementById("search");
     const domainEl = document.getElementById("domain");
     const reloadEl = document.getElementById("reload");
+    const periodEl = document.getElementById("period");
+    const dayDateEl = document.getElementById("dayDate");
+    const dayDateToEl = document.getElementById("dayDateTo");
+    const clearDateEl = document.getElementById("clearDate");
     let language = "lv";
+    let dateRange = null;
     let hass = null;
     let rows = [];
     let deviceNames = [];
@@ -404,6 +433,7 @@
       const settings = document.getElementById("settings");
       settings.title = t("settings");
       settings.setAttribute("aria-label", t("settings"));
+      dateRange?.setLanguage(language);
     }
 
     function parseMaybeJson(value) {
@@ -883,6 +913,15 @@
     searchEl.addEventListener("input", render);
     domainEl.addEventListener("change", render);
     reloadEl.addEventListener("click", load);
+    dateRange = window.RenaultDateRange.attach({
+      periodEl,
+      startEl: dayDateEl,
+      endEl: dayDateToEl,
+      clearEl: clearDateEl,
+      defaultPreset: "current_month",
+      language,
+      onChange: render,
+    });
     document.getElementById("expandAll").addEventListener("click", () => {
       groupsEl.querySelectorAll("details").forEach((details) => {
         details.open = true;

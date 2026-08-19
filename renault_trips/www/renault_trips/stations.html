@@ -6,7 +6,7 @@
   <title>Charging stations</title>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
-  <link rel="stylesheet" href="./shared-theme.css?v=2.2.0" />
+  <link rel="stylesheet" href="./shared-theme.css?v=2.3.2" />
   <link rel="stylesheet" href="./stations.css?v=1.5.15" />
 </head>
 <body>
@@ -22,6 +22,23 @@
         </div>
       </div>
       <div class="filters station-filters">
+        <span class="global-period-controls">
+          <select id="period" aria-label="Periods">
+            <option value="1" data-i18n="day1">Šodiena (00–24)</option>
+            <option value="3" data-i18n="days3">3 kalendāra dienas</option>
+            <option value="7" data-i18n="days7">7 kalendāra dienas</option>
+            <option value="14" data-i18n="days14">14 kalendāra dienas</option>
+            <option value="30" data-i18n="days30">30 kalendāra dienas</option>
+            <option value="current_month" selected data-i18n="currentMonth">Tekošais mēnesis</option>
+            <option value="90" data-i18n="days90">90 kalendāra dienas</option>
+            <option value="all" data-i18n="allHistory">Visa pieejamā vēsture</option>
+          </select>
+          <span class="date-range-fields">
+            <label class="date-range-field"><span data-range-label="start">No</span><input id="dayDate" type="date" aria-label="No datuma"></label>
+            <label class="date-range-field"><span data-range-label="end">Līdz</span><input id="dayDateTo" type="date" aria-label="Līdz datumam"></label>
+          </span>
+          <button id="clearDate" class="icon-command" type="button" hidden aria-label="Notīrīt datumu periodu"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
+        </span>
         <label class="search-field">
           <span class="sr-only" data-i18n="search">Meklēt</span>
           <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg>
@@ -167,6 +184,7 @@
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
   <script src="./dashboard-tabs.js?v=1.2.0"></script>
-  <script src="./stations.js?v=1.5.15"></script>
+  <script src="./date-range.js?v=1.0.2"></script>
+  <script src="./stations.js?v=1.6.1"></script>
 </body>
 </html>
