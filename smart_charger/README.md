@@ -5,8 +5,9 @@ deadline and controls the Renault start/stop charge buttons supplied by Home
 Assistant. It also respects the locations selected in Zoe New Extended.
 When smart charging is disabled or the car is outside the selected locations,
 the automation changes Renault's charging mode to `Always`.
-At a selected charging interval it sends the current KCM start action only if
-the vehicle has not begun charging. Between selected intervals the stop button
+At a selected charging interval it sends Renault's normal X102VE start action
+only if the vehicle has not begun charging. This resumes the car after a prior
+schedule-based stop. Between selected intervals the stop button
 installs a one-minute KCM schedule 24 hours ahead; this reliably stops X102VE
 where Renault's accepted `pause` command has no physical effect.
 The custom charging-mode select restores its last confirmed value during a

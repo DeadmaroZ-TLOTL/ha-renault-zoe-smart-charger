@@ -163,10 +163,18 @@ class ZoeNewChargeControl:
         self._notify()
 
         try:
-            endpoint = KCM_CHARGE_SCHEDULE if command == "stop" else KCM_CHARGE_START
-            response = await self.vehicle._vehicle._set_vehicle_data(
-                endpoint, self._payload(command, when)
-            )
+            if command == "start":
+                # The normal X102VE endpoint cancels a previously installed
+                # KCM stop schedule. KCM charge/start is accepted but leaves
+                # the car waiting for that planned schedule.
+                result = await self._original_start()
+            else:
+                endpoint = (
+                    KCM_CHARGE_SCHEDULE if command == "stop" else KCM_CHARGE_START
+                )
+                response = await self.vehicle._vehicle._set_vehicle_data(
+                    endpoint, self._payload(command, when)
+                )
         except RenaultException as err:
             self.last_error = str(err)
             error_text = self.last_error.casefold()
@@ -177,6 +185,11 @@ class ZoeNewChargeControl:
             )
             self._notify()
             raise HomeAssistantError(f"Renault charge command failed: {err}") from err
+
+        if command == "start":
+            self.last_command_id = result.raw_data.get("id")
+            self._start_confirmation(command)
+            return cast(KamereonVehicleChargingStartActionData, result)
 
         data = response.raw_data.get("data", {})
         self.last_command_id = data.get("id")
@@ -216,6 +229,7 @@ class ZoeNewChargeControl:
         unsubscribe = coordinator.async_add_listener(handle_coordinator_update)
         loop = asyncio.get_running_loop()
         deadline = loop.time() + CONFIRM_TIMEOUT
+        confirmation_refresh_requested = False
 
         try:
             while True:
@@ -254,6 +268,15 @@ class ZoeNewChargeControl:
                         timeout=min(CONFIRM_CHECK_INTERVAL, remaining),
                     )
                 except TimeoutError:
+                    if not confirmation_refresh_requested:
+                        confirmation_refresh_requested = True
+                        try:
+                            await coordinator.async_request_refresh()
+                        except Exception as err:  # noqa: BLE001
+                            self.last_error = (
+                                f"Charging status refresh failed: {err}"
+                            )
+                            self._notify()
                     continue
                 update_event.clear()
 

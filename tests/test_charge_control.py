@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from enum import Enum
@@ -104,6 +103,10 @@ class _Response:
         return KamereonVehicleChargingStartActionData()
 
 
+class _ActionData:
+    raw_data = {"action": "start", "id": "command-id"}
+
+
 class _LowLevelVehicle:
     def __init__(self) -> None:
         self.requests: list[tuple[EndpointDefinition, dict]] = []
@@ -117,12 +120,23 @@ class _Vehicle:
     def __init__(self) -> None:
         self._vehicle = _LowLevelVehicle()
         self.coordinators = {}
+        self.original_start_calls: list[datetime | None] = []
 
-    async def set_charge_start(self, _when=None):
-        return None
+    async def set_charge_start(self, when=None):
+        self.original_start_calls.append(when)
+        return _ActionData()
 
     async def set_charge_stop(self):
         return None
+
+
+def _run_immediate(coroutine):
+    """Run a stubbed coroutine that must complete without yielding."""
+    try:
+        coroutine.send(None)
+    except StopIteration as result:
+        return result.value
+    raise AssertionError("Stubbed charge command yielded unexpectedly")
 
 
 class ChargeControlTest(unittest.TestCase):
@@ -134,7 +148,7 @@ class ChargeControlTest(unittest.TestCase):
         self.control._start_confirmation = lambda _command: None
 
     def test_stop_uses_future_kcm_schedule(self) -> None:
-        asyncio.run(self.control.async_stop())
+        _run_immediate(self.control.async_stop())
 
         endpoint, payload = self.vehicle._vehicle.requests[-1]
         self.assertEqual("/kcm/v1/vehicles/{vin}/charge/schedule", endpoint.endpoint)
@@ -156,18 +170,19 @@ class ChargeControlTest(unittest.TestCase):
         self.assertEqual("kcm_schedule", self.control.stop_method)
         self.assertIsNotNone(self.control.delayed_until)
 
-    def test_start_keeps_kcm_start_endpoint(self) -> None:
-        asyncio.run(self.control.async_start())
+    def test_start_uses_original_x102ve_endpoint(self) -> None:
+        _run_immediate(self.control.async_start())
 
-        endpoint, payload = self.vehicle._vehicle.requests[-1]
-        self.assertEqual("/kcm/v1/vehicles/{vin}/charge/start", endpoint.endpoint)
-        self.assertEqual("start", payload["data"]["attributes"]["action"])
+        self.assertEqual([None], self.vehicle.original_start_calls)
+        self.assertEqual([], self.vehicle._vehicle.requests)
+        self.assertEqual("command-id", self.control.last_command_id)
 
     def test_delayed_start_includes_utc_timestamp(self) -> None:
         when = datetime(2026, 8, 9, 1, 45, tzinfo=timezone.utc)
-        asyncio.run(self.control.async_start(when))
+        _run_immediate(self.control.async_start(when))
 
-        _, payload = self.vehicle._vehicle.requests[-1]
+        endpoint, payload = self.vehicle._vehicle.requests[-1]
+        self.assertEqual("/kcm/v1/vehicles/{vin}/charge/start", endpoint.endpoint)
         self.assertEqual(
             "2026-08-09T01:45:00.000Z",
             payload["data"]["attributes"]["startDateTime"],

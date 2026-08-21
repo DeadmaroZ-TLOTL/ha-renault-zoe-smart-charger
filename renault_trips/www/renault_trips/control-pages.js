@@ -158,6 +158,7 @@ const I18N = {
     homeNordPool: "Mājas / Nord Pool",
     elektrumDrive: "Elektrum Drive",
     elektrumStationTariff: "Elektrum stacijas tarifs",
+    stationTariffEstimate: "stacijas tarifa aprēķins",
     elektrumDriveApp: "Elektrum Drive",
     mobilly: "Mobilly",
     ignitisOnApp: "Ignitis ON",
@@ -332,6 +333,7 @@ const I18N = {
     homeNordPool: "Home / Nord Pool",
     elektrumDrive: "Elektrum Drive",
     elektrumStationTariff: "Elektrum station tariff",
+    stationTariffEstimate: "station tariff estimate",
     elektrumDriveApp: "Elektrum Drive",
     mobilly: "Mobilly",
     ignitisOnApp: "Ignitis ON",
@@ -2210,7 +2212,9 @@ function sessionPriceSourceLabel(session) {
   if (session.payment_provider_confirmed && (session.payment_provider || session.provider)) {
     return session.payment_provider || session.provider;
   }
-  if (session.price_source === "elektrum_drive") return t("elektrumStationTariff");
+  if (["elektrum_drive", "station_tariff_estimate"].includes(session.price_source)) {
+    return t("stationTariffEstimate");
+  }
   if (session.price_source === "elektrum_drive_app") return t("elektrumDriveApp");
   if (session.price_source === "mobilly") return t("mobilly");
   if (session.price_source === "ignitis_on_app") return t("ignitisOnApp");

@@ -88,7 +88,8 @@ used by the included Nord Pool smart charger package.
   at 6 A and use Tuya Local only. The controls are disabled while the local
   charger connection is unavailable.
 
-Immediate charging uses the current X102VE KCM start action. Stopping uses the
+Immediate charging uses the normal X102VE start action, which also resumes a
+car left in scheduled mode by the previous stop. Stopping uses the
 same KCM charge-schedule action as MyRenault: it installs a one-minute schedule
 24 hours ahead, which moves the vehicle out of instant charging. This is used
 because both KCM `pause` and the legacy KCA `stop` action fail to stop this Zoe
@@ -131,6 +132,10 @@ the operator's renewable AMPECO session is stored. A one-time email link is
 also offered when the operator tenant enables it with a non-zero lifetime.
 Repeated setup attempts for the same operator identity are merged instead of
 creating duplicate accounts.
+All enabled charging accounts are refreshed once per hour. A provider name is
+attached to a completed Renault session only when an exact app transaction or
+receipt matches it. Station-tariff fallbacks remain visibly estimated and are
+never presented as proof that the charge was paid through that operator.
 **Renault account login** signs the selected official
 Renault entry in again with country/locale, username, and password. It uses the
 same Renault API client as Home Assistant Core and stores the resulting
@@ -216,8 +221,8 @@ Renault entities and installation path.
 - Renault can accept a cloud command before the vehicle receives it. The
   command status sensor reports both API acceptance and later vehicle state.
 - The stop workaround activates a one-minute weekly schedule 24 hours ahead.
-  The next explicit start command returns the car to instant charging. Renault
-  KCM `pause` is accepted but does not stop this `X102VE`, and KCA `stop` is
+  The next normal X102VE start command returns the car to instant charging.
+  Renault KCM `pause` is accepted but does not stop this `X102VE`, and KCA `stop` is
   rejected as an invalid payload.
 - Renault and the Renault diamond are trademarks of Renault Group. Brand
   images are the assets already maintained by Home Assistant Brands.

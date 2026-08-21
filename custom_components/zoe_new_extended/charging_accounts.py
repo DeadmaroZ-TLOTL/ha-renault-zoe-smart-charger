@@ -85,7 +85,7 @@ from .mobilly_data import (
 
 _LOGGER = logging.getLogger(__name__)
 
-UPDATE_INTERVAL = timedelta(minutes=30)
+UPDATE_INTERVAL = timedelta(hours=1)
 HISTORY_DAYS = 400
 REQUEST_TIMEOUT = ClientTimeout(total=35)
 MOBILLY_BASE_URL = "https://mans.mobilly.lv"

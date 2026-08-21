@@ -51,7 +51,7 @@ EXACT_PROVIDER_PRICE_SOURCES = {
     "ikrautas_app",
     "ikrautas_receipt",
 }
-PYSCRIPT_REVISION = "provider_attribution_v7"
+PYSCRIPT_REVISION = "provider_attribution_v8"
 
 _refresh_in_progress = False
 _nordpool_archive_cache = {}
@@ -501,7 +501,11 @@ def _add_session_cost(
         effective_source == "elektrum_drive"
         or effective_covered >= duration_seconds * 0.8
     ):
-        price_source = effective_source or "effective"
+        price_source = (
+            "station_tariff_estimate"
+            if effective_source == "elektrum_drive"
+            else effective_source or "effective"
+        )
         delivery_rate = (
             _number(effective_attrs.get("delivery_price_c_per_kwh")) / 100.0
             if price_source == "home_nord_pool"
@@ -542,6 +546,8 @@ def _add_session_cost(
                 "station_city": effective_attrs.get("station_city"),
                 "connector_code": effective_attrs.get("connector_code"),
                 "station_partner": effective_attrs.get("station_partner"),
+                "station_network": effective_attrs.get("station_network"),
+                "operator_data_available": False,
                 "postpaid_discount_percent": effective_attrs.get(
                     "postpaid_discount_percent"
                 ),
@@ -594,109 +600,17 @@ def _add_session_cost(
     return result
 
 
-def _sessions_are_contiguous(earlier, later):
-    """Return whether two API sessions belong to one uninterrupted stop."""
-    earlier_end = _parse_datetime(earlier.get("end"))
-    later_start = _parse_datetime(later.get("start"))
-    if earlier_end is None or later_start is None:
-        return False
-    gap = (later_start - earlier_end).total_seconds()
-    if gap < 0 or gap > 30 * 60:
-        return False
-    earlier_soc = _number(earlier.get("end_soc"), float("nan"))
-    later_soc = _number(later.get("start_soc"), float("nan"))
+def _is_exact_provider_session(session):
+    """Return whether the price or energy came from an operator transaction."""
     return (
-        math.isfinite(earlier_soc)
-        and math.isfinite(later_soc)
-        and abs(earlier_soc - later_soc) <= 1.0
+        session.get("provider_reported_cost") is True
+        or session.get("provider_reported_energy") is True
+        or session.get("price_source") in EXACT_PROVIDER_PRICE_SOURCES
     )
 
 
-def _inherit_elektrum_cost(session, reference, settings):
-    """Apply a neighboring session's Elektrum station and all-in tariff."""
-    result = dict(session)
-    rate = _number(reference.get("total_rate_c_per_kwh"), float("nan"))
-    recovered = session.get("energy_recovered_kwh")
-    if recovered is None or _number(recovered) <= 0:
-        battery_energy = _number(session.get("estimated_battery_energy_kwh"))
-    else:
-        battery_energy = _number(recovered)
-    if not math.isfinite(rate) or rate <= 0 or battery_energy <= 0:
-        return result
-
-    grid_energy = battery_energy / settings["charging_efficiency"]
-    total_cost = grid_energy * rate / 100.0
-    result.update(
-        {
-            "grid_energy_kwh": round(grid_energy, 2),
-            "spot_rate_c_per_kwh": None,
-            "total_rate_c_per_kwh": round(rate, 3),
-            "spot_cost_eur": round(total_cost, 4),
-            "delivery_cost_eur": 0.0,
-            "total_cost_eur": round(total_cost, 4),
-            "price_coverage_percent": reference.get(
-                "price_coverage_percent", 0.0
-            ),
-            "price_source": "elektrum_drive",
-            "price_entity": EFFECTIVE_PRICE_ENTITY,
-            "station_name": reference.get("station_name"),
-            "station_id": reference.get("station_id"),
-            "station_address": reference.get("station_address"),
-            "station_city": reference.get("station_city"),
-            "connector_code": reference.get("connector_code"),
-            "station_partner": reference.get("station_partner"),
-            "postpaid_discount_percent": reference.get(
-                "postpaid_discount_percent"
-            ),
-            "price_inferred_from_adjacent_session": True,
-            "price_inference_reference_start": reference.get("start"),
-        }
-    )
-    return result
-
-
-def _inherit_adjacent_elektrum_sessions(sessions, settings):
-    """Fill short split sessions from a contiguous Elektrum session.
-
-    ``_deduplicate_sessions`` supplies newest-first input. Avoid a key callback
-    here because Pyscript evaluates script functions as awaitables when a
-    Python builtin invokes them.
-    """
-    updated = [dict(session) for session in sessions]
-    chronological = list(range(len(updated) - 1, -1, -1))
-    for _pass in range(2):
-        changed = False
-        for position, index in enumerate(chronological):
-            if updated[index].get("price_source") == "elektrum_drive":
-                continue
-            candidates = []
-            if position > 0:
-                previous = chronological[position - 1]
-                if (
-                    updated[previous].get("price_source") == "elektrum_drive"
-                    and _sessions_are_contiguous(updated[previous], updated[index])
-                ):
-                    candidates.append(previous)
-            if position + 1 < len(chronological):
-                following = chronological[position + 1]
-                if (
-                    updated[following].get("price_source") == "elektrum_drive"
-                    and _sessions_are_contiguous(updated[index], updated[following])
-                ):
-                    candidates.append(following)
-            if not candidates:
-                continue
-            updated[index] = _inherit_elektrum_cost(
-                updated[index], updated[candidates[0]], settings
-            )
-            changed = True
-        if not changed:
-            break
-    return updated
-
-
-def _stored_elektrum_sessions():
-    """Keep confirmed public and exact provider prices across API refreshes."""
+def _stored_exact_provider_sessions():
+    """Keep exact operator transactions across temporary account outages."""
     stored = {}
     for entity_id in (
         "sensor.zoe_charge_sessions_history_raw",
@@ -709,27 +623,25 @@ def _stored_elektrum_sessions():
             key = (session.get("start"), session.get("end"))
             if (
                 key != (None, None)
-                and session.get("price_source")
-                in ({"elektrum_drive"} | EXACT_PROVIDER_PRICE_SOURCES)
+                and _is_exact_provider_session(session)
             ):
                 stored[key] = dict(session)
     return stored
 
 
-def _inherit_stored_elektrum_sessions(sessions, stored, settings):
-    """Reapply a recorded provider classification for the same API session."""
+def _inherit_stored_exact_provider_sessions(sessions, stored):
+    """Reapply only recorded operator data for the same Renault session."""
     updated = []
     for session in sessions:
         key = (session.get("start"), session.get("end"))
         reference = stored.get(key)
         if (
-            session.get("price_source")
-            in ({"elektrum_drive"} | EXACT_PROVIDER_PRICE_SOURCES)
+            _is_exact_provider_session(session)
             or reference is None
         ):
             updated.append(dict(session))
             continue
-        if reference.get("price_source") in EXACT_PROVIDER_PRICE_SOURCES:
+        if _is_exact_provider_session(reference):
             inherited = dict(session)
             for field in (
                 "grid_energy_kwh",
@@ -743,8 +655,18 @@ def _inherit_stored_elektrum_sessions(sessions, stored, settings):
                 "price_source",
                 "price_entity",
                 "station_name",
+                "station_id",
                 "station_address",
+                "station_city",
+                "connector_code",
+                "station_partner",
+                "station_network",
                 "provider",
+                "operator",
+                "payment_provider",
+                "payment_provider_confirmed",
+                "operator_data_available",
+                "provider_attribution_source",
                 "provider_transaction_id",
                 "provider_account_id",
                 "provider_account_name",
@@ -755,16 +677,14 @@ def _inherit_stored_elektrum_sessions(sessions, stored, settings):
                 "provider_allocation_fraction",
                 "provider_split_session_count",
                 "transaction_status",
+                "source_page",
                 "alternate_sources",
             ):
                 inherited[field] = reference.get(field)
             inherited["price_preserved_from_previous_update"] = True
             updated.append(inherited)
             continue
-        inherited = _inherit_elektrum_cost(session, reference, settings)
-        if inherited.get("price_source") == "elektrum_drive":
-            inherited["price_preserved_from_previous_update"] = True
-        updated.append(inherited)
+        updated.append(dict(session))
     return updated
 
 
@@ -958,7 +878,7 @@ async def zoe_charge_sessions_update():
     phase_started = update_started
     phase_durations = {}
     try:
-        stored_elektrum = _stored_elektrum_sessions()
+        stored_provider_sessions = _stored_exact_provider_sessions()
         proxy = None
         last_error = None
         for attempt in range(7):
@@ -1069,14 +989,9 @@ async def zoe_charge_sessions_update():
             )
             for item in meaningful_sessions
         ]
-        meaningful_sessions = _inherit_stored_elektrum_sessions(
+        meaningful_sessions = _inherit_stored_exact_provider_sessions(
             meaningful_sessions,
-            stored_elektrum,
-            settings,
-        )
-        meaningful_sessions = _inherit_adjacent_elektrum_sessions(
-            meaningful_sessions,
-            settings,
+            stored_provider_sessions,
         )
         provider_transactions = _provider_transactions()
         meaningful_sessions = apply_provider_transactions(
@@ -1103,7 +1018,7 @@ async def zoe_charge_sessions_update():
         common = {
             "source": "Renault API charges endpoint",
             "pyscript_revision": PYSCRIPT_REVISION,
-            "stored_elektrum_session_count": len(stored_elektrum),
+            "stored_exact_provider_session_count": len(stored_provider_sessions),
             "provider_transaction_count": len(provider_transactions),
             "provider_override_count": len(provider_overrides),
             "nordpool_archive_slot_count": len(archive_price_history),

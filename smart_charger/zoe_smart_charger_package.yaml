@@ -277,8 +277,8 @@ automation:
     description: >-
       Charge in the cheapest eligible 15-minute intervals before the deadline.
       If the target can no longer be reached by the deadline, use the earliest
-      later intervals below the configured price cap. The X102VE KCM start
-      command selects instant charging; a future KCM schedule reliably stops
+      later intervals below the configured price cap. The normal X102VE start
+      command resumes instant charging; a future KCM schedule reliably stops
       it between planned intervals. Renault Always mode is also selected when
       smart charging is disabled or the current location is not allowed. While
       the current Nord Pool price is below 0.01 c/kWh, charge continuously.
