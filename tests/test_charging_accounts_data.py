@@ -426,6 +426,69 @@ class ChargingAccountsDataTest(unittest.TestCase):
         self.assertEqual(1.26, matched[1]["grid_energy_kwh"])
         self.assertEqual(0.87, matched[1]["total_cost_eur"])
 
+    def test_close_ignitis_payments_match_one_renault_session_each(self) -> None:
+        sessions = [
+            {
+                "start": "2026-08-21T08:20:00+00:00",
+                "end": "2026-08-21T08:22:00+00:00",
+                "start_soc": 22,
+                "end_soc": 24,
+                "estimated_battery_energy_kwh": 1.04,
+            },
+            {
+                "start": "2026-08-21T08:36:00+00:00",
+                "end": "2026-08-21T08:57:00+00:00",
+                "start_soc": 22,
+                "end_soc": 54,
+                "estimated_battery_energy_kwh": 16.64,
+            },
+        ]
+        transactions = [
+            {
+                "transaction_id": "receipt:ignitis_on:0000462510",
+                "source_account_type": "ignitis_on",
+                "provider": "Ignitis ON",
+                "start": "2026-08-21T11:19:54+03:00",
+                "end": "2026-08-21T11:23:00+03:00",
+                "energy_kwh": 0.712,
+                "total_cost_eur": 0.27,
+                "price_source": "ignitis_on_app",
+            },
+            {
+                "transaction_id": "receipt:ignitis_on:0000462549",
+                "source_account_type": "ignitis_on",
+                "provider": "Ignitis ON",
+                "start": "2026-08-21T11:36:17+03:00",
+                "end": "2026-08-21T11:57:20+03:00",
+                "energy_kwh": 15.454,
+                "total_cost_eur": 5.41,
+                "price_source": "ignitis_on_app",
+            },
+        ]
+
+        matched = charging_data.apply_provider_transactions(sessions, transactions)
+
+        self.assertEqual(2, len(matched))
+        by_transaction = {
+            session["provider_transaction_id"]: session for session in matched
+        }
+        self.assertEqual(
+            0.712,
+            by_transaction["receipt:ignitis_on:0000462510"]["grid_energy_kwh"],
+        )
+        self.assertEqual(
+            0.27,
+            by_transaction["receipt:ignitis_on:0000462510"]["total_cost_eur"],
+        )
+        self.assertEqual(
+            15.454,
+            by_transaction["receipt:ignitis_on:0000462549"]["grid_energy_kwh"],
+        )
+        self.assertEqual(
+            5.41,
+            by_transaction["receipt:ignitis_on:0000462549"]["total_cost_eur"],
+        )
+
     def test_stop_restart_rows_are_one_physical_charge(self) -> None:
         sessions = [
             {

@@ -399,22 +399,40 @@ def apply_provider_transactions(
         (dict(item) for item in transactions),
         key=lambda item: item.get("end") or "",
     )
-    result = _expand_multi_transaction_sessions(sessions, provider_records)
-    for transaction in provider_records:
-        candidates = [
-            index
-            for index, session in enumerate(result)
+    expanded = _expand_multi_transaction_sessions(sessions, provider_records)
+    assignments: dict[int, list[int]] = {}
+    for session_index, session in enumerate(expanded):
+        matching = [
+            (transaction_index, transaction)
+            for transaction_index, transaction in enumerate(provider_records)
             if _interval_matches(session, transaction)
         ]
-        if not candidates:
+        if not matching:
             continue
+        transaction_index, _ = min(
+            matching,
+            key=lambda item: _interval_distance(session, item[1]),
+        )
+        assignments.setdefault(transaction_index, []).append(session_index)
 
-        fragments = [result[index] for index in candidates]
-        combined = _combine_provider_sessions(fragments, transaction)
-        result = [
-            session for index, session in enumerate(result) if index not in candidates
-        ]
-        result.append(combined)
+    consumed = {
+        session_index
+        for session_indices in assignments.values()
+        for session_index in session_indices
+    }
+    result = [
+        session
+        for session_index, session in enumerate(expanded)
+        if session_index not in consumed
+    ]
+    for transaction_index, session_indices in assignments.items():
+        fragments = [expanded[index] for index in session_indices]
+        result.append(
+            _combine_provider_sessions(
+                fragments,
+                provider_records[transaction_index],
+            )
+        )
 
     return sorted(
         result,

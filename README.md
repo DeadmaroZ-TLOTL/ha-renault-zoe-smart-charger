@@ -29,9 +29,11 @@ used by the included Nord Pool smart charger package.
   Exact completed-session energy and cost are merged across Mobilly statements,
   Elektrum app transactions, and the Ignitis ON or IKRAUTAS app profile. One
   physical charge split into several Renault API rows is shown once, with the
-  direct operator record preferred over reseller data. Previously synchronized
-  exact records remain available during temporary login or provider failures,
-  while the account status clearly reports that reauthentication is required.
+  direct operator record preferred over reseller data. Separate operator
+  transactions that happen close together are matched one-to-one and remain
+  separate. Previously synchronized exact records remain available during
+  temporary login or provider failures, while the account status clearly
+  reports that reauthentication is required.
   Optional private operator-receipt overrides can supply exact metered energy
   and charged cost when a provider account cannot expose live history; those
   values remain marked as operator data instead of calculated estimates.
