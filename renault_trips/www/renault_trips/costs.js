@@ -9,10 +9,10 @@ const ENTITY = {
   plannedCharging: "sensor.zoe_planned_charging_times",
   plannedChargeLevel: "sensor.zoe_planned_charge_level",
   sessions: [
-    "sensor.zoe_charge_sessions_history",
     "sensor.zoe_charge_sessions_history_raw",
-    "sensor.zoe_charge_sessions_31d",
+    "sensor.zoe_charge_sessions_history",
     "sensor.zoe_charge_sessions_31d_raw",
+    "sensor.zoe_charge_sessions_31d",
   ],
 };
 
@@ -50,12 +50,27 @@ const TRANSLATIONS = {
     costSummary: "Izmaksu kopsavilkums",
     averageBatteryPrice: "Vidējā cena baterijā",
     batteryEnergy: "Enerģija baterijā",
-    averageCost: "Vidējās izmaksas",
+    averageCost: "Vidējās izmaksas periodā",
+    currentMonthAverage: "Tekošā mēneša vidējās izmaksas",
     averageConsumption: "Vidējais patēriņš",
     distanceInPeriod: "Nobraukums periodā",
     spentOnTrips: "Braucienos iztērēts",
+    chargedInPeriod: "Uzlādēts periodā",
+    selectedPeriod: "izvēlētais periods",
+    monthDistance: "{distance} km · {trips}",
+    chargePeriodDetail: "{energy} kWh no tīkla · {sessions}",
     dailyCosts: "Izmaksas pa dienām",
+    dailyChartHint: "EUR/100 km · uzved kursoru, lai redzētu dienas summu",
     dailyCostsAria: "Braucienu izmaksas pa dienām",
+    daySpent: "Dienā iztērēts",
+    dayDistance: "Nobraukums",
+    dayAverage: "Vidēji",
+    monthlyHistory: "Mēnešu izmaksu vēsture",
+    monthlyHistoryHint: "Saglabāta Home Assistant un papildināta no braucienu vēstures",
+    month: "Mēnesis",
+    tripCount: "Braucieni",
+    monthlyHistoryEmpty: "Saglabātas mēnešu izmaksu vēstures vēl nav.",
+    savedMonths: "{count} mēneši",
     batteryUnitCost: "Baterijas kWh pašizmaksa",
     afterEachCharge: "Faktiskā cena mainās tikai pēc uzlādes; prognoze izmanto plānotās uzlādes",
     batteryPriceAria: "Vidējā baterijas enerģijas cena",
@@ -76,6 +91,7 @@ const TRANSLATIONS = {
     oneTripEstimated: "1 braucienam enerģija novērtēta",
     tripsEstimated: "{count} braucieniem enerģija novērtēta",
     trips: "{count} braucieni",
+    charges: "{count} uzlādes",
     noTripsShort: "Braucienu nav",
     chargedFor: "{energy} kWh · uzlādēts {charged} kWh par {cost} EUR",
     totalAverage: "Kopā / vidēji",
@@ -88,7 +104,7 @@ const TRANSLATIONS = {
     estimates: ", {count} enerģijas novērtējumi",
     loadError: "Datus neizdevās ielādēt: {error}",
     dataUnavailable: "Dati nav pieejami",
-    method: "<strong>Aprēķina princips.</strong> Renault uzlāde pievieno baterijai SOC pieaugumam atbilstošās kWh un sesijas faktiskās izmaksas ar pārvadi. Brauciena laikā vienas baterijas kWh pašizmaksa nemainās; tā tiek pārrēķināta tikai pēc uzlādes. Pārtrauktā prognozes līkne izmanto plānotos uzlādes intervālus, Nord Pool cenu, pārvadi un efektivitāti. Baterijas izmantojamā ietilpība ir {capacity} kWh, uzlādes efektivitāte {efficiency}%, pārvade {deliveryExcl} EUR/kWh bez PVN jeb {deliveryIncl} EUR/kWh ar {vat}% PVN. Simbols <span class=\"estimated\">~</span> norāda vērtību, kas SOC datu trūkuma vai neiespējamas nobīdes dēļ novērtēta pēc {fallback} kWh/100 km rezerves patēriņa.",
+    method: "<strong>Aprēķina princips.</strong> Renault uzlāde pievieno baterijai SOC pieaugumam atbilstošās kWh un sesijas faktiskās izmaksas ar pārvadi. Rādītājs “Uzlādēts periodā” izmanto tās pašas tīkla kWh un sesiju izmaksas kā Charging sadaļa. “Braucienos iztērēts” novērtē tikai nobraukto baterijas enerģiju, tāpēc tas var ietvert pirms izvēlētā perioda uzlādētu enerģiju. Brauciena laikā vienas baterijas kWh pašizmaksa nemainās; tā tiek pārrēķināta tikai pēc uzlādes. Pārtrauktā prognozes līkne izmanto plānotos uzlādes intervālus, Nord Pool cenu, pārvadi un efektivitāti. Baterijas izmantojamā ietilpība ir {capacity} kWh, uzlādes efektivitāte {efficiency}%, pārvade {deliveryExcl} EUR/kWh bez PVN jeb {deliveryIncl} EUR/kWh ar {vat}% PVN. Simbols <span class=\"estimated\">~</span> norāda vērtību, kas SOC datu trūkuma vai neiespējamas nobīdes dēļ novērtēta pēc {fallback} kWh/100 km rezerves patēriņa.",
   },
   en: {
     pageTitle: "Renault ZOE energy costs",
@@ -110,12 +126,27 @@ const TRANSLATIONS = {
     costSummary: "Cost summary",
     averageBatteryPrice: "Average battery price",
     batteryEnergy: "Energy in battery",
-    averageCost: "Average cost",
+    averageCost: "Average cost in period",
+    currentMonthAverage: "Current-month average cost",
     averageConsumption: "Average consumption",
     distanceInPeriod: "Distance in period",
     spentOnTrips: "Spent on trips",
+    chargedInPeriod: "Charged in period",
+    selectedPeriod: "selected period",
+    monthDistance: "{distance} km · {trips}",
+    chargePeriodDetail: "{energy} grid kWh · {sessions}",
     dailyCosts: "Daily costs",
+    dailyChartHint: "EUR/100 km · hover for the exact daily total",
     dailyCostsAria: "Trip costs by day",
+    daySpent: "Spent that day",
+    dayDistance: "Distance",
+    dayAverage: "Average",
+    monthlyHistory: "Monthly cost history",
+    monthlyHistoryHint: "Stored in Home Assistant and updated from trip history",
+    month: "Month",
+    tripCount: "Trips",
+    monthlyHistoryEmpty: "No saved monthly cost history yet.",
+    savedMonths: "{count} months",
     batteryUnitCost: "Battery kWh unit cost",
     afterEachCharge: "Actual cost changes only after charging; forecast uses planned charging",
     batteryPriceAria: "Average battery energy price",
@@ -136,6 +167,7 @@ const TRANSLATIONS = {
     oneTripEstimated: "Energy estimated for 1 trip",
     tripsEstimated: "Energy estimated for {count} trips",
     trips: "{count} trips",
+    charges: "{count} charges",
     noTripsShort: "No trips",
     chargedFor: "{energy} kWh · charged {charged} kWh for {cost} EUR",
     totalAverage: "Total / average",
@@ -148,7 +180,7 @@ const TRANSLATIONS = {
     estimates: ", {count} energy estimates",
     loadError: "Could not load data: {error}",
     dataUnavailable: "Data unavailable",
-    method: "<strong>Calculation method.</strong> A Renault charge adds the kWh represented by the SOC increase and the session's actual cost including delivery. The unit cost of one battery kWh stays unchanged while driving and is recalculated only after charging. The dashed forecast uses planned charging intervals, Nord Pool prices, delivery, and charging efficiency. Usable battery capacity is {capacity} kWh, charging efficiency is {efficiency}%, and delivery is {deliveryExcl} EUR/kWh before VAT or {deliveryIncl} EUR/kWh including {vat}% VAT. The <span class=\"estimated\">~</span> symbol marks a value estimated with the {fallback} kWh/100 km fallback consumption because SOC data was missing or implausible.",
+    method: "<strong>Calculation method.</strong> A Renault charge adds the kWh represented by the SOC increase and the session's actual cost including delivery. “Charged in period” uses the same grid kWh and session cost as the Charging view. “Spent on trips” values only battery energy driven, so it may include energy charged before the selected period. The unit cost of one battery kWh stays unchanged while driving and is recalculated only after charging. The dashed forecast uses planned charging intervals, Nord Pool prices, delivery, and charging efficiency. Usable battery capacity is {capacity} kWh, charging efficiency is {efficiency}%, and delivery is {deliveryExcl} EUR/kWh before VAT or {deliveryIncl} EUR/kWh including {vat}% VAT. The <span class=\"estimated\">~</span> symbol marks a value estimated with the {fallback} kWh/100 km fallback consumption because SOC data was missing or implausible.",
   },
 };
 
@@ -175,7 +207,11 @@ const totalsEl = document.getElementById("tripTotals");
 const emptyEl = document.getElementById("empty");
 const tableSummaryEl = document.getElementById("tableSummary");
 const dailyCanvas = document.getElementById("dailyChart");
+const dailyTooltipEl = document.getElementById("dailyTooltip");
 const batteryCanvas = document.getElementById("batteryChart");
+const monthlyRowsEl = document.getElementById("monthlyRows");
+const monthlyEmptyEl = document.getElementById("monthlyEmpty");
+const monthlySummaryEl = document.getElementById("monthlySummary");
 const actualRateToggleEl = document.getElementById("actualRateToggle");
 const forecastRateToggleEl = document.getElementById("forecastRateToggle");
 const methodEl = document.getElementById("method");
@@ -184,6 +220,7 @@ let lastModel = null;
 let dateRange = null;
 let loadingModel = false;
 let lastSourceSignature = "";
+let dailyChartHitAreas = [];
 
 function t(key, values = {}) {
   let text = TRANSLATIONS[currentLanguage][key] ?? key;
@@ -740,6 +777,7 @@ function normalizeSessions(rawSessions) {
       const startSoc = toNumber(session.start_soc);
       const endSoc = toNumber(session.end_soc);
       const energy = toNumber(session.estimated_battery_energy_kwh);
+      const gridEnergy = toNumber(session.grid_energy_kwh);
       const socEnergy = (
         Number.isFinite(startSoc) && Number.isFinite(endSoc)
           ? (
@@ -759,7 +797,15 @@ function normalizeSessions(rawSessions) {
         batteryEnergy: (
           Number.isFinite(energy) && energy > 0 ? energy : socEnergy
         ),
+        gridEnergy: (
+          Number.isFinite(gridEnergy) && gridEnergy > 0
+            ? gridEnergy
+            : null
+        ),
         cost: toNumber(session.total_cost_eur),
+        rateCents: toNumber(session.total_rate_c_per_kwh),
+        providerReportedCost: session.provider_reported_cost === true,
+        providerReportedEnergy: session.provider_reported_energy === true,
       };
     })
     .filter((session) => (
@@ -1123,6 +1169,7 @@ function filterModel(model) {
       ...model.trips.map((trip) => trip.start),
       ...model.sessions.map((session) => session.startTime),
       ...model.batteryRateHistory.map((point) => point.time),
+      ...(model.costDays || []).map((point) => dayKeyTime(point.key)),
     ].filter(Number.isFinite);
     range = {
       ...range,
@@ -1138,8 +1185,17 @@ function filterModel(model) {
     ),
     sessions: model.sessions.filter(
       (session) => (
-        session.endTime >= range.start && session.endTime < range.end
+        session.endTime > range.start && session.startTime < range.end
       ),
+    ),
+    costDays: mergeDailyCostRows(
+      (model.costDays || []).filter((point) => {
+        const time = dayKeyTime(point.key);
+        return time >= range.start && time < range.end;
+      }),
+      groupDaily(model.trips.filter(
+        (trip) => trip.start >= range.start && trip.start < range.end,
+      )),
     ),
     batteryRateHistory: model.batteryRateHistory.filter(
       (point) => point.time < range.end,
@@ -1176,6 +1232,104 @@ function groupDaily(trips) {
       consumption: group.km > 0 ? group.energy / group.km * 100 : 0,
     }))
     .sort((left, right) => left.key.localeCompare(right.key));
+}
+
+function dayKeyTime(key) {
+  return new Date(`${key}T12:00:00`).getTime();
+}
+
+function normalizeCostDays(rows) {
+  return (Array.isArray(rows) ? rows : [])
+    .map((row) => {
+      const km = toNumber(row.km);
+      const energy = toNumber(row.energy_kwh ?? row.energy);
+      const cost = toNumber(row.cost_eur ?? row.cost);
+      const trips = Math.max(0, Math.trunc(toNumber(row.trips) || 0));
+      const key = String(row.day ?? row.key ?? "");
+      if (
+        !/^\d{4}-\d{2}-\d{2}$/.test(key)
+        || !Number.isFinite(km)
+        || !Number.isFinite(energy)
+        || !Number.isFinite(cost)
+        || km < 0
+        || energy < 0
+        || cost < 0
+      ) {
+        return null;
+      }
+      return {
+        key,
+        km,
+        energy,
+        cost,
+        trips,
+        costPer100: km > 0 ? cost / km * 100 : 0,
+        consumption: km > 0 ? energy / km * 100 : 0,
+      };
+    })
+    .filter(Boolean)
+    .sort((left, right) => left.key.localeCompare(right.key));
+}
+
+function mergeDailyCostRows(...groups) {
+  const merged = new Map();
+  for (const rows of groups) {
+    for (const row of normalizeCostDays(rows)) merged.set(row.key, row);
+  }
+  return [...merged.values()].sort(
+    (left, right) => left.key.localeCompare(right.key),
+  );
+}
+
+function aggregateMonthly(days) {
+  const months = new Map();
+  for (const day of normalizeCostDays(days)) {
+    const key = day.key.slice(0, 7);
+    if (!months.has(key)) {
+      months.set(key, {
+        key,
+        km: 0,
+        energy: 0,
+        cost: 0,
+        trips: 0,
+        days: 0,
+      });
+    }
+    const month = months.get(key);
+    month.km += day.km;
+    month.energy += day.energy;
+    month.cost += day.cost;
+    month.trips += day.trips;
+    month.days += 1;
+  }
+  return [...months.values()]
+    .map((month) => ({
+      ...month,
+      costPer100: month.km > 0 ? month.cost / month.km * 100 : 0,
+      consumption: month.km > 0 ? month.energy / month.km * 100 : 0,
+    }))
+    .sort((left, right) => right.key.localeCompare(left.key));
+}
+
+async function syncCostHistory(trips) {
+  const liveDays = groupDaily(trips);
+  const requestDays = liveDays.map((day) => ({
+    day: day.key,
+    km: day.km,
+    energy_kwh: day.energy,
+    cost_eur: day.cost,
+    trips: day.trips,
+  }));
+  try {
+    const response = await haFetch(
+      "/api/zoe_new_extended/cost_history",
+      { method: "POST", body: { days: requestDays } },
+    );
+    return mergeDailyCostRows(response.days, liveDays);
+  } catch (error) {
+    console.debug("Persistent cost history is unavailable", error);
+    return liveDays;
+  }
 }
 
 function formatNumber(value, digits = 1) {
@@ -1227,13 +1381,17 @@ function renderMetrics(filtered, model) {
   const estimatedCount = filtered.trips.filter(
     (trip) => trip.energyEstimated,
   ).length;
-  const periodChargeEnergy = filtered.sessions.reduce(
-    (sum, session) => sum + session.batteryEnergy,
+  const periodChargeGridEnergy = filtered.sessions.reduce(
+    (sum, session) => sum + (session.gridEnergy || 0),
     0,
   );
   const periodChargeCost = filtered.sessions.reduce(
-    (sum, session) => sum + (session.modelCost || 0),
+    (sum, session) => sum + (session.cost || 0),
     0,
+  );
+  const currentMonthKey = localDateValue(new Date()).slice(0, 7);
+  const currentMonth = aggregateMonthly(model.costDays || []).find(
+    (month) => month.key === currentMonthKey,
   );
 
   setText("mBatteryRate", `${formatNumber(model.currentRate * 100, 2)} c/kWh`);
@@ -1262,6 +1420,21 @@ function renderMetrics(filtered, model) {
   );
   setText("mCost100Note", t("per100km"));
   setText(
+    "mCurrentMonthCost100",
+    currentMonth?.km > 0
+      ? `${formatNumber(currentMonth.costPer100, 2)} EUR`
+      : "-",
+  );
+  setText(
+    "mCurrentMonthCostNote",
+    currentMonth
+      ? t("monthDistance", {
+        distance: formatNumber(currentMonth.km, 1),
+        trips: t("trips", { count: currentMonth.trips }),
+      })
+      : t("noTripsShort"),
+  );
+  setText(
     "mConsumption",
     totalKm > 0
       ? `${formatNumber(totalEnergy / totalKm * 100, 1)} kWh`
@@ -1282,11 +1455,22 @@ function renderMetrics(filtered, model) {
   setText("mDriveCost", `${formatNumber(totalCost, 2)} EUR`);
   setText(
     "mDriveEnergy",
-    t("chargedFor", {
-      energy: formatNumber(totalEnergy, 1),
-      charged: formatNumber(periodChargeEnergy, 1),
-      cost: formatNumber(periodChargeCost, 2),
-    }),
+    `${formatNumber(totalEnergy, 1)} kWh · ${t("selectedPeriod")}`,
+  );
+  setText(
+    "mChargeCost",
+    filtered.sessions.length
+      ? `${formatNumber(periodChargeCost, 2)} EUR`
+      : "-",
+  );
+  setText(
+    "mChargeEnergy",
+    filtered.sessions.length
+      ? t("chargePeriodDetail", {
+        energy: formatNumber(periodChargeGridEnergy, 2),
+        sessions: t("charges", { count: filtered.sessions.length }),
+      })
+      : t("noChargePriceData"),
   );
 
   return { totalKm, totalEnergy, totalCost, estimatedCount };
@@ -1335,6 +1519,35 @@ function renderTable(filtered, summary) {
   `;
 }
 
+function formatMonth(key) {
+  const [year, month] = key.split("-").map(Number);
+  return new Intl.DateTimeFormat(LOCALES[currentLanguage], {
+    month: "long",
+    year: "numeric",
+  }).format(new Date(year, month - 1, 1));
+}
+
+function renderMonthlyHistory(days) {
+  const months = aggregateMonthly(days);
+  monthlyRowsEl.replaceChildren();
+  monthlyEmptyEl.hidden = months.length > 0;
+  monthlySummaryEl.textContent = t("savedMonths", { count: months.length });
+
+  for (const month of months) {
+    const row = document.createElement("tr");
+    row.innerHTML = `
+      <td>${formatMonth(month.key)}</td>
+      <td>${formatNumber(month.trips, 0)}</td>
+      <td>${formatNumber(month.km, 1)}</td>
+      <td>${formatNumber(month.energy, 2)}</td>
+      <td>${formatNumber(month.consumption, 1)}</td>
+      <td>${formatNumber(month.cost, 2)}</td>
+      <td><strong>${formatNumber(month.costPer100, 2)}</strong></td>
+    `;
+    monthlyRowsEl.appendChild(row);
+  }
+}
+
 function prepareCanvas(canvas) {
   const ratio = window.devicePixelRatio || 1;
   const rect = canvas.getBoundingClientRect();
@@ -1366,9 +1579,14 @@ function renderEmptyChart(canvas, text) {
   context.font = "13px Roboto, Segoe UI, Arial";
   context.textAlign = "center";
   context.fillText(text, width / 2, height / 2);
+  if (canvas === dailyCanvas) {
+    dailyChartHitAreas = [];
+    dailyTooltipEl.hidden = true;
+  }
 }
 
 function renderBarChart(canvas, points) {
+  hideDailyTooltip();
   if (!points.length) {
     renderEmptyChart(canvas, t("noPeriodData"));
     return;
@@ -1401,12 +1619,20 @@ function renderBarChart(canvas, points) {
 
   const slot = plotWidth / points.length;
   const barWidth = Math.max(4, Math.min(38, slot * 0.62));
+  dailyChartHitAreas = [];
   points.forEach((point, index) => {
     const x = margin.left + slot * index + (slot - barWidth) / 2;
     const barHeight = point.costPer100 / axisMax * plotHeight;
     const y = margin.top + plotHeight - barHeight;
     context.fillStyle = colors.accent;
     context.fillRect(x, y, barWidth, barHeight);
+    dailyChartHitAreas.push({
+      left: margin.left + slot * index,
+      right: margin.left + slot * (index + 1),
+      top: margin.top,
+      bottom: margin.top + plotHeight,
+      point,
+    });
 
     const showLabel = (
       points.length <= 12
@@ -1428,6 +1654,53 @@ function renderBarChart(canvas, points) {
       context.restore();
     }
   });
+}
+
+function hideDailyTooltip() {
+  dailyTooltipEl.hidden = true;
+  dailyCanvas.style.cursor = "default";
+}
+
+function showDailyTooltip(event) {
+  const canvasRect = dailyCanvas.getBoundingClientRect();
+  const x = event.clientX - canvasRect.left;
+  const y = event.clientY - canvasRect.top;
+  const hit = dailyChartHitAreas.find((area) => (
+    x >= area.left
+    && x < area.right
+    && y >= area.top
+    && y <= area.bottom
+  ));
+  if (!hit) {
+    hideDailyTooltip();
+    return;
+  }
+
+  const date = new Intl.DateTimeFormat(LOCALES[currentLanguage], {
+    dateStyle: "long",
+  }).format(new Date(`${hit.point.key}T12:00:00`));
+  dailyTooltipEl.replaceChildren();
+  const title = document.createElement("strong");
+  title.textContent = date;
+  const spent = document.createElement("span");
+  spent.textContent = `${t("daySpent")}: ${formatNumber(hit.point.cost, 2)} EUR`;
+  const distance = document.createElement("span");
+  distance.textContent = `${t("dayDistance")}: ${formatNumber(hit.point.km, 1)} km`;
+  const average = document.createElement("span");
+  average.textContent = `${t("dayAverage")}: ${formatNumber(hit.point.costPer100, 2)} EUR/100 km`;
+  dailyTooltipEl.append(title, spent, distance, average);
+  dailyTooltipEl.hidden = false;
+  dailyCanvas.style.cursor = "crosshair";
+
+  const wrapRect = dailyCanvas.parentElement.getBoundingClientRect();
+  const desiredLeft = event.clientX - wrapRect.left + 12;
+  const desiredTop = event.clientY - wrapRect.top - dailyTooltipEl.offsetHeight - 10;
+  dailyTooltipEl.style.left = `${clamp(
+    desiredLeft,
+    8,
+    Math.max(8, wrapRect.width - dailyTooltipEl.offsetWidth - 8),
+  )}px`;
+  dailyTooltipEl.style.top = `${Math.max(8, desiredTop)}px`;
 }
 
 function renderLineChart(canvas, points, forecastPoints, range) {
@@ -1556,7 +1829,8 @@ function render(model) {
   const filtered = filterModel(model);
   const summary = renderMetrics(filtered, model);
   renderTable(filtered, summary);
-  renderBarChart(dailyCanvas, groupDaily(filtered.trips));
+  renderBarChart(dailyCanvas, filtered.costDays);
+  renderMonthlyHistory(model.costDays || []);
   renderLineChart(
     batteryCanvas,
     filtered.batteryRateHistory,
@@ -1635,6 +1909,7 @@ async function loadModel() {
     const learnedConsumption = normalizeTripEnergy(trips);
     const currentSoc = toNumber(batteryState.state);
     const model = applyWeightedCostModel(trips, sessions, currentSoc);
+    model.costDays = await syncCostHistory(model.trips);
     model.batteryRateForecast = buildBatteryRateForecast(
       model,
       plannedState,
@@ -1736,6 +2011,9 @@ dateRange = window.RenaultDateRange.attach({
   });
 });
 reloadEl.addEventListener("click", loadModel);
+dailyCanvas.addEventListener("pointermove", showDailyTooltip);
+dailyCanvas.addEventListener("pointerdown", showDailyTooltip);
+dailyCanvas.addEventListener("pointerleave", hideDailyTooltip);
 window.addEventListener("resize", () => {
   if (lastModel) render(lastModel);
 });

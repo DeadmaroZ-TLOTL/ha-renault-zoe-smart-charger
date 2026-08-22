@@ -91,6 +91,16 @@ options. Sessions with incomplete price coverage and trips with missing or
 implausible SOC movement are shown as estimates rather than being treated as
 free energy.
 
+The daily chart keeps EUR/100 km as its comparable scale and shows the exact
+daily EUR total, distance, and average in its pointer tooltip. Daily aggregates
+are merged into the authenticated Zoe New Extended cost-history store. This
+preserves closed months after Recorder cleanup and feeds a monthly history
+table plus a dedicated current-month EUR/100 km metric. The separate
+**Charged in period** metric deliberately mirrors the Charging tab's grid kWh
+and session cost. **Spent on trips** is different by design: it values only the
+battery energy consumed while driving, including energy charged before the
+selected period.
+
 ## How trips are calculated
 
 The page reads the selected day or period from Home Assistant history, groups

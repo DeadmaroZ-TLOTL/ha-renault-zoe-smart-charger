@@ -52,7 +52,7 @@
       "cards": [
         {
           "type": "iframe",
-          "url": "/local/renault_trips/costs.html?v=1.6.3",
+          "url": "/local/renault_trips/costs.html?v=1.6.4",
           "aspect_ratio": "72%"
         }
       ]

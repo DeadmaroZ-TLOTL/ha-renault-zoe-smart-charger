@@ -16,6 +16,7 @@ from homeassistant.helpers.event import async_call_later
 from .charge_control import ZoeNewChargeControl, find_zoe_new
 from .charging_accounts import ChargingAccountsCoordinator
 from .charging_accounts_data import deduplicate_account_records
+from .cost_history import async_register_cost_history_view
 from .const import (
     API_ENTITY_IDS,
     CONF_CHARGING_ACCOUNTS,
@@ -435,6 +436,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         }
     )
     async_register_station_views(hass, entry)
+    async_register_cost_history_view(hass, entry)
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     await _async_sync_charging_setpoints(hass, entry)
     schedule_charge_session_refresh()

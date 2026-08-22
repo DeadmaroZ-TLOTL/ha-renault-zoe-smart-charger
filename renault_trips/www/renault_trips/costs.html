@@ -142,7 +142,7 @@
 
     .metrics {
       display: grid;
-      grid-template-columns: repeat(6, minmax(0, 1fr));
+      grid-template-columns: repeat(4, minmax(0, 1fr));
       gap: 10px;
       margin-bottom: 12px;
     }
@@ -231,6 +231,43 @@
       display: block;
       width: 100%;
       height: 100%;
+    }
+
+    .chart-tooltip {
+      position: absolute;
+      z-index: 3;
+      display: grid;
+      min-width: 180px;
+      gap: 4px;
+      padding: 9px 10px;
+      border: 1px solid var(--line-strong);
+      border-radius: 6px;
+      background: var(--surface);
+      color: var(--text);
+      box-shadow: 0 4px 14px rgba(16, 31, 43, 0.18);
+      font-size: 12px;
+      line-height: 1.3;
+      pointer-events: none;
+    }
+
+    .chart-tooltip[hidden] {
+      display: none;
+    }
+
+    .chart-tooltip strong {
+      font-size: 13px;
+    }
+
+    .monthly-history-panel {
+      margin-bottom: 12px;
+    }
+
+    .monthly-history-panel .table-scroll {
+      max-height: 360px;
+    }
+
+    .monthly-history-panel table {
+      min-width: 720px;
     }
 
     .table-panel {
@@ -413,7 +450,7 @@
       }
     }
   </style>
-  <link rel="stylesheet" href="./shared-theme.css?v=2.3.2">
+  <link rel="stylesheet" href="./shared-theme.css?v=2.3.3">
 </head>
 <body>
   <main class="app costs-app">
@@ -474,6 +511,11 @@
         <span id="mCost100Note" class="metric-note"></span>
       </article>
       <article class="metric">
+        <span class="metric-label" data-i18n="currentMonthAverage">Tekošā mēneša vidējās izmaksas</span>
+        <strong id="mCurrentMonthCost100" class="metric-value">-</strong>
+        <span id="mCurrentMonthCostNote" class="metric-note"></span>
+      </article>
+      <article class="metric">
         <span class="metric-label" data-i18n="averageConsumption">Vidējais patēriņš</span>
         <strong id="mConsumption" class="metric-value">-</strong>
         <span id="mConsumptionNote" class="metric-note"></span>
@@ -488,16 +530,22 @@
         <strong id="mDriveCost" class="metric-value">-</strong>
         <span id="mDriveEnergy" class="metric-note"></span>
       </article>
+      <article class="metric">
+        <span class="metric-label" data-i18n="chargedInPeriod">Uzlādēts periodā</span>
+        <strong id="mChargeCost" class="metric-value">-</strong>
+        <span id="mChargeEnergy" class="metric-note"></span>
+      </article>
     </section>
 
     <div class="content-grid costs-content-grid">
       <article class="panel content-panel daily-cost-panel">
         <div class="panel-header">
           <h2 data-i18n="dailyCosts">Izmaksas pa dienām</h2>
-          <span>EUR/100 km</span>
+          <span data-i18n="dailyChartHint">EUR/100 km · uzved kursoru, lai redzētu dienas summu</span>
         </div>
         <div class="chart-wrap">
           <canvas id="dailyChart" role="img" aria-label="Braucienu izmaksas pa dienām" data-i18n-aria="dailyCostsAria"></canvas>
+          <div id="dailyTooltip" class="chart-tooltip" role="status" hidden></div>
         </div>
       </article>
 
@@ -528,6 +576,33 @@
         </div>
       </section>
     </div>
+
+    <section class="panel content-panel monthly-history-panel">
+      <div class="panel-header">
+        <div>
+          <h2 data-i18n="monthlyHistory">Mēnešu izmaksu vēsture</h2>
+          <span data-i18n="monthlyHistoryHint">Saglabāta Home Assistant un papildināta no braucienu vēstures</span>
+        </div>
+        <span id="monthlySummary">-</span>
+      </div>
+      <div class="table-scroll">
+        <table>
+          <thead>
+            <tr>
+              <th data-i18n="month">Mēnesis</th>
+              <th data-i18n="tripCount">Braucieni</th>
+              <th>km</th>
+              <th>kWh</th>
+              <th>kWh/100</th>
+              <th data-i18n="costEur">Izmaksas EUR</th>
+              <th>EUR/100 km</th>
+            </tr>
+          </thead>
+          <tbody id="monthlyRows"></tbody>
+        </table>
+        <div id="monthlyEmpty" class="empty" hidden data-i18n="monthlyHistoryEmpty">Saglabātas mēnešu izmaksu vēstures vēl nav.</div>
+      </div>
+    </section>
 
     <section class="panel content-panel battery-cost-panel">
       <div class="panel-header">
@@ -563,6 +638,6 @@
 
   <script src="./dashboard-tabs.js?v=1.2.0"></script>
   <script src="./date-range.js?v=1.0.2"></script>
-  <script src="./costs.js?v=1.6.1"></script>
+  <script src="./costs.js?v=1.6.2"></script>
 </body>
 </html>

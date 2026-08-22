@@ -86,6 +86,12 @@ used by the included Nord Pool smart charger package.
   Choose today, 3/7/14/30/90 calendar days, the current month, all available
   history, or an inclusive custom **From/To** date range. Charging sessions,
   trips, mileage, costs, and chart history follow the selected range.
+- Daily driving-cost bars expose the exact EUR total on hover. The Costs view
+  also keeps authenticated, server-side daily aggregates, shows the current
+  month's EUR/100 km average, and retains a monthly km, energy, and cost table
+  after Recorder cleanup or Home Assistant restarts. Charging-period totals
+  use the same `grid_energy_kwh` and `total_cost_eur` fields as the Charging
+  view, while trip cost remains the weighted value of energy actually driven.
 - Server-side IMMAX **Charge now** and **Delay 12 h** command sequences start
   at 6 A and use Tuya Local only. The controls are disabled while the local
   charger connection is unavailable.
