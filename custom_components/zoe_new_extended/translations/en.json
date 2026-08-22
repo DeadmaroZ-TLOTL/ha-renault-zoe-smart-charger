@@ -177,7 +177,7 @@
       },
       "ampeco_account": {
         "title": "Operator app account",
-        "description": "{mode} a {provider} account. Use the email belonging to the same operator profile as your Google sign-in. Authentication tokens stay in the Home Assistant config entry.",
+        "description": "{mode} a {provider} account. Use the email belonging to the same profile in the official operator app. Authentication tokens stay in the Home Assistant config entry.",
         "data": {
           "name": "Account name",
           "enabled": "Enabled",
@@ -189,6 +189,13 @@
         "description": "Choose an authentication method supported by the official {provider} app for the {email} account. The operator may disable email sign-in.",
         "data": {
           "auth_method": "Authentication method"
+        }
+      },
+      "ampeco_password": {
+        "title": "Authenticate operator app",
+        "description": "Enter the password for the {provider} account {email}. The password is sent directly to the operator over HTTPS and is never stored by Home Assistant.",
+        "data": {
+          "ampeco_password": "Account password"
         }
       },
       "ampeco_google": {
@@ -276,6 +283,8 @@
       "ampeco_login_link_exchange_failed": "The operator rejected or expired this sign-in link. Request a new link and try again.",
       "ampeco_login_link_failed": "The operator did not send a sign-in link. Email sign-in may be disabled for this account.",
       "ampeco_login_link_invalid": "Paste the complete sign-in link from the operator email.",
+      "ampeco_password_exchange_failed": "The operator rejected the email or password.",
+      "ampeco_password_invalid": "Enter the operator account password.",
       "elektrum_agreement_link_failed": "Elektrum did not switch the account to the selected postpaid agreement.",
       "elektrum_agreement_required": "Select an Elektrum agreement.",
       "elektrum_app_link_invalid": "Paste the complete elektrumdrive://app/open link from the official Elektrum app.",

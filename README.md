@@ -124,12 +124,14 @@ ID are stored in the Home Assistant config entry. The older **Link Elektrum
 agreement** Smart-ID flow remains available for profiles where Elektrum offers
 agreement enrollment. Personal codes are discarded immediately. Account
 secrets are not exposed as entity attributes or saved in this repository.
-Ignitis ON and IKRAUTAS use the official Android app's Google `third-party`
-token exchange. The one-time token must be issued to the official Android app;
-a normal Google OAuth or OAuth Playground token belongs to a different client
-and is rejected by the operator. The token is discarded immediately and only
-the operator's renewable AMPECO session is stored. A one-time email link is
-also offered when the operator tenant enables it with a non-zero lifetime.
+Ignitis ON uses the official app's email/password OAuth flow. Home Assistant
+sends the password directly to Ignitis over HTTPS, discards it immediately,
+and stores only the renewable AMPECO session. IKRAUTAS additionally supports
+the official Android app's Google `third-party` exchange. That one-time Google
+access token must be issued to the IKRAUTAS Android client; a normal Google
+OAuth or OAuth Playground token belongs to a different client and is rejected.
+A one-time email link is also offered when the operator tenant enables it with
+a non-zero lifetime.
 Repeated setup attempts for the same operator identity are merged instead of
 creating duplicate accounts.
 All enabled charging accounts are refreshed once per hour. A provider name is

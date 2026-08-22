@@ -125,12 +125,45 @@ class AmpecoAuthTest(unittest.TestCase):
             grant_type="third-party",
             token="google-access-token",
             login_type="google",
+            user_data={"givenName": "Test", "familyName": "Driver"},
         )
 
         self.assertEqual("third-party", form["grant_type"])
         self.assertEqual("google-access-token", form["token"])
         self.assertEqual("google", form["type"])
         self.assertEqual("LT", form["operatorCountry"])
+        self.assertEqual(
+            {"givenName": "Test", "familyName": "Driver"},
+            form["userData"],
+        )
+
+    def test_google_user_data_matches_official_field_names(self) -> None:
+        self.assertEqual(
+            {"givenName": "Test", "familyName": "Driver"},
+            ampeco_auth.ampeco_google_user_data(
+                {"given_name": " Test ", "family_name": " Driver "}
+            ),
+        )
+        self.assertIsNone(ampeco_auth.ampeco_google_user_data({}))
+
+    def test_provider_google_capability_matches_official_apps(self) -> None:
+        self.assertIsNone(ampeco_auth.IGNITIS_ON.google_client_id)
+        self.assertTrue(
+            ampeco_auth.IKRAUTAS.google_client_id.endswith(
+                ".apps.googleusercontent.com"
+            )
+        )
+
+    def test_password_form_matches_official_app_request(self) -> None:
+        form = ampeco_auth.ampeco_password_form(
+            ampeco_auth.IGNITIS_ON,
+            username="person@example.test",
+            password="not-stored",
+        )
+        self.assertEqual("password", form["grant_type"])
+        self.assertEqual("person@example.test", form["username"])
+        self.assertEqual("not-stored", form["password"])
+        self.assertNotIn("operatorCountry", form)
 
 
 if __name__ == "__main__":

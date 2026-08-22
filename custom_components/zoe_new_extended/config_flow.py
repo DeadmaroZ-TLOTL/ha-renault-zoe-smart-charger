@@ -36,8 +36,10 @@ from homeassistant.helpers.selector import (
 from .ampeco_auth import (
     AMPECO_ACCOUNT_TYPES,
     ampeco_app_headers,
+    ampeco_google_user_data,
     ampeco_login_link_requested,
     ampeco_login_link_token,
+    ampeco_password_form,
     ampeco_provider,
     ampeco_token_form,
     ampeco_token_values,
@@ -51,6 +53,7 @@ from .const import (
     CONF_AMPECO_EMAIL,
     CONF_AMPECO_GOOGLE_ACCESS_TOKEN,
     CONF_AMPECO_LOGIN_LINK,
+    CONF_AMPECO_PASSWORD,
     CONF_AMPECO_REFRESH_TOKEN,
     CONF_AMPECO_TOKEN_EXPIRES_AT,
     CONF_ACCOUNT_ACTION,
@@ -897,6 +900,8 @@ class ZoeNewExtendedOptionsFlow(config_entries.OptionsFlow):
         is_lv = str(self.hass.config.language).lower().startswith("lv")
         if user_input is not None:
             method = str(user_input.get(AMPECO_AUTH_METHOD) or "")
+            if method == "password":
+                return await self.async_step_ampeco_password()
             if method == "email_link":
                 self._ampeco_login_link_sent = False
                 return await self.async_step_ampeco_login_link()
@@ -904,6 +909,12 @@ class ZoeNewExtendedOptionsFlow(config_entries.OptionsFlow):
                 return await self.async_step_ampeco_google()
 
         auth_options = [
+            {
+                "value": "password",
+                "label": (
+                    "E-pasts un parole" if is_lv else "Email and password"
+                ),
+            },
             {
                 "value": "email_link",
                 "label": (
@@ -913,16 +924,17 @@ class ZoeNewExtendedOptionsFlow(config_entries.OptionsFlow):
                 ),
             }
         ]
-        auth_options.append(
-            {
-                "value": "google_token",
-                "label": (
-                    f"Oficiālās {provider.display_name} Android lietotnes tokens"
-                    if is_lv
-                    else f"Official {provider.display_name} Android app token"
-                ),
-            }
-        )
+        if provider.google_client_id:
+            auth_options.append(
+                {
+                    "value": "google_token",
+                    "label": (
+                        f"Oficiālās {provider.display_name} Android lietotnes tokens"
+                        if is_lv
+                        else f"Official {provider.display_name} Android app token"
+                    ),
+                }
+            )
 
         return self.async_show_form(
             step_id="ampeco_auth",
@@ -939,6 +951,88 @@ class ZoeNewExtendedOptionsFlow(config_entries.OptionsFlow):
             description_placeholders={
                 "provider": provider.display_name,
                 "email": str(account.get(CONF_AMPECO_EMAIL) or ""),
+            },
+        )
+
+    async def async_step_ampeco_password(self, user_input=None):
+        """Exchange an AMPECO account password without persisting it."""
+        account = self._selected_account()
+        if (
+            account is None
+            or account.get(CONF_ACCOUNT_TYPE) not in AMPECO_ACCOUNT_TYPES
+        ):
+            return await self.async_step_charging_accounts()
+        provider = ampeco_provider(account.get(CONF_ACCOUNT_TYPE))
+        email = str(account.get(CONF_AMPECO_EMAIL) or "").strip()
+        errors = {}
+
+        if user_input is not None:
+            password = str(user_input.get(CONF_AMPECO_PASSWORD) or "")
+            if not password:
+                errors["base"] = "ampeco_password_invalid"
+            else:
+                session = async_get_clientsession(self.hass)
+                try:
+                    async with session.post(
+                        f"https://{provider.host}/api/v1/app/oauth/token",
+                        params={"operatorCountry": provider.operator_country},
+                        headers=ampeco_app_headers(provider),
+                        json=ampeco_password_form(
+                            provider,
+                            username=email,
+                            password=password,
+                        ),
+                        timeout=ELEKTRUM_REQUEST_TIMEOUT,
+                    ) as response:
+                        try:
+                            payload = await response.json(content_type=None)
+                        except (TypeError, ValueError):
+                            payload = {}
+                        status = response.status
+                except (ClientError, TimeoutError):
+                    errors["base"] = "ampeco_connection_failed"
+                else:
+                    token_values = ampeco_token_values(payload)
+                    access_token = token_values.get("access_token")
+                    if status >= 400 or not access_token:
+                        _LOGGER.warning(
+                            "%s rejected password authentication (HTTP %s)",
+                            provider.display_name,
+                            status,
+                        )
+                        errors["base"] = "ampeco_password_exchange_failed"
+                    else:
+                        accounts = self._charging_accounts
+                        for item in accounts:
+                            if item.get(CONF_ACCOUNT_ID) != account.get(
+                                CONF_ACCOUNT_ID
+                            ):
+                                continue
+                            item[CONF_AMPECO_ACCESS_TOKEN] = access_token
+                            if token_values.get("refresh_token"):
+                                item[CONF_AMPECO_REFRESH_TOKEN] = token_values[
+                                    "refresh_token"
+                                ]
+                            if token_values.get("expires_at"):
+                                item[CONF_AMPECO_TOKEN_EXPIRES_AT] = token_values[
+                                    "expires_at"
+                                ]
+                            break
+                        return self._save_charging_accounts(accounts)
+
+        return self.async_show_form(
+            step_id="ampeco_password",
+            data_schema=vol.Schema(
+                {
+                    vol.Required(CONF_AMPECO_PASSWORD): TextSelector(
+                        TextSelectorConfig(type=TextSelectorType.PASSWORD)
+                    )
+                }
+            ),
+            errors=errors,
+            description_placeholders={
+                "provider": provider.display_name,
+                "email": email,
             },
         )
 
@@ -962,6 +1056,20 @@ class ZoeNewExtendedOptionsFlow(config_entries.OptionsFlow):
             else:
                 session = async_get_clientsession(self.hass)
                 try:
+                    user_data = None
+                    async with session.get(
+                        "https://www.googleapis.com/oauth2/v3/userinfo",
+                        headers={"Authorization": f"Bearer {google_token}"},
+                        timeout=ELEKTRUM_REQUEST_TIMEOUT,
+                    ) as user_response:
+                        if user_response.status < 400:
+                            try:
+                                user_payload = await user_response.json(
+                                    content_type=None
+                                )
+                            except (TypeError, ValueError):
+                                user_payload = {}
+                            user_data = ampeco_google_user_data(user_payload)
                     async with session.post(
                         f"https://{provider.host}/api/v1/app/oauth/token",
                         params={"operatorCountry": provider.operator_country},
@@ -971,6 +1079,7 @@ class ZoeNewExtendedOptionsFlow(config_entries.OptionsFlow):
                             grant_type="third-party",
                             token=google_token,
                             login_type="google",
+                            user_data=user_data,
                         ),
                         timeout=ELEKTRUM_REQUEST_TIMEOUT,
                     ) as response:

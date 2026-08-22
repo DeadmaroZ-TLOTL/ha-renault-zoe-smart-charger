@@ -177,7 +177,7 @@
       },
       "ampeco_account": {
         "title": "Operatora lietotnes konts",
-        "description": "{mode} {provider} kontu. Izmanto e-pastu, kas pieder tam pašam operatora profilam kā Google pieteikšanās. Autorizācijas tokeni paliek Home Assistant konfigurācijas ierakstā.",
+        "description": "{mode} {provider} kontu. Izmanto e-pastu, kas pieder tam pašam profilam oficiālajā operatora lietotnē. Autorizācijas tokeni paliek Home Assistant konfigurācijas ierakstā.",
         "data": {
           "name": "Konta nosaukums",
           "enabled": "Ieslēgts",
@@ -189,6 +189,13 @@
         "description": "Izvēlies oficiālās {provider} lietotnes atbalstītu autorizācijas metodi kontam {email}. Operators var būt atslēdzis pieteikšanos ar e-pasta saiti.",
         "data": {
           "auth_method": "Autorizācijas metode"
+        }
+      },
+      "ampeco_password": {
+        "title": "Pieslēgt operatora lietotni",
+        "description": "Ievadi {provider} konta {email} paroli. Parole tiek nosūtīta tieši operatoram ar HTTPS un Home Assistant to nesaglabā.",
+        "data": {
+          "ampeco_password": "Konta parole"
         }
       },
       "ampeco_google": {
@@ -276,6 +283,8 @@
       "ampeco_login_link_exchange_failed": "Operators noraidīja šo pieteikšanās saiti vai tai beidzies termiņš. Pieprasi jaunu saiti.",
       "ampeco_login_link_failed": "Operators nenosūtīja pieteikšanās saiti. Šim kontam pieteikšanās ar e-pastu var būt atslēgta.",
       "ampeco_login_link_invalid": "Ielīmē pilnu pieteikšanās saiti no operatora e-pasta.",
+      "ampeco_password_exchange_failed": "Operators noraidīja e-pastu vai paroli.",
+      "ampeco_password_invalid": "Ievadi operatora konta paroli.",
       "elektrum_agreement_link_failed": "Elektrum nepārslēdza kontu uz izvēlēto pēcapmaksas līgumu.",
       "elektrum_agreement_required": "Izvēlies Elektrum līgumu.",
       "elektrum_app_link_invalid": "Ielīmē pilno elektrumdrive://app/open saiti no oficiālās Elektrum lietotnes.",
