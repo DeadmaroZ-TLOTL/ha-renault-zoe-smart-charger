@@ -484,6 +484,7 @@
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="./dashboard-tabs.js?v=1.2.0"></script>
   <script src="./date-range.js?v=1.0.2"></script>
+  <script src="./history-fallback.js?v=1.0.1"></script>
   <script>
     const ENTITY = {
       location: "device_tracker.location",
@@ -992,6 +993,9 @@
     }
 
     async function getTripRoadRoute(trip) {
+      if (!Array.isArray(trip.points) || trip.points.length < 2) {
+        throw new Error("GPS route history is unavailable");
+      }
       if (trip.roadRoute) return trip.roadRoute;
       if (!trip.roadRoutePromise) {
         trip.roadRoutePromise = getRoadRoute(trip.points)
@@ -1014,6 +1018,7 @@
         while (cursor < currentTrips.length && trips === currentTrips) {
           const index = cursor;
           cursor += 1;
+          if ((currentTrips[index].points || []).length < 2) continue;
           try {
             await getTripRoadRoute(currentTrips[index]);
           } catch (err) {
@@ -1169,6 +1174,9 @@
           end: endSample.t,
           mileageStart: startSample.value,
           mileageEnd: endSample.value,
+          reconstructed: Boolean(
+            startSample.reconstructed || endSample.reconstructed,
+          ),
         });
       }
     }
@@ -1229,6 +1237,58 @@
       return prepared;
     }
 
+    function normalizeReconstructedTrips(prepared, battery) {
+      const usable = prepared.filter((trip) => (
+        !trip.reconstructed
+        && trip.km >= 3
+        && trip.energy > 0
+        && trip.consumption >= 6
+        && trip.consumption <= 45
+      ));
+      const usableKm = usable.reduce((sum, trip) => sum + trip.km, 0);
+      const usableEnergy = usable.reduce((sum, trip) => sum + trip.energy, 0);
+      const learnedConsumption = usableKm > 0
+        ? Math.min(35, Math.max(10, usableEnergy / usableKm * 100))
+        : 16.5;
+
+      for (const trip of prepared) {
+        if (!trip.reconstructed) continue;
+        const startValue = valueAt(battery, trip.start);
+        const endValue = valueAt(battery, trip.end);
+        const startSoc = Number.isFinite(startValue)
+          ? Math.min(100, Math.max(0, startValue))
+          : null;
+        const endSoc = Number.isFinite(endValue)
+          ? Math.min(100, Math.max(0, endValue))
+          : null;
+        const batteryUsed = startSoc != null && endSoc != null
+          ? Math.max(0, startSoc - endSoc)
+          : 0;
+        const measuredEnergy = batteryUsed * BATTERY_KWH / 100;
+        const measuredConsumption = trip.km > 0
+          ? measuredEnergy / trip.km * 100
+          : 0;
+        const plausible = (
+          measuredEnergy > 0
+          && measuredConsumption >= 4
+          && measuredConsumption <= 55
+        );
+        trip.socStart = startSoc;
+        trip.energyEstimated = !plausible;
+        trip.energy = plausible
+          ? measuredEnergy
+          : trip.km * learnedConsumption / 100;
+        trip.consumption = trip.km > 0
+          ? trip.energy / trip.km * 100
+          : 0;
+        trip.batteryUsed = trip.energy / BATTERY_KWH * 100;
+        trip.socEnd = startSoc == null
+          ? endSoc
+          : Math.max(0, startSoc - trip.batteryUsed);
+      }
+      return prepared;
+    }
+
     function buildTrips(history) {
       const byEntity = normalizeHistory(history);
       const locs = (byEntity[ENTITY.location] || [])
@@ -1241,7 +1301,11 @@
         .filter((p) => Number.isFinite(p.t) && Number.isFinite(p.lat) && Number.isFinite(p.lon));
 
       const mileage = (byEntity[ENTITY.mileage] || [])
-        .map((s) => ({ t: toTime(s), value: toNumber(s.state) }))
+        .map((s) => ({
+          t: toTime(s),
+          value: toNumber(s.state),
+          reconstructed: s.attributes?.history_source === "long_term_statistics",
+        }))
         .filter((p) => Number.isFinite(p.t) && Number.isFinite(p.value));
 
       const battery = (byEntity[ENTITY.battery] || [])
@@ -1259,7 +1323,10 @@
         }))
         .filter((trip) => trip.km >= MIN_TRIP_KM);
 
-      return enrichTripGroups(prepared, battery)
+      return normalizeReconstructedTrips(
+        enrichTripGroups(prepared, battery),
+        battery,
+      )
         .sort((a, b) => b.start - a.start);
     }
 
@@ -1363,7 +1430,7 @@
       markerLayer.clearLayers();
 
       if (!trips.length) return;
-      const range = dateRange.range(new Date(), Date.now() - 400 * 86400000);
+      const range = dateRange.range(new Date(), Date.UTC(2000, 0, 1));
       const formatter = new Intl.DateTimeFormat(
         language === "lv" ? "lv-LV" : "en-GB",
         { dateStyle: "long" },
@@ -1382,6 +1449,7 @@
         while (cursor < trips.length) {
           const index = cursor;
           cursor += 1;
+          if ((trips[index].points || []).length < 2) continue;
           try {
             routes[index] = await getTripRoadRoute(trips[index]);
           } catch (err) {
@@ -1433,7 +1501,10 @@
         map.setView([56.95, 24.1], 8);
       }
 
-      if (latlngs.length < 2) return;
+      if (latlngs.length < 2) {
+        mapTripInfo.textContent = t("routeUnavailable", { info: tripInfo });
+        return;
+      }
       try {
         const routeData = await getTripRoadRoute(trip);
         if (requestId !== routeRequestId) return;
@@ -1501,12 +1572,27 @@
       reloadEl.disabled = true;
       loadVehicleStatus().catch((err) => console.warn("Vehicle status unavailable", err));
       try {
-        const selected = dateRange.range(new Date(), Date.now() - 400 * 86400000);
+        const selected = dateRange.range(new Date(), Date.UTC(2000, 0, 1));
         const start = new Date(selected.start);
         const end = new Date(Math.min(selected.end, Date.now()));
-        const ids = [ENTITY.location, ENTITY.mileage, ENTITY.battery].join(",");
+        const entityIds = [ENTITY.location, ENTITY.mileage, ENTITY.battery];
+        const ids = entityIds.join(",");
         const url = `/api/history/period/${encodeURIComponent(start.toISOString())}?end_time=${encodeURIComponent(end.toISOString())}&filter_entity_id=${encodeURIComponent(ids)}`;
-        const history = await haFetch(url);
+        const rawHistory = await haFetch(url);
+        const history = await window.RenaultHistoryFallback.augment(rawHistory, {
+          hass: await getParentHass(),
+          entityIds,
+          start: start.getTime(),
+          end: end.getTime(),
+          valueKeys: {
+            [ENTITY.mileage]: ["state", "mean"],
+            [ENTITY.battery]: ["mean", "state"],
+          },
+          mergeModes: {
+            [ENTITY.mileage]: "all",
+            [ENTITY.battery]: "gaps",
+          },
+        });
         trips = buildTrips(history);
         setStatus(t("updatedTrips", {
           time: new Intl.DateTimeFormat(language === "lv" ? "lv-LV" : "en-GB", {

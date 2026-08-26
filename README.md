@@ -77,7 +77,10 @@ used by the included Nord Pool smart charger package.
   only. Charging performed elsewhere therefore cannot inflate the site's
   Home Assistant Energy total.
 - Optional automatic Renault Trips dashboard with day selection, route maps,
-  speed samples, distance, and estimated energy consumption.
+  speed samples, distance, and estimated energy consumption. Hourly long-term
+  odometer and SOC statistics restore genuine monthly totals when raw Recorder
+  states are no longer present; missing historical GPS routes stay explicitly
+  unavailable instead of being invented.
 - Separate mileage dashboard view with daily totals, odometer-based paved and
   gravel/unpaved distance, unknown-surface coverage, and approximate average
   and maximum route speeds.
@@ -88,8 +91,9 @@ used by the included Nord Pool smart charger package.
   trips, mileage, costs, and chart history follow the selected range.
 - Daily driving-cost bars expose the exact EUR total on hover. The Costs view
   also keeps authenticated, server-side daily aggregates, shows the current
-  month's EUR/100 km average, and retains a monthly km, energy, and cost table
-  after Recorder cleanup or Home Assistant restarts. Charging-period totals
+  month's EUR/100 km average, and retains the complete daily/monthly km, energy,
+  and cost history without age-based trimming after raw Recorder cleanup or
+  Home Assistant restarts. Charging-period totals
   use the same `grid_energy_kwh` and `total_cost_eur` fields as the Charging
   view, while trip cost remains the weighted value of energy actually driven.
 - Server-side IMMAX **Charge now** and **Delay 12 h** command sequences start

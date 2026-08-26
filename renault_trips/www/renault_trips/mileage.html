@@ -553,6 +553,7 @@
 
   <script src="./dashboard-tabs.js?v=1.2.0"></script>
   <script src="./date-range.js?v=1.0.2"></script>
+  <script src="./history-fallback.js?v=1.0.1"></script>
   <script>
     const ENTITY = {
       location: "device_tracker.location",
@@ -917,6 +918,9 @@
           end: endSample.t,
           mileageStart: startSample.value,
           mileageEnd: endSample.value,
+          reconstructed: Boolean(
+            startSample.reconstructed || endSample.reconstructed,
+          ),
         });
       }
     }
@@ -952,7 +956,11 @@
           && Number.isFinite(point.lon)
         ));
       const mileage = (byEntity[ENTITY.mileage] || [])
-        .map((state) => ({ t: toTime(state), value: toNumber(state.state) }))
+        .map((state) => ({
+          t: toTime(state),
+          value: toNumber(state.state),
+          reconstructed: state.attributes?.history_source === "long_term_statistics",
+        }))
         .filter((point) => Number.isFinite(point.t) && Number.isFinite(point.value));
 
       const found = splitLocationTrips(locations);
@@ -1315,7 +1323,7 @@
           <td>~${fmtDate(tripDisplayStart(trip))}</td>
           <td>~${fmtDate(trip.end)}</td>
           <td class="number">${fmt(trip.km, 1, " km")}</td>
-          <td class="number">${trip.speed ? fmt(trip.speed.average, 0, " km/h") : "..."}</td>
+          <td class="number">${trip.speed ? fmt(trip.speed.average, 0, " km/h") : trip.reconstructed ? "-" : "..."}</td>
           <td class="number">${surface ? fmt(surface.hard, 1, " km") : "..."}</td>
           <td class="number">${surface ? fmt(surface.loose, 1, " km") : "..."}</td>
           <td class="number">${surface ? fmt(surface.unknown, 1, " km") : "..."}</td>
@@ -1340,6 +1348,14 @@
           const index = cursor;
           cursor += 1;
           const trip = currentTrips[index];
+          if ((trip.points || []).length < 2) {
+            trip.surface = { hard: 0, loose: 0, unknown: trip.km, coverage: 0 };
+            finished += 1;
+            if (requestId !== loadRequestId) return;
+            setStatus(t("classifying", { done: finished, total: currentTrips.length }));
+            render();
+            continue;
+          }
           try {
             trip.surface = await getSurfaceBreakdown(trip);
           } catch (err) {
@@ -1363,15 +1379,29 @@
       await loadDashboardLanguage();
       setStatus(t("loading"));
       try {
-        const selected = dateRange.range(new Date(), Date.now() - 400 * 86400000);
+        const selected = dateRange.range(new Date(), Date.UTC(2000, 0, 1));
         const start = new Date(selected.start);
         const end = new Date(Math.min(selected.end, Date.now()));
-        const ids = [ENTITY.location, ENTITY.mileage].join(",");
+        const entityIds = [ENTITY.location, ENTITY.mileage];
+        const ids = entityIds.join(",");
         const historyUrl = `/api/history/period/${encodeURIComponent(start.toISOString())}?end_time=${encodeURIComponent(end.toISOString())}&filter_entity_id=${encodeURIComponent(ids)}`;
-        const [history, mileageState] = await Promise.all([
+        const [rawHistory, mileageState] = await Promise.all([
           haFetch(historyUrl),
           haFetch(`/api/states/${encodeURIComponent(ENTITY.mileage)}`),
         ]);
+        if (requestId !== loadRequestId) return;
+        const history = await window.RenaultHistoryFallback.augment(rawHistory, {
+          hass: await getParentHass(),
+          entityIds,
+          start: start.getTime(),
+          end: end.getTime(),
+          valueKeys: {
+            [ENTITY.mileage]: ["state", "mean"],
+          },
+          mergeModes: {
+            [ENTITY.mileage]: "all",
+          },
+        });
         if (requestId !== loadRequestId) return;
         trips = buildTrips(history);
         currentMileage = toNumber(mileageState.state);

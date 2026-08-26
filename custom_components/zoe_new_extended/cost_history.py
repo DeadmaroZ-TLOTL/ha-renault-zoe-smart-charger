@@ -24,7 +24,7 @@ COST_HISTORY_STORE = "_cost_history_store"
 COST_HISTORY_CACHE = "_cost_history_cache"
 COST_HISTORY_LOCK = "_cost_history_lock"
 COST_HISTORY_VIEW_REGISTERED = "_cost_history_view_registered"
-MAX_COST_HISTORY_DAYS = 5000
+MAX_COST_HISTORY_BATCH_DAYS = 5000
 
 
 async def _async_load_cost_days(hass: HomeAssistant) -> dict[str, dict[str, Any]]:
@@ -64,11 +64,6 @@ async def _async_merge_cost_days(
         for record in normalize_cost_days(records):
             cached[record["day"]] = record
 
-        if len(cached) > MAX_COST_HISTORY_DAYS:
-            retained_days = sorted(cached)[-MAX_COST_HISTORY_DAYS:]
-            cached = {day: cached[day] for day in retained_days}
-            domain_data[COST_HISTORY_CACHE] = cached
-
         await domain_data[COST_HISTORY_STORE].async_save(
             {
                 "days": cached,
@@ -99,7 +94,7 @@ class ZoeNewCostHistoryView(HomeAssistantView):
             records = payload.get("days") if isinstance(payload, dict) else None
             if not isinstance(records, list):
                 raise ValueError("days must be a list")
-            if len(records) > MAX_COST_HISTORY_DAYS:
+            if len(records) > MAX_COST_HISTORY_BATCH_DAYS:
                 raise ValueError("too many daily records")
             days = await _async_merge_cost_days(hass, records)
         except (TypeError, ValueError) as err:

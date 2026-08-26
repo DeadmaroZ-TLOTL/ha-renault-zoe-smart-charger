@@ -590,6 +590,9 @@ function addUncoveredMileageTrips(found, mileage, locations) {
       end: endSample.t,
       mileageStart: startSample.value,
       mileageEnd: endSample.value,
+      reconstructed: Boolean(
+        startSample.reconstructed || endSample.reconstructed,
+      ),
     });
   }
 }
@@ -688,6 +691,26 @@ function enrichTripGroups(trips, battery) {
   return trips;
 }
 
+function normalizeReconstructedTripSoc(trips, battery) {
+  for (const trip of trips) {
+    if (!trip.reconstructed) continue;
+    const startValue = valueAt(battery, trip.start);
+    const endValue = valueAt(battery, trip.end);
+    trip.socStart = Number.isFinite(startValue)
+      ? clamp(startValue, 0, 100)
+      : null;
+    trip.socEnd = Number.isFinite(endValue)
+      ? clamp(endValue, 0, 100)
+      : null;
+    trip.batteryUsed = trip.socStart != null && trip.socEnd != null
+      ? Math.max(0, trip.socStart - trip.socEnd)
+      : 0;
+    trip.energy = trip.batteryUsed * costSettings.batteryCapacityKwh / 100;
+    trip.consumption = trip.km > 0 ? trip.energy / trip.km * 100 : 0;
+  }
+  return trips;
+}
+
 function buildTrips(history) {
   const byEntity = normalizeHistory(history);
   const locations = (byEntity[ENTITY.location] || [])
@@ -703,7 +726,11 @@ function buildTrips(history) {
       && Number.isFinite(point.lon)
     ));
   const mileage = (byEntity[ENTITY.mileage] || [])
-    .map((state) => ({ t: toTime(state), value: toNumber(state.state) }))
+    .map((state) => ({
+      t: toTime(state),
+      value: toNumber(state.state),
+      reconstructed: state.attributes?.history_source === "long_term_statistics",
+    }))
     .filter((point) => (
       Number.isFinite(point.t) && Number.isFinite(point.value)
     ));
@@ -721,7 +748,10 @@ function buildTrips(history) {
     .map((trip) => ({ ...trip, ...tripDistance(trip, mileage) }))
     .filter((trip) => trip.km >= MIN_TRIP_KM);
 
-  return enrichTripGroups(prepared, battery)
+  return normalizeReconstructedTripSoc(
+    enrichTripGroups(prepared, battery),
+    battery,
+  )
     .sort((left, right) => left.start - right.start);
 }
 
@@ -757,11 +787,12 @@ function normalizeTripEnergy(trips) {
       trip.energyEstimated = true;
       if (
         Number.isFinite(trip.socStart)
-        && !Number.isFinite(trip.socEnd)
+        && (trip.reconstructed || !Number.isFinite(trip.socEnd))
       ) {
         trip.socEnd = (
-          trip.socStart
+          Math.max(0, trip.socStart
           - trip.energy / costSettings.batteryCapacityKwh * 100
+          )
         );
       }
     }
@@ -1188,7 +1219,7 @@ function filterModel(model) {
         session.endTime > range.start && session.startTime < range.end
       ),
     ),
-    costDays: mergeDailyCostRows(
+    costDays: mergePersistedAndLiveCostRows(
       (model.costDays || []).filter((point) => {
         const time = dayKeyTime(point.key);
         return time >= range.start && time < range.end;
@@ -1217,13 +1248,21 @@ function groupDaily(trips) {
   for (const trip of trips) {
     const key = localDayKey(trip.start);
     if (!groups.has(key)) {
-      groups.set(key, { key, km: 0, energy: 0, cost: 0, trips: 0 });
+      groups.set(key, {
+        key,
+        km: 0,
+        energy: 0,
+        cost: 0,
+        trips: 0,
+        reconstructedOnly: true,
+      });
     }
     const group = groups.get(key);
     group.km += trip.km;
     group.energy += trip.energy;
     group.cost += trip.cost;
     group.trips += 1;
+    group.reconstructedOnly = group.reconstructedOnly && Boolean(trip.reconstructed);
   }
   return [...groups.values()]
     .map((group) => ({
@@ -1281,6 +1320,22 @@ function mergeDailyCostRows(...groups) {
   );
 }
 
+function mergePersistedAndLiveCostRows(persistedRows, liveRows) {
+  const merged = new Map(
+    normalizeCostDays(persistedRows).map((row) => [row.key, row]),
+  );
+  for (const liveRow of Array.isArray(liveRows) ? liveRows : []) {
+    const normalized = normalizeCostDays([liveRow])[0];
+    if (!normalized) continue;
+    if (!merged.has(normalized.key) || !liveRow.reconstructedOnly) {
+      merged.set(normalized.key, normalized);
+    }
+  }
+  return [...merged.values()].sort(
+    (left, right) => left.key.localeCompare(right.key),
+  );
+}
+
 function aggregateMonthly(days) {
   const months = new Map();
   for (const day of normalizeCostDays(days)) {
@@ -1313,19 +1368,28 @@ function aggregateMonthly(days) {
 
 async function syncCostHistory(trips) {
   const liveDays = groupDaily(trips);
-  const requestDays = liveDays.map((day) => ({
-    day: day.key,
-    km: day.km,
-    energy_kwh: day.energy,
-    cost_eur: day.cost,
-    trips: day.trips,
-  }));
   try {
-    const response = await haFetch(
+    const existingResponse = await haFetch(
       "/api/zoe_new_extended/cost_history",
-      { method: "POST", body: { days: requestDays } },
     );
-    return mergeDailyCostRows(response.days, liveDays);
+    const existingDays = normalizeCostDays(existingResponse.days);
+    const existingKeys = new Set(existingDays.map((day) => day.key));
+    const requestDays = liveDays
+      .filter((day) => !day.reconstructedOnly || !existingKeys.has(day.key))
+      .map((day) => ({
+        day: day.key,
+        km: day.km,
+        energy_kwh: day.energy,
+        cost_eur: day.cost,
+        trips: day.trips,
+      }));
+    const persistedDays = requestDays.length
+      ? (await haFetch(
+        "/api/zoe_new_extended/cost_history",
+        { method: "POST", body: { days: requestDays } },
+      )).days
+      : existingDays;
+    return mergePersistedAndLiveCostRows(persistedDays, liveDays);
   } catch (error) {
     console.debug("Persistent cost history is unavailable", error);
     return liveDays;
@@ -1890,21 +1954,40 @@ async function loadModel() {
       throw new Error(t("sessionsEmpty"));
     }
 
-    const historyStart = new Date(
+    const requestedRange = selectedRange();
+    const requestedStart = Number.isFinite(requestedRange.start)
+      ? requestedRange.start
+      : Date.UTC(2000, 0, 1);
+    const historyStart = new Date(Math.min(
       sessions[0].startTime - MAX_ENERGY_LOOKBACK_MIN * 60000,
-    );
+      requestedStart,
+    ));
     const historyEnd = new Date();
     const entityIds = [
       ENTITY.location,
       ENTITY.mileage,
       ENTITY.battery,
-    ].join(",");
+    ];
     const historyPath = (
       `/api/history/period/${encodeURIComponent(historyStart.toISOString())}`
       + `?end_time=${encodeURIComponent(historyEnd.toISOString())}`
-      + `&filter_entity_id=${encodeURIComponent(entityIds)}`
+      + `&filter_entity_id=${encodeURIComponent(entityIds.join(","))}`
     );
-    const history = await haFetch(historyPath);
+    const rawHistory = await haFetch(historyPath);
+    const history = await window.RenaultHistoryFallback.augment(rawHistory, {
+      hass: await getParentHass(),
+      entityIds,
+      start: historyStart.getTime(),
+      end: historyEnd.getTime(),
+      valueKeys: {
+        [ENTITY.mileage]: ["state", "mean"],
+        [ENTITY.battery]: ["mean", "state"],
+      },
+      mergeModes: {
+        [ENTITY.mileage]: "all",
+        [ENTITY.battery]: "gaps",
+      },
+    });
     const trips = buildTrips(history);
     const learnedConsumption = normalizeTripEnergy(trips);
     const currentSoc = toNumber(batteryState.state);
