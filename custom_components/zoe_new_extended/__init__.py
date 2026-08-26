@@ -53,6 +53,7 @@ from .const import (
 from .extras import ZoeNewCloudExtrasCoordinator
 from .elektrum_drive import ElektrumDriveCoordinator
 from .nordpool import NordPoolPriceCoordinator
+from .route_history import async_register_route_history
 from .status_refresh import ZoeNewStatusRefresh
 from .stations import async_register_station_views
 
@@ -437,6 +438,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     )
     async_register_station_views(hass, entry)
     async_register_cost_history_view(hass, entry)
+    runtime["unsubscribe_route_history"] = async_register_route_history(hass, entry)
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     await _async_sync_charging_setpoints(hass, entry)
     schedule_charge_session_refresh()
@@ -469,6 +471,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         runtime["cancel_setpoint_sync"]()
         runtime["unsubscribe_charge_session_refresh"]()
         runtime["cancel_charge_session_refresh"]()
+        runtime["unsubscribe_route_history"]()
     return True
 
 

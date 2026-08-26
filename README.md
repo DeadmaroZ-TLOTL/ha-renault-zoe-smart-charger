@@ -81,9 +81,14 @@ used by the included Nord Pool smart charger package.
   odometer and SOC statistics restore genuine monthly totals when raw Recorder
   states are no longer present; missing historical GPS routes stay explicitly
   unavailable instead of being invented.
-- Separate mileage dashboard view with daily totals, odometer-based paved and
-  gravel/unpaved distance, unknown-surface coverage, and approximate average
-  and maximum route speeds.
+- Separate mileage dashboard view with exact long-term odometer totals and
+  retained trip counts for every selected calendar day, plus paved,
+  gravel/unpaved, and explicitly unknown road-surface coverage. Approximate
+  average speed is calculated only for routes backed by genuine GPS points.
+  Genuine Renault GPS updates are retained in an authenticated integration
+  store without age-based deletion, so route and road-surface statistics no
+  longer disappear when Recorder purges raw states. Existing Recorder points
+  are merged into that archive whenever the Mileage view is opened.
 - Matching full-screen Charging, Trips, Mileage, Costs, Info, Stations, and
   IMMAX views with responsive controls and one persisted history selector.
   Choose today, 3/7/14/30/90 calendar days, the current month, all available
