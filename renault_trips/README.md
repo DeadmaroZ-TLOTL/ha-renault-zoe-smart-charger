@@ -1,8 +1,9 @@
 # Renault Trips
 
 This folder contains the Renault Trips page used by the included Home Assistant
-dashboard. It builds trips automatically from Home Assistant Recorder history;
-there are no manual start or stop controls and no separate trip database.
+dashboard. It builds trips automatically from Home Assistant Recorder history
+and the integration's retained GPS archive; there are no manual start or stop
+controls.
 
 ## Required entities
 
@@ -103,8 +104,9 @@ selected period.
 
 ## How trips are calculated
 
-The page reads the selected day or period from Home Assistant history, groups
-position changes into trips, and reconciles GPS distance with odometer changes.
+The page reads the selected day or period from Home Assistant history, merges
+the same retained GPS archive used by Mileage, groups position changes into
+trips, and reconciles GPS distance with odometer changes.
 GPS-only movements below 0.75 km are ignored as location jitter. Nearby trips
 are grouped when Renault's delayed SOC samples cannot reliably distinguish
 their individual energy use; the group's 52 kWh battery reduction is allocated
@@ -121,9 +123,11 @@ surface. The page map-matches cached OSRM routes with the public Valhalla
 service and uses OpenStreetMap surface tags. Surface distances are scaled to
 the odometer-based trip distance. Missing or ambiguous map data stays unknown
 instead of being guessed. Classified trip results are retained by the
-integration, not only in the current browser, and are restored after Recorder
-purges raw states. Archived day totals and trip counts without a retained GPS
-track stay visible as an explicit historical summary whose distance is fully
+integration under a stable identity derived from the trip's start and end time,
+not its changing distance estimate. They are restored after Recorder purges raw
+states without creating duplicate GPS/odometer copies. Archived day totals and
+trip counts without a retained GPS track stay visible as an explicit historical
+summary whose distance is fully
 assigned to unknown surface. Impossible out-and-back GPS spikes are removed
 before route matching. The summary and trip table also show approximate
 average speed derived from OSRM route annotations; it is a route estimate

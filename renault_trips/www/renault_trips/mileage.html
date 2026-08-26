@@ -1173,19 +1173,29 @@
         "trip",
         Math.round(Number(trip.start) / 60000),
         Math.round(Number(trip.end) / 60000),
-        Math.round(Number(trip.km) * 100),
       ].join(":");
     }
 
-    function surfaceFromHistory(record) {
-      const km = Math.max(0, toNumber(record?.km) || 0);
+    function persistedTripKm(trip, record) {
+      const recordKm = Math.max(0, toNumber(record?.km) || 0);
+      const detectedKm = Math.max(0, toNumber(trip?.km) || 0);
+      if (!(recordKm > 0) || !(detectedKm > 0)) return recordKm || detectedKm;
+      const ratio = detectedKm / recordKm;
+      return ratio >= 0.65 && ratio <= 1.55 ? detectedKm : recordKm;
+    }
+
+    function surfaceFromHistory(record, totalKm = null) {
+      const recordKm = Math.max(0, toNumber(record?.km) || 0);
+      const km = Math.max(0, toNumber(totalKm) || recordKm);
       const hard = Math.max(0, toNumber(record?.hard) || 0);
       const loose = Math.max(0, toNumber(record?.loose) || 0);
       const unknown = Math.max(0, toNumber(record?.unknown) || 0);
-      if (!(km > 0) || !(hard + loose + unknown > 0)) return null;
+      if (!(recordKm > 0) || !(km > 0) || !(hard + loose + unknown > 0)) return null;
+      const scale = km / recordKm;
+      const normalized = normalizeSurfaceDistance(km, hard * scale, loose * scale);
       return {
-        ...normalizeSurfaceDistance(km, hard, loose),
-        coverage: Math.min(100, Math.max(0, toNumber(record?.coverage) || 0)),
+        ...normalized,
+        coverage: km > 0 ? (normalized.hard + normalized.loose) / km * 100 : 0,
       };
     }
 
@@ -1194,20 +1204,18 @@
       const exact = records.find((record) => record.id === exactId && !used.has(record.id));
       if (exact) return exact;
       const day = tripDayKey(trip);
-      const maximumKmDifference = Math.max(2, trip.km * 0.25);
       return records
         .filter((record) => (
           !used.has(record.id)
           && record.day === day
-          && Math.abs(record.km - trip.km) <= maximumKmDifference
-          && Math.abs(record.start - trip.start) <= 60 * 60000
-          && Math.abs(record.end - trip.end) <= 60 * 60000
+          && Math.abs(record.start - trip.start) <= 90 * 60000
+          && Math.abs(record.end - trip.end) <= 90 * 60000
         ))
         .map((record) => ({
           record,
           score: Math.abs(record.start - trip.start)
             + Math.abs(record.end - trip.end)
-            + Math.abs(record.km - trip.km) * 60000,
+            + Math.abs(record.km - trip.km) * 1000,
         }))
         .sort((left, right) => left.score - right.score)[0]?.record || null;
     }
@@ -1216,10 +1224,10 @@
       const records = (tripHistory?.trips || [])
         .map((record) => ({
           ...record,
+          id: tripHistoryId(record),
           start: toNumber(record?.start),
           end: toNumber(record?.end),
           km: toNumber(record?.km),
-          surface: surfaceFromHistory(record),
         }))
         .filter((record) => (
           record.id
@@ -1227,17 +1235,19 @@
           && Number.isFinite(record.end)
           && record.end > record.start
           && record.km > 0
-          && record.surface
+          && surfaceFromHistory(record)
         ));
       const used = new Set();
       const merged = detectedTrips.map((trip) => {
         const record = findPersistedTrip(trip, records, used);
         if (!record) return trip;
         used.add(record.id);
+        const km = persistedTripKm(trip, record);
         return {
           ...trip,
           historyId: record.id,
-          surface: record.surface,
+          km,
+          surface: surfaceFromHistory(record, km),
           surfacePersisted: true,
           speed: record.average_speed > 0
             ? { average: record.average_speed, max: record.max_speed }
@@ -1246,17 +1256,18 @@
       });
       for (const record of records) {
         if (used.has(record.id)) continue;
+        used.add(record.id);
         merged.push({
           historyId: record.id,
           day: record.day,
           start: record.start,
           end: record.end,
           km: record.km,
-          mileageKm: record.km,
-          gpsKm: 0,
+          mileageKm: 0,
+          gpsKm: record.km,
           points: [],
-          reconstructed: true,
-          surface: record.surface,
+          reconstructed: false,
+          surface: surfaceFromHistory(record),
           surfacePersisted: true,
           speed: record.average_speed > 0
             ? { average: record.average_speed, max: record.max_speed }

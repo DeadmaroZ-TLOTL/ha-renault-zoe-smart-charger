@@ -44,6 +44,7 @@ const context = {
 vm.createContext(context);
 vm.runInContext(`${source.slice(start, end)}\nthis.helpers = {
   tripHistoryId,
+  persistedTripKm,
   mergePersistedTripHistory,
   addArchivedTripGaps,
   tripHistoryRecord,
@@ -57,25 +58,72 @@ const detected = {
   surface: null,
 };
 const id = context.helpers.tripHistoryId(detected);
+const persisted = context.helpers.tripHistoryRecord({
+  ...detected,
+  surface: { hard: 9, loose: 2, unknown: 1, coverage: 91.67 },
+  speed: { average: 40, max: 70 },
+});
 const merged = context.helpers.mergePersistedTripHistory([detected], {
-  trips: [{
-    id,
-    day: "2026-08-20",
-    start: detected.start,
-    end: detected.end,
-    km: 12,
-    hard: 9,
-    loose: 2,
-    unknown: 1,
-    coverage: 91.67,
-    average_speed: 40,
-    max_speed: 70,
-  }],
+  trips: [persisted],
 });
 assert.equal(merged.length, 1);
 assert.equal(merged[0].surfacePersisted, true);
 assert.equal(merged[0].surface.hard, 9);
 assert.equal(merged[0].speed.average, 40);
+assert.equal(id, `trip:${Math.round(detected.start / 60000)}:${Math.round(detected.end / 60000)}`);
+
+const deduplicated = context.helpers.mergePersistedTripHistory([detected], {
+  trips: [
+    {
+      id: `${id}:1200`,
+      day: "2026-08-20",
+      start: detected.start,
+      end: detected.end,
+      km: 12,
+      hard: 9,
+      loose: 2,
+      unknown: 1,
+      coverage: 91.67,
+    },
+    {
+      id: `${id}:3000`,
+      day: "2026-08-20",
+      start: detected.start,
+      end: detected.end,
+      km: 30,
+      hard: 20,
+      loose: 5,
+      unknown: 5,
+      coverage: 83.33,
+    },
+  ],
+});
+assert.equal(deduplicated.length, 1, "Stale records for one GPS window must not create duplicate trips");
+assert.equal(deduplicated[0].km, 12);
+assert.equal(context.helpers.persistedTripKm({ km: 100 }, { km: 10 }), 10);
+
+const withUnmatchedGpsTrip = context.helpers.mergePersistedTripHistory([detected], {
+  trips: [
+    persisted,
+    {
+      id: "legacy-distance-id",
+      day: "2026-08-21",
+      start: detected.start + 24 * 60 * 60 * 1000,
+      end: detected.end + 24 * 60 * 60 * 1000,
+      km: 8,
+      hard: 6,
+      loose: 1,
+      unknown: 1,
+      coverage: 87.5,
+    },
+  ],
+});
+assert.equal(
+  withUnmatchedGpsTrip.length,
+  2,
+  "Every unique retained GPS trip must remain visible even without an odometer match",
+);
+assert.equal(withUnmatchedGpsTrip[0].surfacePersisted, true);
 
 const complete = context.helpers.addArchivedTripGaps(
   merged,
@@ -96,11 +144,6 @@ const augustGap = complete.find((trip) => trip.archiveGap && trip.day === "2026-
 assert.equal(augustGap.archivedCount, 1);
 assert.equal(augustGap.km, 8);
 
-const persisted = context.helpers.tripHistoryRecord({
-  ...detected,
-  surface: { hard: 9, loose: 2, unknown: 1, coverage: 91.67 },
-  speed: { average: 40, max: 70 },
-});
 assert.equal(persisted.id, id);
 assert.equal(persisted.day, "2026-08-20");
 assert.equal(persisted.average_speed, 40);

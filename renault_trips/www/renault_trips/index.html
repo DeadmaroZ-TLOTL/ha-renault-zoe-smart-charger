@@ -1116,6 +1116,97 @@
       return byEntity;
     }
 
+    function routeHistoryStates(routeHistory) {
+      return (routeHistory?.points || [])
+        .map((point) => {
+          const timestamp = toNumber(point?.t);
+          const latitude = toNumber(point?.lat);
+          const longitude = toNumber(point?.lon);
+          if (
+            !Number.isFinite(timestamp)
+            || !Number.isFinite(latitude)
+            || !Number.isFinite(longitude)
+          ) return null;
+          const iso = new Date(timestamp).toISOString();
+          return {
+            entity_id: ENTITY.location,
+            state: "not_home",
+            attributes: {
+              latitude,
+              longitude,
+              gps_accuracy: toNumber(point?.accuracy) ?? 0,
+              history_source: "retained_route_history",
+            },
+            last_changed: iso,
+            last_updated: iso,
+          };
+        })
+        .filter(Boolean);
+    }
+
+    function mergeRouteHistory(history, routeHistory) {
+      const existingTimes = new Set(
+        (normalizeHistory(history)[ENTITY.location] || [])
+          .map(toTime)
+          .filter(Number.isFinite),
+      );
+      const retained = routeHistoryStates(routeHistory)
+        .filter((state) => !existingTimes.has(toTime(state)));
+      return retained.length ? [...history, retained] : history;
+    }
+
+    function routePointsFromHistory(history) {
+      return (normalizeHistory(history)[ENTITY.location] || [])
+        .map((state) => ({
+          t: toTime(state),
+          lat: toNumber(state.attributes?.latitude),
+          lon: toNumber(state.attributes?.longitude),
+          accuracy: Math.max(0, toNumber(state.attributes?.gps_accuracy) ?? 0),
+        }))
+        .filter((point) => (
+          Number.isFinite(point.t)
+          && Number.isFinite(point.lat)
+          && Number.isFinite(point.lon)
+        ));
+    }
+
+    async function retainRecorderRoutes(history) {
+      const points = routePointsFromHistory(history);
+      if (!points.length) return;
+      try {
+        await haFetch("/api/zoe_new_extended/route_history", {
+          method: "POST",
+          body: { points },
+        });
+      } catch (error) {
+        console.debug("Renault route history could not be retained", error);
+      }
+    }
+
+    function filterLocationSpikes(locations) {
+      if (locations.length < 3) return locations;
+      const filtered = [locations[0]];
+      for (let index = 1; index < locations.length - 1; index += 1) {
+        const previous = filtered.at(-1);
+        const point = locations[index];
+        const following = locations[index + 1];
+        const incomingKm = kmBetween(previous, point);
+        const outgoingKm = kmBetween(point, following);
+        const bypassKm = kmBetween(previous, following);
+        const incomingHours = Math.max((point.t - previous.t) / 3600000, 1 / 3600);
+        const outgoingHours = Math.max((following.t - point.t) / 3600000, 1 / 3600);
+        const teleportSpike = (
+          incomingKm >= 2
+          && outgoingKm >= 2
+          && bypassKm <= Math.max(2, Math.min(incomingKm, outgoingKm) * 0.25)
+          && (incomingKm / incomingHours > 220 || outgoingKm / outgoingHours > 220)
+        );
+        if (!teleportSpike) filtered.push(point);
+      }
+      filtered.push(locations.at(-1));
+      return filtered;
+    }
+
     function splitLocationTrips(locs) {
       const found = [];
       let current = null;
@@ -1291,7 +1382,7 @@
 
     function buildTrips(history) {
       const byEntity = normalizeHistory(history);
-      const locs = (byEntity[ENTITY.location] || [])
+      const rawLocations = (byEntity[ENTITY.location] || [])
         .map((s) => ({
           t: toTime(s),
           lat: toNumber(s.attributes?.latitude),
@@ -1299,6 +1390,7 @@
           state: s.state,
         }))
         .filter((p) => Number.isFinite(p.t) && Number.isFinite(p.lat) && Number.isFinite(p.lon));
+      const locs = filterLocationSpikes(rawLocations);
 
       const mileage = (byEntity[ENTITY.mileage] || [])
         .map((s) => ({
@@ -1578,8 +1670,18 @@
         const entityIds = [ENTITY.location, ENTITY.mileage, ENTITY.battery];
         const ids = entityIds.join(",");
         const url = `/api/history/period/${encodeURIComponent(start.toISOString())}?end_time=${encodeURIComponent(end.toISOString())}&filter_entity_id=${encodeURIComponent(ids)}`;
-        const rawHistory = await haFetch(url);
-        const history = await window.RenaultHistoryFallback.augment(rawHistory, {
+        const [rawHistory, routeHistory] = await Promise.all([
+          haFetch(url),
+          haFetch(
+            `/api/zoe_new_extended/route_history?start=${start.getTime()}&end=${end.getTime()}`,
+          ).catch((error) => {
+            console.debug("Retained route history is unavailable", error);
+            return { points: [] };
+          }),
+        ]);
+        void retainRecorderRoutes(rawHistory);
+        const mergedHistory = mergeRouteHistory(rawHistory, routeHistory);
+        const history = await window.RenaultHistoryFallback.augment(mergedHistory, {
           hass: await getParentHass(),
           entityIds,
           start: start.getTime(),

@@ -5,5 +5,5 @@ show_icon_and_title: true
 type: panel
 cards:
   - type: iframe
-    url: /local/renault_trips/mileage.html?v=2.1.4
+    url: /local/renault_trips/mileage.html?v=2.2.15
     aspect_ratio: 72%

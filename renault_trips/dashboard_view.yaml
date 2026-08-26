@@ -5,5 +5,5 @@ show_icon_and_title: true
 type: panel
 cards:
   - type: iframe
-    url: /local/renault_trips/index.html?v=2.2.1
+    url: /local/renault_trips/index.html?v=2.3.6
     aspect_ratio: 72%

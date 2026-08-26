@@ -79,6 +79,31 @@ async def _async_merge_trip_records(
         return ordered
 
 
+async def _async_replace_trip_records(
+    hass: HomeAssistant,
+    records: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Replace the report after a complete rebuild from retained GPS routes."""
+    domain_data = hass.data[DOMAIN]
+    lock = domain_data.setdefault(TRIP_HISTORY_LOCK, asyncio.Lock())
+    async with lock:
+        normalized = normalize_trip_records(records)
+        ordered = sorted(
+            normalized,
+            key=lambda record: (record["start"], record["id"]),
+        )
+        domain_data[TRIP_HISTORY_CACHE] = {
+            record["id"]: record for record in ordered
+        }
+        await domain_data[TRIP_HISTORY_STORE].async_save(
+            {
+                "trips": ordered,
+                "saved_at": datetime.now(UTC).isoformat(),
+            }
+        )
+        return ordered
+
+
 def _query_timestamp(request: web.Request, name: str) -> int | None:
     raw_value = request.query.get(name)
     if raw_value is None:
@@ -132,7 +157,12 @@ class ZoeNewTripHistoryView(HomeAssistantView):
                 raise ValueError("trips must be a list")
             if len(records) > MAX_TRIP_HISTORY_BATCH_RECORDS:
                 raise ValueError("too many trip-history records")
-            trips = await _async_merge_trip_records(hass, records)
+            replace = payload.get("replace") is True
+            trips = (
+                await _async_replace_trip_records(hass, records)
+                if replace
+                else await _async_merge_trip_records(hass, records)
+            )
         except (TypeError, ValueError) as err:
             return self.json({"error": str(err)}, status_code=400)
         except OSError as err:

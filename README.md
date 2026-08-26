@@ -77,7 +77,8 @@ used by the included Nord Pool smart charger package.
   only. Charging performed elsewhere therefore cannot inflate the site's
   Home Assistant Energy total.
 - Optional automatic Renault Trips dashboard with day selection, route maps,
-  speed samples, distance, and estimated energy consumption. Hourly long-term
+  speed samples, distance, and estimated energy consumption. Trips and Mileage
+  use the same retained GPS archive. Hourly long-term
   odometer and SOC statistics restore genuine monthly totals when raw Recorder
   states are no longer present; missing historical GPS routes stay explicitly
   unavailable instead of being invented.
@@ -88,10 +89,12 @@ used by the included Nord Pool smart charger package.
   Genuine Renault GPS updates are retained in an authenticated integration
   store without age-based deletion, so route and road-surface statistics no
   longer disappear when Recorder purges raw states. Existing Recorder points
-  are merged into that archive whenever the Mileage view is opened. Completed
-  per-trip surface and speed results are also retained server-side. Every
-  archived day and trip count remains in the report; distance predating the
-  GPS archive is shown explicitly as unknown surface instead of disappearing.
+  are merged into that archive whenever Trips or Mileage is opened. Completed
+  per-trip surface and speed results are also retained server-side. Every unique
+  retained GPS trip remains visible even if an hourly odometer sample cannot be
+  matched to its exact time window. Every archived day and trip count remains
+  in the report; distance predating the GPS archive is shown explicitly as
+  unknown surface instead of disappearing.
   Impossible out-and-back GPS spikes are discarded before route matching.
   Temporary Valhalla timeouts and rate limits are retried sequentially so a
   single public service interruption does not turn a valid route into unknown
@@ -217,7 +220,8 @@ the child device totals from that meter's displayed history.
 The optional full-screen dashboard and its complete export are in
 [`renault_trips`](renault_trips). Charging, Trips, Mileage, Costs, Info,
 Stations, and the optional IMMAX view share one responsive visual system. Trips
-are calculated from Recorder history and do not need manual start/stop buttons.
+are calculated from Recorder history plus the integration's retained GPS archive
+and do not need manual start/stop buttons.
 The Stations view uses authenticated integration API endpoints and must run
 inside Home Assistant. PlugShare is displayed through its public embedded map
 because PlugShare declined station-data API access for this use case. The local
