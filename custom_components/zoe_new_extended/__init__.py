@@ -56,6 +56,7 @@ from .nordpool import NordPoolPriceCoordinator
 from .route_history import async_register_route_history
 from .status_refresh import ZoeNewStatusRefresh
 from .stations import async_register_station_views
+from .trip_history import async_register_trip_history_view
 
 RETRY_SECONDS = 15
 PLATFORMS = (
@@ -438,6 +439,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     )
     async_register_station_views(hass, entry)
     async_register_cost_history_view(hass, entry)
+    async_register_trip_history_view(hass, entry)
     runtime["unsubscribe_route_history"] = async_register_route_history(hass, entry)
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     await _async_sync_charging_setpoints(hass, entry)

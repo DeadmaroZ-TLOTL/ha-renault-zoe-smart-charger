@@ -64,7 +64,7 @@ const archive = {
   ],
 };
 addArchivedMileageDays(totals, archive, rangeStart, rangeEnd);
-assert.equal(totals.get("2026-08-01"), 18, "Archive must not replace odometer data");
+assert.equal(totals.get("2026-08-01"), 99, "Archive must restore a larger complete daily total");
 assert.equal(totals.get("2026-08-02"), 20, "Archive must fill a missing day");
 assert.equal(totals.has("2026-08-03"), false, "End date must be exclusive");
 
@@ -75,6 +75,12 @@ addDetectedTripCounts(counts, [
 ]);
 assert.equal(counts.get("2026-08-01"), 2);
 assert.equal(counts.get("2026-08-02"), 3);
+addDetectedTripCounts(counts, [
+  { start: at("2026-08-01T12:00:00Z") },
+  { start: at("2026-08-01T13:00:00Z") },
+  { start: at("2026-08-01T14:00:00Z") },
+]);
+assert.equal(counts.get("2026-08-01"), 3, "A newer detected count must expand a stale archive");
 
 const routeStart = source.indexOf("    function routeHistoryStates");
 const routeEnd = source.indexOf("    function splitLocationTrips", routeStart);

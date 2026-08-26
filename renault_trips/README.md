@@ -120,9 +120,14 @@ shows total distance split into paved, gravel/unpaved, and unknown road
 surface. The page map-matches cached OSRM routes with the public Valhalla
 service and uses OpenStreetMap surface tags. Surface distances are scaled to
 the odometer-based trip distance. Missing or ambiguous map data stays unknown
-instead of being guessed, and results are cached in the browser. The summary
-and trip table also show approximate average speed derived from OSRM route
-annotations; it is a route estimate rather than vehicle telemetry. Selecting
-a colored bar under **Nobraukums pa dienām** expands that day's exact paved,
+instead of being guessed. Classified trip results are retained by the
+integration, not only in the current browser, and are restored after Recorder
+purges raw states. Archived day totals and trip counts without a retained GPS
+track stay visible as an explicit historical summary whose distance is fully
+assigned to unknown surface. Impossible out-and-back GPS spikes are removed
+before route matching. The summary and trip table also show approximate
+average speed derived from OSRM route annotations; it is a route estimate
+rather than vehicle telemetry. Selecting a colored bar under **Nobraukums pa
+dienām** expands that day's exact paved,
 gravel/unpaved, and unknown-surface kilometer totals. Public Valhalla requests
 run one at a time and retry temporary errors before a route is marked unknown.

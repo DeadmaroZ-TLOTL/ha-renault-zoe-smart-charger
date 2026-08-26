@@ -330,6 +330,16 @@
       white-space: nowrap;
     }
 
+    .archive-row td {
+      color: var(--muted);
+      background: color-mix(in srgb, var(--panel) 88%, var(--line));
+    }
+
+    .archive-row td:first-child {
+      color: var(--text);
+      font-weight: 650;
+    }
+
     .daily-bar {
       height: 14px;
       border-radius: 3px;
@@ -578,8 +588,10 @@
         tripsAndSurface: "Braucieni un ceļa segums", startApprox: "Sākums (apt.)",
         endApprox: "Beigas (apt.)", surfaceData: "Seguma dati",
         noTrips: "Šajā periodā nav atrasts neviens brauciens.",
-        methodNote: "Ceļa segums tiek noteikts no OpenStreetMap ceļu datiem. Posmi bez drošas seguma informācijas paliek kategorijā “Nezināms” un netiek minēti kā asfalts vai grants. Ātrumi ir aptuvena OSRM maršruta aplēse, nevis automašīnas tieši mērīta telemetrija.",
+        methodNote: "Ceļa segums tiek noteikts no OpenStreetMap ceļu datiem. Posmi bez drošas seguma informācijas paliek kategorijā “Nezināms” un netiek minēti kā asfalts vai grants. Ātrumi ir aptuvena OSRM maršruta aplēse, nevis automašīnas tieši mērīta telemetrija. Senākie arhīva braucieni bez saglabātas GPS trajektorijas tiek parādīti dienas kopsavilkumā un pilnā apjomā ieskaitīti nezināmajā segumā.",
         routeNotFound: "Maršruts nav atrasts", showSurfaceKm: "Rādīt seguma kilometrus",
+        archivedTrips: "{count} vēsturiski braucieni",
+        historicalGpsUnavailable: "GPS trajektorija nav saglabāta",
         classifying: "Nosaku ceļa segumu: {done}/{total} braucieni...",
         loading: "Ielādēju HA vēsturi...",
         updatedNoTrips: "Atjaunots {time}. Šajā periodā braucienu nav.",
@@ -604,8 +616,10 @@
         tripsAndSurface: "Trips and road surface", startApprox: "Start (approx.)",
         endApprox: "End (approx.)", surfaceData: "Surface data",
         noTrips: "No trips were found in this period.",
-        methodNote: "Road surface is determined from OpenStreetMap road data. Segments without reliable surface data remain in the Unknown category and are not guessed as asphalt or gravel. Speeds are approximate OSRM route estimates, not directly measured vehicle telemetry.",
+        methodNote: "Road surface is determined from OpenStreetMap road data. Segments without reliable surface data remain in the Unknown category and are not guessed as asphalt or gravel. Speeds are approximate OSRM route estimates, not directly measured vehicle telemetry. Older archived trips without a retained GPS track are shown as a daily summary and their complete distance is counted as unknown surface.",
         routeNotFound: "Route not found", showSurfaceKm: "Show surface distance",
+        archivedTrips: "{count} historical trips",
+        historicalGpsUnavailable: "GPS track was not retained",
         classifying: "Checking road surface: {done}/{total} trips...",
         loading: "Loading HA history...",
         updatedNoTrips: "Updated {time}. There are no trips in this period.",
@@ -846,6 +860,28 @@
       return total;
     }
 
+    function filterLocationSpikes(locations) {
+      if (locations.length < 3) return locations;
+      const filtered = [locations[0]];
+      for (let index = 1; index < locations.length - 1; index += 1) {
+        const previous = filtered.at(-1);
+        const point = locations[index];
+        const following = locations[index + 1];
+        const incomingKm = kmBetween(previous, point);
+        const outgoingKm = kmBetween(point, following);
+        const bypassKm = kmBetween(previous, following);
+        const incomingHours = Math.max((point.t - previous.t) / 3600000, 1 / 3600);
+        const outgoingHours = Math.max((following.t - point.t) / 3600000, 1 / 3600);
+        const isTeleportSpike = incomingKm >= 2
+          && outgoingKm >= 2
+          && bypassKm <= Math.max(2, Math.min(incomingKm, outgoingKm) * 0.25)
+          && (incomingKm / incomingHours > 220 || outgoingKm / outgoingHours > 220);
+        if (!isTeleportSpike) filtered.push(point);
+      }
+      filtered.push(locations.at(-1));
+      return filtered;
+    }
+
     function valueAt(samples, time) {
       let best = null;
       for (const sample of samples) {
@@ -1025,7 +1061,7 @@
 
     function buildTrips(history) {
       const byEntity = normalizeHistory(history);
-      const locations = (byEntity[ENTITY.location] || [])
+      const rawLocations = (byEntity[ENTITY.location] || [])
         .map((state) => ({
           t: toTime(state),
           lat: toNumber(state.attributes?.latitude),
@@ -1036,6 +1072,7 @@
           && Number.isFinite(point.lat)
           && Number.isFinite(point.lon)
         ));
+      const locations = filterLocationSpikes(rawLocations);
       const mileage = (byEntity[ENTITY.mileage] || [])
         .map((state) => ({
           t: toTime(state),
@@ -1110,7 +1147,7 @@
         detectedByDay.set(key, (detectedByDay.get(key) || 0) + 1);
       }
       for (const [key, count] of detectedByDay) {
-        if (!counts.has(key)) counts.set(key, count);
+        counts.set(key, Math.max(count, counts.get(key) || 0));
       }
       return counts;
     }
@@ -1119,15 +1156,180 @@
       for (const record of costHistory?.days || []) {
         const key = String(record?.day || "");
         const km = toNumber(record?.km);
-        if (!(km > 0) || totals.has(key) || !dayInRange(key, start, end)) continue;
-        totals.set(key, km);
+        if (!(km > 0) || !dayInRange(key, start, end)) continue;
+        totals.set(key, Math.max(km, totals.get(key) || 0));
       }
       return totals;
     }
 
     function tripDayKey(trip) {
+      if (/^\d{4}-\d{2}-\d{2}$/.test(String(trip.day || ""))) return trip.day;
       const timestamp = trip.reconstructed ? trip.end : tripDisplayStart(trip);
       return localDateValue(new Date(timestamp));
+    }
+
+    function tripHistoryId(trip) {
+      return [
+        "trip",
+        Math.round(Number(trip.start) / 60000),
+        Math.round(Number(trip.end) / 60000),
+        Math.round(Number(trip.km) * 100),
+      ].join(":");
+    }
+
+    function surfaceFromHistory(record) {
+      const km = Math.max(0, toNumber(record?.km) || 0);
+      const hard = Math.max(0, toNumber(record?.hard) || 0);
+      const loose = Math.max(0, toNumber(record?.loose) || 0);
+      const unknown = Math.max(0, toNumber(record?.unknown) || 0);
+      if (!(km > 0) || !(hard + loose + unknown > 0)) return null;
+      return {
+        ...normalizeSurfaceDistance(km, hard, loose),
+        coverage: Math.min(100, Math.max(0, toNumber(record?.coverage) || 0)),
+      };
+    }
+
+    function findPersistedTrip(trip, records, used) {
+      const exactId = tripHistoryId(trip);
+      const exact = records.find((record) => record.id === exactId && !used.has(record.id));
+      if (exact) return exact;
+      const day = tripDayKey(trip);
+      const maximumKmDifference = Math.max(2, trip.km * 0.25);
+      return records
+        .filter((record) => (
+          !used.has(record.id)
+          && record.day === day
+          && Math.abs(record.km - trip.km) <= maximumKmDifference
+          && Math.abs(record.start - trip.start) <= 60 * 60000
+          && Math.abs(record.end - trip.end) <= 60 * 60000
+        ))
+        .map((record) => ({
+          record,
+          score: Math.abs(record.start - trip.start)
+            + Math.abs(record.end - trip.end)
+            + Math.abs(record.km - trip.km) * 60000,
+        }))
+        .sort((left, right) => left.score - right.score)[0]?.record || null;
+    }
+
+    function mergePersistedTripHistory(detectedTrips, tripHistory) {
+      const records = (tripHistory?.trips || [])
+        .map((record) => ({
+          ...record,
+          start: toNumber(record?.start),
+          end: toNumber(record?.end),
+          km: toNumber(record?.km),
+          surface: surfaceFromHistory(record),
+        }))
+        .filter((record) => (
+          record.id
+          && Number.isFinite(record.start)
+          && Number.isFinite(record.end)
+          && record.end > record.start
+          && record.km > 0
+          && record.surface
+        ));
+      const used = new Set();
+      const merged = detectedTrips.map((trip) => {
+        const record = findPersistedTrip(trip, records, used);
+        if (!record) return trip;
+        used.add(record.id);
+        return {
+          ...trip,
+          historyId: record.id,
+          surface: record.surface,
+          surfacePersisted: true,
+          speed: record.average_speed > 0
+            ? { average: record.average_speed, max: record.max_speed }
+            : trip.speed,
+        };
+      });
+      for (const record of records) {
+        if (used.has(record.id)) continue;
+        merged.push({
+          historyId: record.id,
+          day: record.day,
+          start: record.start,
+          end: record.end,
+          km: record.km,
+          mileageKm: record.km,
+          gpsKm: 0,
+          points: [],
+          reconstructed: true,
+          surface: record.surface,
+          surfacePersisted: true,
+          speed: record.average_speed > 0
+            ? { average: record.average_speed, max: record.max_speed }
+            : null,
+        });
+      }
+      return merged.sort((left, right) => right.start - left.start);
+    }
+
+    function addArchivedTripGaps(currentTrips, costHistory, start, end) {
+      const result = [...currentTrips];
+      const byDay = new Map();
+      for (const trip of currentTrips) {
+        const key = tripDayKey(trip);
+        if (!byDay.has(key)) byDay.set(key, []);
+        byDay.get(key).push(trip);
+      }
+      for (const record of costHistory?.days || []) {
+        const day = String(record?.day || "");
+        const totalKm = Math.max(0, toNumber(record?.km) || 0);
+        const totalTrips = Math.max(0, Math.trunc(toNumber(record?.trips) || 0));
+        if (!dayInRange(day, start, end) || (!(totalKm > 0) && totalTrips === 0)) continue;
+        const retained = byDay.get(day) || [];
+        const retainedKm = retained.reduce((sum, trip) => sum + trip.km, 0);
+        const missingKm = Math.max(0, totalKm - retainedKm);
+        const missingTrips = Math.max(0, totalTrips - retained.length);
+        if (missingTrips === 0 && missingKm < 0.05) continue;
+        const dayTimestamp = new Date(`${day}T12:00:00`).getTime();
+        result.push({
+          archiveGap: true,
+          archivedCount: missingTrips,
+          day,
+          start: dayTimestamp,
+          end: dayTimestamp + 1,
+          km: missingKm,
+          mileageKm: missingKm,
+          gpsKm: 0,
+          points: [],
+          reconstructed: true,
+          surface: { hard: 0, loose: 0, unknown: missingKm, coverage: 0 },
+          speed: null,
+        });
+      }
+      return result.sort((left, right) => right.start - left.start);
+    }
+
+    function tripHistoryRecord(trip) {
+      if (trip.archiveGap || !trip.surface || !(trip.km > 0)) return null;
+      return {
+        id: trip.historyId || tripHistoryId(trip),
+        day: tripDayKey(trip),
+        start: Math.round(trip.start),
+        end: Math.round(trip.end),
+        km: trip.km,
+        hard: trip.surface.hard,
+        loose: trip.surface.loose,
+        unknown: trip.surface.unknown,
+        coverage: trip.surface.coverage,
+        average_speed: trip.speed?.average ?? null,
+        max_speed: trip.speed?.max ?? null,
+      };
+    }
+
+    async function persistTripResults(records) {
+      if (!records.length) return;
+      try {
+        await haFetch("/api/zoe_new_extended/trip_history", {
+          method: "POST",
+          body: { trips: records },
+        });
+      } catch (error) {
+        console.debug("Renault trip report could not be retained", error);
+      }
     }
 
     function routeWaypoints(points) {
@@ -1449,7 +1651,7 @@
         if (trip.surface) {
           day.hard += trip.surface.hard;
           day.loose += trip.surface.loose;
-          day.processed += 1;
+          if (trip.surface.coverage > 0) day.processed += 1;
         }
       }
       for (const day of grouped.values()) {
@@ -1494,15 +1696,9 @@
       document.getElementById("mTrips").textContent = String(tripCount);
       document.getElementById("mTotal").textContent = fmt(totalKm, 1, " km");
       document.getElementById("mAvgSpeed").textContent = fmt(averageSpeed, 0, " km/h");
-      document.getElementById("mHard").textContent = surface.processed
-        ? fmt(surface.hard, 1, " km")
-        : "-";
-      document.getElementById("mLoose").textContent = surface.processed
-        ? fmt(surface.loose, 1, " km")
-        : "-";
-      document.getElementById("mUnknown").textContent = surface.processed
-        ? fmt(surface.unknown, 1, " km")
-        : "-";
+      document.getElementById("mHard").textContent = fmt(surface.hard, 1, " km");
+      document.getElementById("mLoose").textContent = fmt(surface.loose, 1, " km");
+      document.getElementById("mUnknown").textContent = fmt(surface.unknown, 1, " km");
 
       const denominator = surface.hard + surface.loose + surface.unknown;
       const percentage = (value) => denominator > 0 ? `${value / denominator * 100}%` : "0%";
@@ -1556,6 +1752,26 @@
       for (const trip of trips) {
         const surface = trip.surface;
         const row = document.createElement("tr");
+        if (trip.archiveGap) {
+          row.className = "archive-row";
+          const count = trip.archivedCount || 1;
+          row.innerHTML = `
+            <td>${new Intl.DateTimeFormat(language === "lv" ? "lv-LV" : "en-GB", {
+              year: "numeric",
+              month: "2-digit",
+              day: "2-digit",
+            }).format(new Date(`${trip.day}T12:00:00`))}<br>${t("archivedTrips", { count })}</td>
+            <td>${t("historicalGpsUnavailable")}</td>
+            <td class="number">${fmt(trip.km, 1, " km")}</td>
+            <td class="number">-</td>
+            <td class="number">${fmt(0, 1, " km")}</td>
+            <td class="number">${fmt(0, 1, " km")}</td>
+            <td class="number">${fmt(trip.km, 1, " km")}</td>
+            <td class="number">${fmt(0, 0, "%")}</td>
+          `;
+          tripsEl.appendChild(row);
+          continue;
+        }
         row.innerHTML = `
           <td>~${fmtDate(tripDisplayStart(trip))}</td>
           <td>~${fmtDate(trip.end)}</td>
@@ -1579,11 +1795,16 @@
     async function classifyTrips(currentTrips, requestId) {
       let cursor = 0;
       let finished = 0;
+      const retained = [];
       const worker = async () => {
         while (cursor < currentTrips.length && requestId === loadRequestId) {
           const index = cursor;
           cursor += 1;
           const trip = currentTrips[index];
+          if (trip.archiveGap || trip.surfacePersisted) {
+            finished += 1;
+            continue;
+          }
           if ((trip.points || []).length < 2) {
             trip.surface = { hard: 0, loose: 0, unknown: trip.km, coverage: 0 };
             finished += 1;
@@ -1594,6 +1815,8 @@
           }
           try {
             trip.surface = await getSurfaceBreakdown(trip);
+            const record = tripHistoryRecord(trip);
+            if (record) retained.push(record);
           } catch (err) {
             trip.surface = { hard: 0, loose: 0, unknown: trip.km, coverage: 0 };
             console.warn("Road surface unavailable", err);
@@ -1605,7 +1828,10 @@
         }
       };
       if (currentTrips.length) await worker();
-      return currentTrips.filter((trip) => !(trip.surface?.coverage > 0)).length;
+      if (requestId === loadRequestId) await persistTripResults(retained);
+      return currentTrips.filter((trip) => (
+        !trip.archiveGap && !(trip.surface?.coverage > 0)
+      )).length;
     }
 
     async function loadMileage() {
@@ -1620,7 +1846,7 @@
         const entityIds = [ENTITY.location, ENTITY.mileage];
         const ids = entityIds.join(",");
         const historyUrl = `/api/history/period/${encodeURIComponent(start.toISOString())}?end_time=${encodeURIComponent(end.toISOString())}&filter_entity_id=${encodeURIComponent(ids)}`;
-        const [rawHistory, mileageState, costHistory, routeHistory] = await Promise.all([
+        const [rawHistory, mileageState, costHistory, routeHistory, tripHistory] = await Promise.all([
           haFetch(historyUrl),
           haFetch(`/api/states/${encodeURIComponent(ENTITY.mileage)}`),
           haFetch("/api/zoe_new_extended/cost_history").catch((error) => {
@@ -1632,6 +1858,12 @@
           ).catch((error) => {
             console.debug("Retained route history is unavailable", error);
             return { points: [] };
+          }),
+          haFetch(
+            `/api/zoe_new_extended/trip_history?start=${start.getTime()}&end=${end.getTime()}`,
+          ).catch((error) => {
+            console.debug("Retained trip report is unavailable", error);
+            return { trips: [] };
           }),
         ]);
         if (requestId !== loadRequestId) return;
@@ -1651,7 +1883,7 @@
         });
         if (requestId !== loadRequestId) return;
         const built = buildTrips(history);
-        trips = built.trips;
+        const retainedTrips = mergePersistedTripHistory(built.trips, tripHistory);
         dailyMileageTotals = addArchivedMileageDays(
           mileageTotalsByDay(built.mileage, start.getTime(), end.getTime()),
           costHistory,
@@ -1660,7 +1892,13 @@
         );
         dailyTripCounts = addDetectedTripCounts(
           archivedTripCounts(costHistory, start.getTime(), end.getTime()),
-          trips,
+          retainedTrips,
+        );
+        trips = addArchivedTripGaps(
+          retainedTrips,
+          costHistory,
+          start.getTime(),
+          end.getTime(),
         );
         currentMileage = toNumber(mileageState.state);
         render();
@@ -1673,7 +1911,10 @@
           }));
           return;
         }
-        const unavailable = await classifyTrips(trips, requestId);
+        const archivedUnavailable = trips
+          .filter((trip) => trip.archiveGap)
+          .reduce((sum, trip) => sum + (trip.archivedCount || 1), 0);
+        const unavailable = archivedUnavailable + await classifyTrips(trips, requestId);
         if (requestId !== loadRequestId) return;
         const updated = new Intl.DateTimeFormat(language === "lv" ? "lv-LV" : "en-GB", {
           hour: "2-digit",
@@ -1682,7 +1923,10 @@
         setStatus(
           unavailable
             ? t("updatedFailures", { time: updated, count: unavailable })
-            : t("updatedAll", { time: updated, count: trips.length }),
+            : t("updatedAll", {
+              time: updated,
+              count: [...dailyTripCounts.values()].reduce((sum, count) => sum + count, 0),
+            }),
           unavailable > 0,
         );
       } catch (err) {
