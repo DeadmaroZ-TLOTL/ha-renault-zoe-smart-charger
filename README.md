@@ -80,8 +80,9 @@ used by the included Nord Pool smart charger package.
   speed samples, distance, and estimated energy consumption. Trips and Mileage
   use the same retained GPS archive. Hourly long-term
   odometer and SOC statistics restore genuine monthly totals when raw Recorder
-  states are no longer present; missing historical GPS routes stay explicitly
-  unavailable instead of being invented.
+  states are no longer present. Missing historical GPS routes stay explicitly
+  unavailable instead of being invented; only their road-surface mix is
+  estimated from retained Zoe GPS history and marked with `~`.
 - Separate mileage dashboard view with exact long-term odometer totals and
   retained trip counts for every selected calendar day, plus paved,
   gravel/unpaved, and explicitly unknown road-surface coverage. Approximate
@@ -93,8 +94,9 @@ used by the included Nord Pool smart charger package.
   per-trip surface and speed results are also retained server-side. Every unique
   retained GPS trip remains visible even if an hourly odometer sample cannot be
   matched to its exact time window. Every archived day and trip count remains
-  in the report; distance predating the GPS archive is shown explicitly as
-  unknown surface instead of disappearing.
+  in the report. For distance without a retained GPS track, the surface mix is
+  estimated from retained trips on the same day or the complete retained GPS
+  profile, clearly marked as estimated instead of disappearing.
   Impossible out-and-back GPS spikes are discarded before route matching.
   Temporary Valhalla timeouts and rate limits are retried sequentially so a
   single public service interruption does not turn a valid route into unknown
@@ -111,6 +113,9 @@ used by the included Nord Pool smart charger package.
   Home Assistant restarts. Charging-period totals
   use the same `grid_energy_kwh` and `total_cost_eur` fields as the Charging
   view, while trip cost remains the weighted value of energy actually driven.
+  Selected-period charging totals are also split into public charging and
+  charging at Strauta Street, with separate grid energy, cost, and session
+  counts.
 - Server-side IMMAX **Charge now** and **Delay 12 h** command sequences start
   at 6 A and use Tuya Local only. The controls are disabled while the local
   charger connection is unavailable.

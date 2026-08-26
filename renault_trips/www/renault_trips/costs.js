@@ -29,6 +29,7 @@ const MILEAGE_SETTLE_MIN = 15;
 const MILEAGE_COVER_MARGIN_MIN = 20;
 const AUTO_REFRESH_MS = 5 * 60 * 1000;
 const SOURCE_CHANGE_CHECK_MS = 15 * 1000;
+const { summarizeChargingCosts } = window.RenaultCostLocation;
 const TRANSLATIONS = {
   lv: {
     pageTitle: "Renault ZOE enerģijas izmaksas",
@@ -56,6 +57,8 @@ const TRANSLATIONS = {
     distanceInPeriod: "Nobraukums periodā",
     spentOnTrips: "Braucienos iztērēts",
     chargedInPeriod: "Uzlādēts periodā",
+    publicCharging: "Publiskās uzlādes",
+    strautaCharging: "Uzlāde Strauta ielā",
     selectedPeriod: "izvēlētais periods",
     monthDistance: "{distance} km · {trips}",
     chargePeriodDetail: "{energy} kWh no tīkla · {sessions}",
@@ -132,6 +135,8 @@ const TRANSLATIONS = {
     distanceInPeriod: "Distance in period",
     spentOnTrips: "Spent on trips",
     chargedInPeriod: "Charged in period",
+    publicCharging: "Public charging",
+    strautaCharging: "Charging at Strauta Street",
     selectedPeriod: "selected period",
     monthDistance: "{distance} km · {trips}",
     chargePeriodDetail: "{energy} grid kWh · {sessions}",
@@ -1445,14 +1450,7 @@ function renderMetrics(filtered, model) {
   const estimatedCount = filtered.trips.filter(
     (trip) => trip.energyEstimated,
   ).length;
-  const periodChargeGridEnergy = filtered.sessions.reduce(
-    (sum, session) => sum + (session.gridEnergy || 0),
-    0,
-  );
-  const periodChargeCost = filtered.sessions.reduce(
-    (sum, session) => sum + (session.cost || 0),
-    0,
-  );
+  const charging = summarizeChargingCosts(filtered.sessions);
   const currentMonthKey = localDateValue(new Date()).slice(0, 7);
   const currentMonth = aggregateMonthly(model.costDays || []).find(
     (month) => month.key === currentMonthKey,
@@ -1524,17 +1522,39 @@ function renderMetrics(filtered, model) {
   setText(
     "mChargeCost",
     filtered.sessions.length
-      ? `${formatNumber(periodChargeCost, 2)} EUR`
+      ? `${formatNumber(charging.total.cost, 2)} EUR`
       : "-",
   );
   setText(
     "mChargeEnergy",
     filtered.sessions.length
       ? t("chargePeriodDetail", {
-        energy: formatNumber(periodChargeGridEnergy, 2),
+        energy: formatNumber(charging.total.gridEnergy, 2),
         sessions: t("charges", { count: filtered.sessions.length }),
       })
       : t("noChargePriceData"),
+  );
+  setText(
+    "mPublicChargeCost",
+    `${formatNumber(charging.public.cost, 2)} EUR`,
+  );
+  setText(
+    "mPublicChargeEnergy",
+    t("chargePeriodDetail", {
+      energy: formatNumber(charging.public.gridEnergy, 2),
+      sessions: t("charges", { count: charging.public.sessions }),
+    }),
+  );
+  setText(
+    "mStrautaChargeCost",
+    `${formatNumber(charging.strauta.cost, 2)} EUR`,
+  );
+  setText(
+    "mStrautaChargeEnergy",
+    t("chargePeriodDetail", {
+      energy: formatNumber(charging.strauta.gridEnergy, 2),
+      sessions: t("charges", { count: charging.strauta.sessions }),
+    }),
   );
 
   return { totalKm, totalEnergy, totalCost, estimatedCount };

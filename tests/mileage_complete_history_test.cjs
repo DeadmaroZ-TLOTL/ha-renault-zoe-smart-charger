@@ -47,6 +47,7 @@ vm.runInContext(`${source.slice(start, end)}\nthis.helpers = {
   persistedTripKm,
   mergePersistedTripHistory,
   addArchivedTripGaps,
+  estimateArchivedSurfaces,
   tripHistoryRecord,
 };`, context);
 
@@ -139,7 +140,13 @@ const complete = context.helpers.addArchivedTripGaps(
 const julyGap = complete.find((trip) => trip.day === "2026-07-13");
 assert.equal(julyGap.archiveGap, true);
 assert.equal(julyGap.archivedCount, 2);
-assert.equal(julyGap.surface.unknown, 38);
+assert.equal(julyGap.surfaceEstimated, true);
+assert.ok(julyGap.surface.hard > 0);
+assert.ok(julyGap.surface.loose > 0);
+assert.equal(
+  Math.round((julyGap.surface.hard + julyGap.surface.loose + julyGap.surface.unknown) * 100),
+  3800,
+);
 const augustGap = complete.find((trip) => trip.archiveGap && trip.day === "2026-08-20");
 assert.equal(augustGap.archivedCount, 1);
 assert.equal(augustGap.km, 8);

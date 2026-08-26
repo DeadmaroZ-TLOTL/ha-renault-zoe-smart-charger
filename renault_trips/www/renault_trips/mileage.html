@@ -588,14 +588,16 @@
         tripsAndSurface: "Braucieni un ceļa segums", startApprox: "Sākums (apt.)",
         endApprox: "Beigas (apt.)", surfaceData: "Seguma dati",
         noTrips: "Šajā periodā nav atrasts neviens brauciens.",
-        methodNote: "Ceļa segums tiek noteikts no OpenStreetMap ceļu datiem. Posmi bez drošas seguma informācijas paliek kategorijā “Nezināms” un netiek minēti kā asfalts vai grants. Ātrumi ir aptuvena OSRM maršruta aplēse, nevis automašīnas tieši mērīta telemetrija. Senākie arhīva braucieni bez saglabātas GPS trajektorijas tiek parādīti dienas kopsavilkumā un pilnā apjomā ieskaitīti nezināmajā segumā.",
+        methodNote: "Ceļa segums tiek noteikts no OpenStreetMap ceļu datiem. Posmi bez drošas seguma informācijas paliek kategorijā “Nezināms”. Ātrumi ir aptuvena OSRM maršruta aplēse, nevis automašīnas tieši mērīta telemetrija. Senāko arhīva braucienu kilometriem bez saglabātas GPS trajektorijas seguma proporcija tiek novērtēta pēc tās pašas dienas saglabātajiem GPS braucieniem vai, ja tādu nav, pēc visas saglabātās Zoe GPS vēstures. Šādas vērtības ir atzīmētas ar ~.",
         routeNotFound: "Maršruts nav atrasts", showSurfaceKm: "Rādīt seguma kilometrus",
         archivedTrips: "{count} vēsturiski braucieni",
-        historicalGpsUnavailable: "GPS trajektorija nav saglabāta",
+        historicalGpsUnavailable: "GPS trajektorija nav saglabāta; segums novērtēts",
+        estimatedSurfaceKm: "~{distance} km novērtēti no GPS seguma profila",
         classifying: "Nosaku ceļa segumu: {done}/{total} braucieni...",
         loading: "Ielādēju HA vēsturi...",
         updatedNoTrips: "Atjaunots {time}. Šajā periodā braucienu nav.",
         updatedFailures: "Atjaunots {time}. {count} braucieniem seguma dati nebija pieejami; kilometri atstāti kā nezināmi.",
+        updatedEstimates: "Atjaunots {time}. GPS segums noteikts saglabātajiem braucieniem; {count} arhīva braucieniem tas novērtēts no saglabātā seguma profila.",
         updatedAll: "Atjaunots {time}. Ceļa segums noteikts visiem {count} braucieniem.",
         loadError: "Nevaru ielādēt nobraukuma statistiku: {error}",
       },
@@ -616,14 +618,16 @@
         tripsAndSurface: "Trips and road surface", startApprox: "Start (approx.)",
         endApprox: "End (approx.)", surfaceData: "Surface data",
         noTrips: "No trips were found in this period.",
-        methodNote: "Road surface is determined from OpenStreetMap road data. Segments without reliable surface data remain in the Unknown category and are not guessed as asphalt or gravel. Speeds are approximate OSRM route estimates, not directly measured vehicle telemetry. Older archived trips without a retained GPS track are shown as a daily summary and their complete distance is counted as unknown surface.",
+        methodNote: "Road surface is determined from OpenStreetMap road data. Segments without reliable surface data remain in the Unknown category. Speeds are approximate OSRM route estimates, not directly measured vehicle telemetry. For older archived mileage without a retained GPS track, the surface mix is estimated from retained GPS trips on the same day or, when unavailable, from the complete retained Zoe GPS profile. Estimated values are marked with ~.",
         routeNotFound: "Route not found", showSurfaceKm: "Show surface distance",
         archivedTrips: "{count} historical trips",
-        historicalGpsUnavailable: "GPS track was not retained",
+        historicalGpsUnavailable: "GPS track was not retained; surface estimated",
+        estimatedSurfaceKm: "~{distance} km estimated from the GPS surface profile",
         classifying: "Checking road surface: {done}/{total} trips...",
         loading: "Loading HA history...",
         updatedNoTrips: "Updated {time}. There are no trips in this period.",
         updatedFailures: "Updated {time}. Surface data was unavailable for {count} trips; their distance remains unknown.",
+        updatedEstimates: "Updated {time}. Retained trips use GPS surface data; {count} archived trips were estimated from the retained surface profile.",
         updatedAll: "Updated {time}. Road surface was determined for all {count} trips.",
         loadError: "Could not load mileage statistics: {error}",
       },
@@ -1311,7 +1315,50 @@
           speed: null,
         });
       }
-      return result.sort((left, right) => right.start - left.start);
+      return estimateArchivedSurfaces(
+        result.sort((left, right) => right.start - left.start),
+      );
+    }
+
+    function surfaceProfile(sourceTrips) {
+      const total = sourceTrips.reduce((summary, trip) => {
+        if (trip.archiveGap || !(trip.km > 0) || !trip.surface) return summary;
+        summary.hard += Math.max(0, toNumber(trip.surface.hard) || 0);
+        summary.loose += Math.max(0, toNumber(trip.surface.loose) || 0);
+        summary.unknown += Math.max(0, toNumber(trip.surface.unknown) || 0);
+        return summary;
+      }, { hard: 0, loose: 0, unknown: 0 });
+      const distance = total.hard + total.loose + total.unknown;
+      if (!(distance > 0)) return null;
+      return {
+        hard: total.hard / distance,
+        loose: total.loose / distance,
+        unknown: total.unknown / distance,
+      };
+    }
+
+    function estimateArchivedSurfaces(sourceTrips) {
+      const globalProfile = surfaceProfile(sourceTrips);
+      const byDay = new Map();
+      for (const trip of sourceTrips) {
+        if (trip.archiveGap) continue;
+        const day = tripDayKey(trip);
+        if (!byDay.has(day)) byDay.set(day, []);
+        byDay.get(day).push(trip);
+      }
+      for (const trip of sourceTrips) {
+        if (!trip.archiveGap || !(trip.km > 0)) continue;
+        const profile = surfaceProfile(byDay.get(trip.day) || []) || globalProfile;
+        if (!profile) continue;
+        trip.surface = {
+          hard: trip.km * profile.hard,
+          loose: trip.km * profile.loose,
+          unknown: trip.km * profile.unknown,
+          coverage: (profile.hard + profile.loose) * 100,
+        };
+        trip.surfaceEstimated = true;
+      }
+      return sourceTrips;
     }
 
     function tripHistoryRecord(trip) {
@@ -1645,6 +1692,7 @@
           hard: 0,
           loose: 0,
           processed: 0,
+          estimated: 0,
           exactTotal: true,
         }]),
       );
@@ -1655,6 +1703,7 @@
           hard: 0,
           loose: 0,
           processed: 0,
+          estimated: 0,
           exactTotal: false,
         });
         const day = grouped.get(key);
@@ -1663,6 +1712,7 @@
           day.hard += trip.surface.hard;
           day.loose += trip.surface.loose;
           if (trip.surface.coverage > 0) day.processed += 1;
+          if (trip.surfaceEstimated) day.estimated += trip.km;
         }
       }
       for (const day of grouped.values()) {
@@ -1744,6 +1794,7 @@
             <span><i class="hard"></i>${t("hardSurface")} <strong>${fmt(day.hard, 1, " km")}</strong></span>
             <span><i class="loose"></i>${t("looseSurface")} <strong>${fmt(day.loose, 1, " km")}</strong></span>
             <span><i class="unknown"></i>${t("unknown")} <strong>${fmt(day.unknown, 1, " km")}</strong></span>
+            ${day.estimated > 0 ? `<span>${t("estimatedSurfaceKm", { distance: fmt(day.estimated, 1) })}</span>` : ""}
           </div>
         `;
         const bar = row.querySelector(".daily-bar");
@@ -1775,10 +1826,10 @@
             <td>${t("historicalGpsUnavailable")}</td>
             <td class="number">${fmt(trip.km, 1, " km")}</td>
             <td class="number">-</td>
-            <td class="number">${fmt(0, 1, " km")}</td>
-            <td class="number">${fmt(0, 1, " km")}</td>
-            <td class="number">${fmt(trip.km, 1, " km")}</td>
-            <td class="number">${fmt(0, 0, "%")}</td>
+            <td class="number">~${fmt(surface?.hard || 0, 1, " km")}</td>
+            <td class="number">~${fmt(surface?.loose || 0, 1, " km")}</td>
+            <td class="number">~${fmt(surface?.unknown || 0, 1, " km")}</td>
+            <td class="number">~${fmt(surface?.coverage || 0, 0, "%")}</td>
           `;
           tripsEl.appendChild(row);
           continue;
@@ -1922,10 +1973,10 @@
           }));
           return;
         }
-        const archivedUnavailable = trips
+        const archivedEstimated = trips
           .filter((trip) => trip.archiveGap)
           .reduce((sum, trip) => sum + (trip.archivedCount || 1), 0);
-        const unavailable = archivedUnavailable + await classifyTrips(trips, requestId);
+        const unavailable = await classifyTrips(trips, requestId);
         if (requestId !== loadRequestId) return;
         const updated = new Intl.DateTimeFormat(language === "lv" ? "lv-LV" : "en-GB", {
           hour: "2-digit",
@@ -1934,6 +1985,8 @@
         setStatus(
           unavailable
             ? t("updatedFailures", { time: updated, count: unavailable })
+            : archivedEstimated
+              ? t("updatedEstimates", { time: updated, count: archivedEstimated })
             : t("updatedAll", {
               time: updated,
               count: [...dailyTripCounts.values()].reduce((sum, count) => sum + count, 0),
