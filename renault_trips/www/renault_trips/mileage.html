@@ -658,6 +658,9 @@
     const SURFACE_ROUTER_URL = "https://valhalla1.openstreetmap.de/trace_attributes";
     const MAX_ROUTE_WAYPOINTS = 80;
     const MAX_SURFACE_POINTS = 120;
+    const SURFACE_REQUEST_ATTEMPTS = 3;
+    const SURFACE_REQUEST_TIMEOUT_MS = 30000;
+    const SURFACE_RETRY_DELAY_MS = 1000;
     const HARD_SURFACES = new Set(["paved_smooth", "paved", "paved_rough"]);
     const LOOSE_SURFACES = new Set(["compacted", "dirt", "gravel", "path", "impassable"]);
 
@@ -1281,6 +1284,72 @@
       };
     }
 
+    async function fetchSurfaceData(sampled) {
+      const body = JSON.stringify({
+        shape: sampled.map(([lat, lon]) => ({ lat, lon })),
+        costing: "auto",
+        shape_match: "map_snap",
+        units: "kilometers",
+        trace_options: {
+          search_radius: 35,
+          gps_accuracy: 10,
+          breakage_distance: 1000,
+        },
+        filters: {
+          action: "include",
+          attributes: [
+            "edge.length",
+            "edge.surface",
+            "edge.unpaved",
+            "edge.road_class",
+            "edge.use",
+          ],
+        },
+      });
+      let lastError = null;
+      for (let attempt = 0; attempt < SURFACE_REQUEST_ATTEMPTS; attempt += 1) {
+        const controller = new AbortController();
+        const timeout = window.setTimeout(
+          () => controller.abort(),
+          SURFACE_REQUEST_TIMEOUT_MS,
+        );
+        try {
+          const response = await fetch(SURFACE_ROUTER_URL, {
+            method: "POST",
+            signal: controller.signal,
+            headers: {
+              "Content-Type": "application/json",
+              "X-Client-Id": "ha-renault-zoe-smart-charger",
+            },
+            body,
+          });
+          if (!response.ok) {
+            const error = new Error(`Valhalla HTTP ${response.status}`);
+            error.status = response.status;
+            throw error;
+          }
+          return await response.json();
+        } catch (err) {
+          lastError = err;
+          const status = Number(err?.status);
+          const nonRetryableClientError = status >= 400
+            && status < 500
+            && status !== 408
+            && status !== 429;
+          if (attempt + 1 >= SURFACE_REQUEST_ATTEMPTS || nonRetryableClientError) {
+            throw err;
+          }
+          await new Promise((resolve) => window.setTimeout(
+            resolve,
+            SURFACE_RETRY_DELAY_MS * (attempt + 1),
+          ));
+        } finally {
+          window.clearTimeout(timeout);
+        }
+      }
+      throw lastError || new Error("Road surface request failed");
+    }
+
     async function getSurfaceBreakdown(trip) {
       if (trip.points.length < 2) {
         return { hard: 0, loose: 0, unknown: trip.km, coverage: 0 };
@@ -1313,65 +1382,29 @@
         return scaledSurface(cached, trip.km, matchedRouteKm);
       }
 
-      const controller = new AbortController();
-      const timeout = window.setTimeout(() => controller.abort(), 20000);
-      try {
-        const response = await fetch(SURFACE_ROUTER_URL, {
-          method: "POST",
-          signal: controller.signal,
-          headers: {
-            "Content-Type": "application/json",
-            "X-Client-Id": "ha-renault-zoe-smart-charger",
-          },
-          body: JSON.stringify({
-            shape: sampled.map(([lat, lon]) => ({ lat, lon })),
-            costing: "auto",
-            shape_match: "map_snap",
-            units: "kilometers",
-            trace_options: {
-              search_radius: 35,
-              gps_accuracy: 10,
-              breakage_distance: 1000,
-            },
-            filters: {
-              action: "include",
-              attributes: [
-                "edge.length",
-                "edge.surface",
-                "edge.unpaved",
-                "edge.road_class",
-                "edge.use",
-              ],
-            },
-          }),
-        });
-        if (!response.ok) throw new Error(`Valhalla HTTP ${response.status}`);
-        const data = await response.json();
-        const raw = { hard: 0, loose: 0, unknown: 0 };
-        for (const edge of data.edges || []) {
-          const length = Number(edge.length);
-          if (!(length > 0)) continue;
-          const surface = String(edge.surface || "").toLowerCase();
-          if (edge.unpaved === true || edge.unpaved === "true" || LOOSE_SURFACES.has(surface)) {
-            raw.loose += length;
-          } else if (HARD_SURFACES.has(surface)) {
-            raw.hard += length;
-          } else {
-            raw.unknown += length;
-          }
+      const data = await fetchSurfaceData(sampled);
+      const raw = { hard: 0, loose: 0, unknown: 0 };
+      for (const edge of data.edges || []) {
+        const length = Number(edge.length);
+        if (!(length > 0)) continue;
+        const surface = String(edge.surface || "").toLowerCase();
+        if (edge.unpaved === true || edge.unpaved === "true" || LOOSE_SURFACES.has(surface)) {
+          raw.loose += length;
+        } else if (HARD_SURFACES.has(surface)) {
+          raw.hard += length;
+        } else {
+          raw.unknown += length;
         }
-        if (!(raw.hard + raw.loose + raw.unknown > 0)) {
-          throw new Error("Seguma dati nav atrasti");
-        }
-        try {
-          localStorage.setItem(cacheKey, JSON.stringify(raw));
-        } catch (err) {
-          console.debug("Surface cache is full", err);
-        }
-        return scaledSurface(raw, trip.km, matchedRouteKm);
-      } finally {
-        window.clearTimeout(timeout);
       }
+      if (!(raw.hard + raw.loose + raw.unknown > 0)) {
+        throw new Error("Seguma dati nav atrasti");
+      }
+      try {
+        localStorage.setItem(cacheKey, JSON.stringify(raw));
+      } catch (err) {
+        console.debug("Surface cache is full", err);
+      }
+      return scaledSurface(raw, trip.km, matchedRouteKm);
     }
 
     function normalizeSurfaceDistance(total, hard, loose) {
@@ -1571,7 +1604,7 @@
           render();
         }
       };
-      await Promise.all(Array.from({ length: Math.min(2, currentTrips.length) }, worker));
+      if (currentTrips.length) await worker();
       return currentTrips.filter((trip) => !(trip.surface?.coverage > 0)).length;
     }
 

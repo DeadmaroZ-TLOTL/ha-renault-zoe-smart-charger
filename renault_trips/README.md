@@ -124,4 +124,5 @@ instead of being guessed, and results are cached in the browser. The summary
 and trip table also show approximate average speed derived from OSRM route
 annotations; it is a route estimate rather than vehicle telemetry. Selecting
 a colored bar under **Nobraukums pa dienām** expands that day's exact paved,
-gravel/unpaved, and unknown-surface kilometer totals.
+gravel/unpaved, and unknown-surface kilometer totals. Public Valhalla requests
+run one at a time and retry temporary errors before a route is marked unknown.

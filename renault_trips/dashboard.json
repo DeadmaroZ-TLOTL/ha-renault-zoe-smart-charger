@@ -38,7 +38,7 @@
       "cards": [
         {
           "type": "iframe",
-          "url": "/local/renault_trips/mileage.html?v=2.2.3",
+          "url": "/local/renault_trips/mileage.html?v=2.2.10",
           "aspect_ratio": "72%"
         }
       ]

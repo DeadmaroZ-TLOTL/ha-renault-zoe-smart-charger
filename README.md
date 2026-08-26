@@ -88,7 +88,9 @@ used by the included Nord Pool smart charger package.
   Genuine Renault GPS updates are retained in an authenticated integration
   store without age-based deletion, so route and road-surface statistics no
   longer disappear when Recorder purges raw states. Existing Recorder points
-  are merged into that archive whenever the Mileage view is opened.
+  are merged into that archive whenever the Mileage view is opened. Temporary
+  Valhalla timeouts and rate limits are retried sequentially so a single public
+  service interruption does not turn a valid route into unknown surface data.
 - Matching full-screen Charging, Trips, Mileage, Costs, Info, Stations, and
   IMMAX views with responsive controls and one persisted history selector.
   Choose today, 3/7/14/30/90 calendar days, the current month, all available
