@@ -40,6 +40,13 @@ _CONFIRMED_PRICE_SOURCE_BY_PROVIDER = {
     "ignitison": "ignitis_on_confirmed",
     "ikrautas": "ikrautas_confirmed",
 }
+_DEFAULT_BATTERY_CAPACITY_KWH = 52.0
+_DEFAULT_CHARGING_EFFICIENCY = 0.9
+_DEFAULT_BATTERY_KWH_PER_SOC_PERCENT = _DEFAULT_BATTERY_CAPACITY_KWH / 100.0
+_DEFAULT_GRID_KWH_PER_SOC_PERCENT = (
+    _DEFAULT_BATTERY_KWH_PER_SOC_PERCENT / _DEFAULT_CHARGING_EFFICIENCY
+)
+_MAX_SOC_INFERENCE_ANCHOR_GAP = timedelta(hours=6)
 
 
 def parse_nordpool_day_ahead_prices(
@@ -433,6 +440,12 @@ def apply_provider_transactions(
                 provider_records[transaction_index],
             )
         )
+    for transaction_index, transaction in enumerate(provider_records):
+        if transaction_index in assignments:
+            continue
+        if _is_exact_direct_operator_transaction(transaction):
+            result.append(_provider_transaction_as_session(transaction))
+    result = _infer_operator_only_session_soc(result)
 
     return sorted(
         result,
@@ -498,15 +511,15 @@ def apply_session_provider_overrides(
         has_exact_energy = exact_energy is not None and exact_energy >= 0
         has_exact_cost = exact_cost is not None and exact_cost >= 0
         has_exact_data = has_exact_energy or has_exact_cost
+        attribution_source = override.get("attribution_source", "user_confirmed")
         session.update(
             {
                 "provider": provider,
                 "operator": provider,
                 "payment_provider": provider,
-                "payment_provider_confirmed": True,
-                "provider_attribution_source": override.get(
-                    "attribution_source", "user_confirmed"
-                ),
+                "payment_provider_confirmed": has_exact_data,
+                "payment_provider_attribution_confirmed": True,
+                "provider_attribution_source": attribution_source,
                 "operator_data_available": has_exact_data,
                 "price_source": override.get("price_source")
                 or _CONFIRMED_PRICE_SOURCE_BY_PROVIDER.get(
@@ -973,6 +986,9 @@ def _combine_provider_sessions(
             "provider_reported_energy": transaction.get(
                 "provider_reported_energy", exact_energy is not None
             ),
+            "operator_data_available": (
+                exact_cost is not None or exact_energy is not None
+            ),
             "provider_total_grid_energy_kwh": exact_energy,
             "provider_total_cost_eur": exact_cost,
             "provider_allocation_fraction": 1.0,
@@ -984,6 +1000,273 @@ def _combine_provider_sessions(
         }
     )
     return combined
+
+
+def _observed_kwh_per_soc_percent(
+    sessions: Iterable[Mapping[str, Any]],
+) -> tuple[float, float]:
+    """Return observed grid and battery kWh per SOC point."""
+    grid_values: list[float] = []
+    battery_values: list[float] = []
+    for session in sessions:
+        start_soc = _as_float(session.get("start_soc"))
+        end_soc = _as_float(session.get("end_soc"))
+        if start_soc is None or end_soc is None or end_soc <= start_soc:
+            continue
+        soc_delta = end_soc - start_soc
+        grid_energy = _as_float(session.get("grid_energy_kwh"))
+        if grid_energy is not None and grid_energy > 0:
+            value = grid_energy / soc_delta
+            if 0.3 <= value <= 1.2:
+                grid_values.append(value)
+        battery_energy = _as_float(session.get("estimated_battery_energy_kwh"))
+        if battery_energy is not None and battery_energy > 0:
+            value = battery_energy / soc_delta
+            if 0.25 <= value <= 0.8:
+                battery_values.append(value)
+
+    grid_kwh = _median(grid_values) or _DEFAULT_GRID_KWH_PER_SOC_PERCENT
+    battery_kwh = _median(battery_values) or _DEFAULT_BATTERY_KWH_PER_SOC_PERCENT
+    return grid_kwh, battery_kwh
+
+
+def _median(values: list[float]) -> float | None:
+    if not values:
+        return None
+    ordered = sorted(values)
+    middle = len(ordered) // 2
+    if len(ordered) % 2:
+        return ordered[middle]
+    return (ordered[middle - 1] + ordered[middle]) / 2.0
+
+
+def _has_complete_soc(session: Mapping[str, Any]) -> bool:
+    start_soc = _as_float(session.get("start_soc"))
+    end_soc = _as_float(session.get("end_soc"))
+    return start_soc is not None and end_soc is not None
+
+
+def _operator_only_soc_missing(session: Mapping[str, Any]) -> bool:
+    return bool(session.get("operator_only_session")) and not _has_complete_soc(session)
+
+
+def _session_grid_energy(session: Mapping[str, Any]) -> float | None:
+    energy = _as_float(session.get("grid_energy_kwh"))
+    if energy is None:
+        energy = _as_float(session.get("energy_kwh"))
+    return energy if energy is not None and energy > 0 else None
+
+
+def _within_anchor_gap(
+    first: datetime | None,
+    second: datetime | None,
+) -> bool:
+    if first is None or second is None:
+        return False
+    return abs(first - second) <= _MAX_SOC_INFERENCE_ANCHOR_GAP
+
+
+def _set_inferred_soc(
+    session: dict[str, Any],
+    start_soc: float,
+    end_soc: float,
+    *,
+    battery_kwh_per_soc: float,
+    source: str,
+) -> None:
+    start_soc = max(0.0, min(100.0, start_soc))
+    end_soc = max(start_soc, min(100.0, end_soc))
+    soc_delta = max(0.0, end_soc - start_soc)
+    session.update(
+        {
+            "start_soc": round(start_soc, 1),
+            "end_soc": round(end_soc, 1),
+            "soc_gained": round(soc_delta, 1),
+            "estimated_battery_energy_kwh": round(
+                soc_delta * battery_kwh_per_soc,
+                2,
+            ),
+            "soc_estimated": True,
+            "soc_source": source,
+        }
+    )
+
+
+def _infer_operator_only_session_soc(
+    sessions: Iterable[Mapping[str, Any]],
+) -> list[dict[str, Any]]:
+    """Estimate SOC for exact app transactions missing Renault API rows."""
+    result = [dict(session) for session in sessions]
+    grid_kwh_per_soc, battery_kwh_per_soc = _observed_kwh_per_soc_percent(result)
+    chronological = sorted(
+        result,
+        key=lambda item: item.get("start") or item.get("end") or "",
+    )
+
+    anchor_start_soc: float | None = None
+    anchor_start_time: datetime | None = None
+    for session in reversed(chronological):
+        start_time = _parse_datetime(session.get("start"))
+        end_time = _parse_datetime(session.get("end") or session.get("start"))
+        if _has_complete_soc(session):
+            anchor_start_soc = _as_float(session.get("start_soc"))
+            anchor_start_time = start_time
+            continue
+        if (
+            not _operator_only_soc_missing(session)
+            or anchor_start_soc is None
+            or not _within_anchor_gap(end_time, anchor_start_time)
+        ):
+            continue
+        energy = _session_grid_energy(session)
+        if energy is None:
+            continue
+        soc_delta = energy / grid_kwh_per_soc
+        start_soc = anchor_start_soc - soc_delta
+        if start_soc < -0.5:
+            continue
+        _set_inferred_soc(
+            session,
+            start_soc,
+            anchor_start_soc,
+            battery_kwh_per_soc=battery_kwh_per_soc,
+            source="operator_energy_next_renault_anchor",
+        )
+        anchor_start_soc = session["start_soc"]
+        anchor_start_time = start_time
+
+    anchor_end_soc: float | None = None
+    anchor_end_time: datetime | None = None
+    for session in chronological:
+        start_time = _parse_datetime(session.get("start"))
+        end_time = _parse_datetime(session.get("end") or session.get("start"))
+        if _has_complete_soc(session):
+            anchor_end_soc = _as_float(session.get("end_soc"))
+            anchor_end_time = end_time
+            continue
+        if (
+            not _operator_only_soc_missing(session)
+            or anchor_end_soc is None
+            or not _within_anchor_gap(start_time, anchor_end_time)
+        ):
+            continue
+        energy = _session_grid_energy(session)
+        if energy is None:
+            continue
+        soc_delta = energy / grid_kwh_per_soc
+        end_soc = anchor_end_soc + soc_delta
+        if end_soc > 100.5:
+            continue
+        _set_inferred_soc(
+            session,
+            anchor_end_soc,
+            end_soc,
+            battery_kwh_per_soc=battery_kwh_per_soc,
+            source="operator_energy_previous_renault_anchor",
+        )
+        anchor_end_soc = session["end_soc"]
+        anchor_end_time = end_time
+
+    return result
+
+
+def _is_exact_direct_operator_transaction(transaction: Mapping[str, Any]) -> bool:
+    """Return true when an unmatched direct app transaction is safe to expose."""
+    if transaction.get("source_account_type") not in DIRECT_OPERATOR_SOURCES:
+        return False
+    if transaction.get("price_source") not in _EXACT_PROVIDER_PRICE_SOURCES:
+        return False
+    return bool(
+        transaction.get("provider_reported_cost") is True
+        or transaction.get("provider_reported_energy") is True
+        or _as_float(transaction.get("total_cost_eur")) is not None
+        or _as_float(transaction.get("energy_kwh")) is not None
+    )
+
+
+def _provider_transaction_as_session(transaction: Mapping[str, Any]) -> dict[str, Any]:
+    """Expose an exact operator app transaction even if Renault missed the row."""
+    start = transaction.get("start")
+    end = transaction.get("end") or start
+    start_time = _parse_datetime(start)
+    end_time = _parse_datetime(end)
+    duration = _as_float(transaction.get("duration_minutes"))
+    if duration is None and start_time is not None and end_time is not None:
+        duration = max(0.0, (end_time - start_time).total_seconds() / 60.0)
+
+    exact_energy = _as_float(
+        transaction.get("energy_kwh", transaction.get("grid_energy_kwh"))
+    )
+    exact_cost = _as_float(
+        transaction.get("total_cost_eur", transaction.get("cost_eur"))
+    )
+    exact_rate = (
+        exact_cost / exact_energy * 100.0
+        if exact_cost is not None and exact_energy and exact_energy > 0
+        else _as_float(transaction.get("total_rate_c_per_kwh"))
+    )
+    battery_energy = _as_float(
+        transaction.get(
+            "estimated_battery_energy_kwh",
+            transaction.get("battery_energy_kwh"),
+        )
+    )
+    if battery_energy is None and exact_energy is not None:
+        battery_energy = exact_energy
+
+    return {
+        "start": start,
+        "end": end,
+        "duration_min": round(duration) if duration is not None else None,
+        "start_soc": None,
+        "end_soc": None,
+        "soc_gained": None,
+        "estimated_battery_energy_kwh": (
+            round(battery_energy, 2) if battery_energy is not None else None
+        ),
+        "energy_recovered_kwh": None,
+        "status": transaction.get("transaction_status") or "operator",
+        "grid_energy_kwh": exact_energy,
+        "energy_source": "provider_meter",
+        "spot_cost_eur": None,
+        "delivery_cost_eur": None,
+        "total_cost_eur": exact_cost,
+        "total_rate_c_per_kwh": (
+            round(exact_rate, 3) if exact_rate is not None else None
+        ),
+        "price_source": transaction.get("price_source"),
+        "price_entity": "sensor.renault_zoe_new_charging_accounts",
+        "price_coverage_percent": 100.0,
+        "source_page": transaction.get("source_page"),
+        "station_id": transaction.get("station_id"),
+        "station_name": transaction.get("station_name")
+        or transaction.get("provider"),
+        "station_address": transaction.get("station_address"),
+        "connector_code": transaction.get("connector_code"),
+        "provider": transaction.get("provider"),
+        "operator": transaction.get("operator"),
+        "receipt_url": transaction.get("receipt_url"),
+        "provider_transaction_id": transaction.get("transaction_id"),
+        "provider_account_id": transaction.get("account_id"),
+        "provider_account_name": transaction.get("account_name"),
+        "provider_reported_cost": transaction.get(
+            "provider_reported_cost", exact_cost is not None
+        ),
+        "provider_reported_energy": transaction.get(
+            "provider_reported_energy", exact_energy is not None
+        ),
+        "operator_data_available": exact_cost is not None or exact_energy is not None,
+        "operator_only_session": True,
+        "renault_session_missing": True,
+        "provider_total_grid_energy_kwh": exact_energy,
+        "provider_total_cost_eur": exact_cost,
+        "provider_allocation_fraction": 1.0,
+        "provider_split_session_count": 0,
+        "provider_combined_session": False,
+        "renault_session_fragments": [],
+        "transaction_status": transaction.get("transaction_status"),
+        "alternate_sources": transaction.get("alternate_sources", []),
+    }
 
 
 def _deduplicate_same_source(

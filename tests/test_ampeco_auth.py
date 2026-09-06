@@ -54,6 +54,10 @@ class AmpecoAuthTest(unittest.TestCase):
         self.assertEqual("8.182.0", headers["X-Internal-App-Version"])
         self.assertEqual("android", headers["X-Platform"])
         self.assertTrue(headers["x-device-id"])
+        self.assertNotIn("x-operator-country", headers)
+
+        ikrautas_headers = ampeco_auth.ampeco_app_headers(ampeco_auth.IKRAUTAS)
+        self.assertEqual("LT", ikrautas_headers["x-operator-country"])
 
     def test_login_request_requires_server_confirmation(self) -> None:
         self.assertTrue(
@@ -147,7 +151,11 @@ class AmpecoAuthTest(unittest.TestCase):
         self.assertIsNone(ampeco_auth.ampeco_google_user_data({}))
 
     def test_provider_google_capability_matches_official_apps(self) -> None:
-        self.assertIsNone(ampeco_auth.IGNITIS_ON.google_client_id)
+        self.assertTrue(
+            ampeco_auth.IGNITIS_ON.google_client_id.endswith(
+                ".apps.googleusercontent.com"
+            )
+        )
         self.assertTrue(
             ampeco_auth.IKRAUTAS.google_client_id.endswith(
                 ".apps.googleusercontent.com"

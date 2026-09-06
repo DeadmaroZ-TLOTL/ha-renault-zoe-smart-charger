@@ -59,6 +59,7 @@ from .stations import async_register_station_views
 from .trip_history import async_register_trip_history_view
 
 RETRY_SECONDS = 15
+CHARGE_SESSION_REFRESH_RETRY_DELAYS = (2, 10, 30, 60, 120)
 PLATFORMS = (
     Platform.BINARY_SENSOR,
     Platform.NUMBER,
@@ -266,6 +267,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     retry_cancel: Callable[[], None] | None = None
     reconcile_cancel: Callable[[], None] | None = None
     charge_session_refresh_cancel: Callable[[], None] | None = None
+    charge_session_refresh_attempt = 0
     reconciling = False
     runtime: dict[str, object] = {"last_options": dict(entry.options)}
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = runtime
@@ -380,19 +382,28 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     await charging_accounts_coordinator.async_config_entry_first_refresh()
 
     @callback
-    def schedule_charge_session_refresh() -> None:
+    def schedule_charge_session_refresh(*, reset_attempt: bool = True) -> None:
         """Rebuild charge history after exact operator transactions change."""
-        nonlocal charge_session_refresh_cancel
+        nonlocal charge_session_refresh_attempt, charge_session_refresh_cancel
         if charge_session_refresh_cancel is not None:
             return
+        if reset_attempt:
+            charge_session_refresh_attempt = 0
+        delay = CHARGE_SESSION_REFRESH_RETRY_DELAYS[
+            min(
+                charge_session_refresh_attempt,
+                len(CHARGE_SESSION_REFRESH_RETRY_DELAYS) - 1,
+            )
+        ]
 
         @callback
         def refresh_charge_sessions(_now: datetime) -> None:
-            nonlocal charge_session_refresh_cancel
+            nonlocal charge_session_refresh_attempt, charge_session_refresh_cancel
             charge_session_refresh_cancel = None
             if hass.services.has_service(
                 "pyscript", "zoe_charge_sessions_update"
             ):
+                charge_session_refresh_attempt = 0
                 hass.async_create_task(
                     hass.services.async_call(
                         "pyscript",
@@ -400,10 +411,16 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                         blocking=False,
                     )
                 )
+                return
+            if charge_session_refresh_attempt < (
+                len(CHARGE_SESSION_REFRESH_RETRY_DELAYS) - 1
+            ):
+                charge_session_refresh_attempt += 1
+                schedule_charge_session_refresh(reset_attempt=False)
 
         charge_session_refresh_cancel = async_call_later(
             hass,
-            2,
+            delay,
             refresh_charge_sessions,
         )
 

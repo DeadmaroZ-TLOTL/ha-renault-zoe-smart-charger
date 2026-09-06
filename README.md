@@ -166,10 +166,30 @@ A one-time email link is also offered when the operator tenant enables it with
 a non-zero lifetime.
 Repeated setup attempts for the same operator identity are merged instead of
 creating duplicate accounts.
+The account login methods used by the integration are:
+
+- **Mobilly**: mobile-app SMS login stores the renewable app session; the older
+  web username/password statement import is kept as a fallback for both
+  `Darījumi` and `Darījumi pie rēķina`.
+- **Elektrum Drive**: import the signed-in Drive app hand-off link when a
+  postpaid agreement is already visible in the app. The Smart-ID agreement-link
+  helper is only a fallback for profiles where Elektrum exposes enrollment.
+- **Ignitis ON**: use the same email/password account as the official app. The
+  password is exchanged once over HTTPS and is not retained.
+- **IKRAUTAS**: use the official Android app Google `third-party` token
+  exchange or the operator's one-time email login link when available. OAuth
+  Playground links do not work for this flow because they are issued to the
+  wrong Google client.
+
 All enabled charging accounts are refreshed once per hour. A provider name is
 attached to a completed Renault session only when an exact app transaction or
 receipt matches it. Station-tariff fallbacks remain visibly estimated and are
 never presented as proof that the charge was paid through that operator.
+Whenever a charging account refresh changes exact transaction history, the
+integration automatically asks the Zoe charge-session Pyscript to rebuild the
+Charging, Costs, and history sensors. On Home Assistant startup it retries for
+up to two minutes if Pyscript has not registered the service yet, so operator
+history is applied without a manual reload.
 **Renault account login** signs the selected official
 Renault entry in again with country/locale, username, and password. It uses the
 same Renault API client as Home Assistant Core and stores the resulting

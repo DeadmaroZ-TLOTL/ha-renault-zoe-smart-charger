@@ -18,12 +18,22 @@ class AmpecoProviderConfig:
     provider: str
     provider_group: str
     host: str
-    operator_country: str
+    operator_country: str | None
     app_bundle_id: str
     app_version: str
     oauth_client_id: str
     oauth_client_secret: str
     google_client_id: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class AmpecoRequestVariant:
+    """One country-handling variant used by official AMPECO app requests."""
+
+    name: str
+    params: dict[str, str] | None = None
+    headers: dict[str, str] | None = None
+    body: dict[str, Any] | None = None
 
 
 # AMPECO mobile clients are public OAuth clients. These identifiers are part of
@@ -34,11 +44,15 @@ IGNITIS_ON = AmpecoProviderConfig(
     provider="ignitis_on",
     provider_group="ignitis",
     host="ignitis.eu-ignitis.charge.ampeco.tech",
-    operator_country="LV",
+    operator_country=None,
     app_bundle_id="com.fortum.chargeiton",
     app_version="8.182.0",
     oauth_client_id="1",
     oauth_client_secret="vTmcxpfek5iM7S56FATz3kv7sxFqRVKVzSMpIIeO",
+    google_client_id=(
+        "468152515201-5kutuipcofr66ivkkm0akhmbmpt333ua."
+        "apps.googleusercontent.com"
+    ),
 )
 
 IKRAUTAS = AmpecoProviderConfig(
@@ -89,13 +103,101 @@ def ampeco_app_headers(
         "User-Agent": "okhttp/4.12.0",
         "X-Platform": "android",
         "x-device-id": str(device_id),
-        "x-operator-country": provider.operator_country,
         "x-mobile-app-bundle-id": provider.app_bundle_id,
         "X-Internal-App-Version": provider.app_version,
     }
+    if country := ampeco_operator_country(provider):
+        headers["x-operator-country"] = country
     if access_token:
         headers["Authorization"] = f"Bearer {access_token}"
     return headers
+
+
+def ampeco_operator_country(provider: AmpecoProviderConfig) -> str | None:
+    """Return the configured operator country when the official app uses one."""
+    value = str(provider.operator_country or "").strip()
+    if not value or value.casefold() == "null":
+        return None
+    return value
+
+
+def ampeco_operator_country_params(
+    provider: AmpecoProviderConfig,
+) -> dict[str, str] | None:
+    """Return query params for tenants that expect an operator country."""
+    if country := ampeco_operator_country(provider):
+        return {"operatorCountry": country}
+    return None
+
+
+def ampeco_operator_request_variants(
+    provider: AmpecoProviderConfig,
+) -> tuple[AmpecoRequestVariant, ...]:
+    """Return app-compatible country variants for authenticated AMPECO calls."""
+    if country := ampeco_operator_country(provider):
+        return (
+            AmpecoRequestVariant(
+                "official",
+                params={"operatorCountry": country},
+                headers={"x-operator-country": country},
+            ),
+        )
+    return (
+        AmpecoRequestVariant("official"),
+        AmpecoRequestVariant("query_lv", params={"operatorCountry": "LV"}),
+        AmpecoRequestVariant(
+            "query_header_lv",
+            params={"operatorCountry": "LV"},
+            headers={"x-operator-country": "LV"},
+        ),
+        AmpecoRequestVariant("query_null", params={"operatorCountry": "null"}),
+        AmpecoRequestVariant(
+            "header_lv",
+            headers={"x-operator-country": "LV"},
+        ),
+    )
+
+
+def ampeco_third_party_request_variants(
+    provider: AmpecoProviderConfig,
+) -> tuple[AmpecoRequestVariant, ...]:
+    """Return app-compatible variants for third-party OAuth token exchange."""
+    if country := ampeco_operator_country(provider):
+        return (
+            AmpecoRequestVariant(
+                "official",
+                params={"operatorCountry": country},
+                headers={"x-operator-country": country},
+                body={"operatorCountry": country},
+            ),
+        )
+    return (
+        AmpecoRequestVariant("official"),
+        AmpecoRequestVariant("body_null", body={"operatorCountry": None}),
+        AmpecoRequestVariant("body_lv", body={"operatorCountry": "LV"}),
+        AmpecoRequestVariant("query_lv", params={"operatorCountry": "LV"}),
+        AmpecoRequestVariant(
+            "query_body_lv",
+            params={"operatorCountry": "LV"},
+            body={"operatorCountry": "LV"},
+        ),
+        AmpecoRequestVariant(
+            "query_header_body_lv",
+            params={"operatorCountry": "LV"},
+            headers={"x-operator-country": "LV"},
+            body={"operatorCountry": "LV"},
+        ),
+        AmpecoRequestVariant("query_null", params={"operatorCountry": "null"}),
+        AmpecoRequestVariant(
+            "query_body_null",
+            params={"operatorCountry": "null"},
+            body={"operatorCountry": None},
+        ),
+        AmpecoRequestVariant(
+            "header_lv",
+            headers={"x-operator-country": "LV"},
+        ),
+    )
 
 
 def ampeco_login_link_requested(payload: Any) -> bool:
@@ -204,7 +306,8 @@ def ampeco_token_form(
         result["refresh_token"] = token
     else:
         result["token"] = token
-        result["operatorCountry"] = provider.operator_country
+        if country := ampeco_operator_country(provider):
+            result["operatorCountry"] = country
         if login_type:
             result["type"] = login_type
         if user_data:

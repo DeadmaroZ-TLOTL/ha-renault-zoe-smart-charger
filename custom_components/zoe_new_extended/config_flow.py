@@ -39,8 +39,10 @@ from .ampeco_auth import (
     ampeco_google_user_data,
     ampeco_login_link_requested,
     ampeco_login_link_token,
+    ampeco_operator_country_params,
     ampeco_password_form,
     ampeco_provider,
+    ampeco_third_party_request_variants,
     ampeco_token_form,
     ampeco_token_values,
 )
@@ -975,7 +977,7 @@ class ZoeNewExtendedOptionsFlow(config_entries.OptionsFlow):
                 try:
                     async with session.post(
                         f"https://{provider.host}/api/v1/app/oauth/token",
-                        params={"operatorCountry": provider.operator_country},
+                        params=ampeco_operator_country_params(provider),
                         headers=ampeco_app_headers(provider),
                         json=ampeco_password_form(
                             provider,
@@ -1070,28 +1072,44 @@ class ZoeNewExtendedOptionsFlow(config_entries.OptionsFlow):
                             except (TypeError, ValueError):
                                 user_payload = {}
                             user_data = ampeco_google_user_data(user_payload)
-                    async with session.post(
-                        f"https://{provider.host}/api/v1/app/oauth/token",
-                        params={"operatorCountry": provider.operator_country},
-                        headers=ampeco_app_headers(provider),
-                        json=ampeco_token_form(
+                    payload = {}
+                    status = 0
+                    token_values = {}
+                    accepted_variant = ""
+                    for variant in ampeco_third_party_request_variants(
+                        provider
+                    ):
+                        request_body = ampeco_token_form(
                             provider,
                             grant_type="third-party",
                             token=google_token,
                             login_type="google",
                             user_data=user_data,
-                        ),
-                        timeout=ELEKTRUM_REQUEST_TIMEOUT,
-                    ) as response:
-                        try:
-                            payload = await response.json(content_type=None)
-                        except (TypeError, ValueError):
-                            payload = {}
-                        status = response.status
+                        )
+                        if variant.body:
+                            request_body.update(variant.body)
+                        headers = ampeco_app_headers(provider)
+                        if variant.headers:
+                            headers.update(variant.headers)
+                        async with session.post(
+                            f"https://{provider.host}/api/v1/app/oauth/token",
+                            params=variant.params,
+                            headers=headers,
+                            json=request_body,
+                            timeout=ELEKTRUM_REQUEST_TIMEOUT,
+                        ) as response:
+                            try:
+                                payload = await response.json(content_type=None)
+                            except (TypeError, ValueError):
+                                payload = {}
+                            status = response.status
+                        token_values = ampeco_token_values(payload)
+                        if status < 400 and token_values.get("access_token"):
+                            accepted_variant = variant.name
+                            break
                 except (ClientError, TimeoutError):
                     errors["base"] = "ampeco_connection_failed"
                 else:
-                    token_values = ampeco_token_values(payload)
                     access_token = token_values.get("access_token")
                     if status >= 400 or not access_token:
                         _LOGGER.warning(
@@ -1103,6 +1121,12 @@ class ZoeNewExtendedOptionsFlow(config_entries.OptionsFlow):
                         )
                         errors["base"] = "ampeco_google_exchange_failed"
                     else:
+                        if accepted_variant:
+                            _LOGGER.debug(
+                                "%s accepted Google authentication variant %s",
+                                provider.display_name,
+                                accepted_variant,
+                            )
                         accounts = self._charging_accounts
                         for item in accounts:
                             if item.get(CONF_ACCOUNT_ID) != account.get(
@@ -1154,7 +1178,7 @@ class ZoeNewExtendedOptionsFlow(config_entries.OptionsFlow):
             try:
                 async with session.post(
                     f"https://{provider.host}/api/v1/app/login-link",
-                    params={"operatorCountry": provider.operator_country},
+                    params=ampeco_operator_country_params(provider),
                     headers=ampeco_app_headers(provider),
                     json={"email": email},
                     timeout=ELEKTRUM_REQUEST_TIMEOUT,
@@ -1189,7 +1213,7 @@ class ZoeNewExtendedOptionsFlow(config_entries.OptionsFlow):
                 try:
                     async with session.post(
                         f"https://{provider.host}/api/v1/app/oauth/token",
-                        params={"operatorCountry": provider.operator_country},
+                        params=ampeco_operator_country_params(provider),
                         headers=ampeco_app_headers(provider),
                         json=ampeco_token_form(
                             provider,

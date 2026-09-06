@@ -2226,6 +2226,19 @@ function sessionPriceSourceLabel(session) {
   return session.price_source || "-";
 }
 
+function formatSessionSoc(session) {
+  const startSoc = toNumber(session.start_soc);
+  const endSoc = toNumber(session.end_soc);
+  if (!Number.isFinite(startSoc) || !Number.isFinite(endSoc)) {
+    return "- → -%";
+  }
+  const marker = session.soc_estimated || session.soc_source ? "~" : "";
+  const formatter = new Intl.NumberFormat(language === "lv" ? "lv-LV" : "en-GB", {
+    maximumFractionDigits: Number.isInteger(startSoc) && Number.isInteger(endSoc) ? 0 : 1,
+  });
+  return `${marker}${formatter.format(startSoc)} → ${formatter.format(endSoc)}%`;
+}
+
 function renderSessions() {
   const state = sessionEntity();
   const range = activeRange || selectedRange();
@@ -2280,7 +2293,7 @@ function renderSessions() {
         <td>${escapeHtml(formatSessionDate(session.start))}<br>${escapeHtml(formatSessionDate(session.end, false))}</td>
         <td>${escapeHtml(station)}${connector ? `<span class="cell-note">${escapeHtml(connector)}</span>` : ""}</td>
         <td>${escapeHtml(Math.round(toNumber(session.duration_min) || 0))} min</td>
-        <td>${escapeHtml(toNumber(session.start_soc) ?? "-")} → ${escapeHtml(toNumber(session.end_soc) ?? "-")}%</td>
+        <td>${escapeHtml(formatSessionSoc(session))}</td>
         <td>~${battery.toFixed(2)} kWh</td>
         <td>${Number.isFinite(grid) ? `${gridMark}${grid.toFixed(2)} kWh` : "-"}</td>
         <td>${Number.isFinite(toNumber(session.total_rate_c_per_kwh)) ? `${priceMark}${toNumber(session.total_rate_c_per_kwh).toFixed(2)} c/kWh` : "-"}<span class="cell-note">${escapeHtml(priceSource)} · ${escapeHtml(sourceNote)}</span></td>

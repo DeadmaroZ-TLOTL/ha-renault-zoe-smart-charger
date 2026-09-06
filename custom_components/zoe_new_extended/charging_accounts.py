@@ -25,6 +25,8 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 from .ampeco_auth import (
     AMPECO_ACCOUNT_TYPES,
     ampeco_app_headers,
+    ampeco_operator_country_params,
+    ampeco_operator_request_variants,
     ampeco_provider,
     ampeco_token_form,
     ampeco_token_values,
@@ -710,34 +712,54 @@ class ChargingAccountsCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         per_page = 100
         raw_records: list[dict[str, Any]] = []
         page_counts: dict[str, int] = {}
-        for page in range(1, 51):
-            payload, status, token = await self._async_ampeco_get(
-                provider,
-                "profile/session_history",
-                token,
-                account,
-                params={
+        selected_variant = None
+        last_status = 0
+        for variant in ampeco_operator_request_variants(provider):
+            candidate_records: list[dict[str, Any]] = []
+            candidate_page_counts: dict[str, int] = {}
+            candidate_token = token
+            variant_failed = False
+            for page in range(1, 51):
+                params = {
                     "start_date": date_from.isoformat(),
                     "end_date": date_to.isoformat(),
                     "page": str(page),
                     "perPage": str(per_page),
                     "sessionType": "public",
-                    "operatorCountry": provider.operator_country,
-                },
-            )
-            if status >= 400:
-                raise PermissionError(
-                    f"{provider.display_name} history request failed ({status})"
+                }
+                if variant.params:
+                    params.update(variant.params)
+                payload, status, candidate_token = await self._async_ampeco_get(
+                    provider,
+                    "profile/session_history",
+                    candidate_token,
+                    account,
+                    params=params,
+                    headers_extra=variant.headers,
                 )
-            items, has_more = ampeco_history_page(
-                payload,
-                page=page,
-                per_page=per_page,
-            )
-            raw_records.extend(items)
-            page_counts[str(page)] = len(items)
-            if not has_more:
+                last_status = status
+                if status >= 400:
+                    variant_failed = True
+                    break
+                items, has_more = ampeco_history_page(
+                    payload,
+                    page=page,
+                    per_page=per_page,
+                )
+                candidate_records.extend(items)
+                candidate_page_counts[str(page)] = len(items)
+                if not has_more:
+                    break
+            if not variant_failed:
+                selected_variant = variant
+                raw_records = candidate_records
+                page_counts = candidate_page_counts
+                token = candidate_token
                 break
+        if selected_variant is None:
+            raise PermissionError(
+                f"{provider.display_name} history request failed ({last_status})"
+            )
 
         transactions = parse_ampeco_transactions(
             raw_records,
@@ -750,6 +772,7 @@ class ChargingAccountsCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 token,
                 account,
                 raw_records,
+                selected_variant,
             ),
         )
         transactions = merge_account_transactions(transactions)
@@ -769,6 +792,7 @@ class ChargingAccountsCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         token: str,
         account: dict[str, Any],
         records: list[dict[str, Any]],
+        request_variant=None,
     ) -> dict[str, dict[str, Any]]:
         """Resolve the small set of locations referenced by charge history."""
         location_ids = ampeco_history_location_ids(records)
@@ -780,7 +804,14 @@ class ChargingAccountsCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 "locations",
                 token,
                 account,
-                params={"operatorCountry": provider.operator_country},
+                params=request_variant.params
+                if request_variant is not None
+                else ampeco_operator_country_params(provider),
+                headers_extra=(
+                    request_variant.headers
+                    if request_variant is not None
+                    else None
+                ),
                 json_data={
                     "locations": {location_id: "" for location_id in location_ids}
                 },
@@ -809,6 +840,7 @@ class ChargingAccountsCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         account: dict[str, Any],
         *,
         params: dict[str, str] | None = None,
+        headers_extra: dict[str, str] | None = None,
     ) -> tuple[Any, int, str]:
         """Run an authenticated AMPECO request and refresh once on expiry."""
         return await self._async_ampeco_call(
@@ -817,6 +849,7 @@ class ChargingAccountsCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             token,
             account,
             params=params,
+            headers_extra=headers_extra,
         )
 
     async def _async_ampeco_post(
@@ -827,6 +860,7 @@ class ChargingAccountsCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         account: dict[str, Any],
         *,
         params: dict[str, str] | None = None,
+        headers_extra: dict[str, str] | None = None,
         json_data: dict[str, Any] | None = None,
     ) -> tuple[Any, int, str]:
         """Run an authenticated AMPECO POST with the same refresh behavior."""
@@ -837,6 +871,7 @@ class ChargingAccountsCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             account,
             method="POST",
             params=params,
+            headers_extra=headers_extra,
             json_data=json_data,
         )
 
@@ -849,6 +884,7 @@ class ChargingAccountsCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         *,
         method: str = "GET",
         params: dict[str, str] | None = None,
+        headers_extra: dict[str, str] | None = None,
         json_data: dict[str, Any] | None = None,
     ) -> tuple[Any, int, str]:
         """Run an authenticated AMPECO request and refresh once on expiry."""
@@ -858,6 +894,7 @@ class ChargingAccountsCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             token,
             method=method,
             params=params,
+            headers_extra=headers_extra,
             json_data=json_data,
         )
         if status != 401:
@@ -871,7 +908,7 @@ class ChargingAccountsCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         session = async_get_clientsession(self.hass)
         async with session.post(
             f"https://{provider.host}/api/v1/app/oauth/token",
-            params={"operatorCountry": provider.operator_country},
+            params=ampeco_operator_country_params(provider),
             headers=ampeco_app_headers(provider),
             json=ampeco_token_form(
                 provider,
@@ -906,6 +943,7 @@ class ChargingAccountsCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             refreshed_token,
             method=method,
             params=params,
+            headers_extra=headers_extra,
             json_data=json_data,
         )
         return payload, status, refreshed_token
@@ -918,14 +956,18 @@ class ChargingAccountsCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         *,
         method: str = "GET",
         params: dict[str, str] | None = None,
+        headers_extra: dict[str, str] | None = None,
         json_data: dict[str, Any] | None = None,
     ) -> tuple[Any, int]:
         session = async_get_clientsession(self.hass)
+        headers = ampeco_app_headers(provider, token)
+        if headers_extra:
+            headers.update(headers_extra)
         async with session.request(
             method,
             f"https://{provider.host}/api/v1/app/{path.lstrip('/')}",
             params=params,
-            headers=ampeco_app_headers(provider, token),
+            headers=headers,
             json=json_data,
             timeout=REQUEST_TIMEOUT,
         ) as response:

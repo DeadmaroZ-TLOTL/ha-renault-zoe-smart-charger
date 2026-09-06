@@ -17,6 +17,7 @@ from .ampeco_auth import (
     IKRAUTAS,
     AmpecoProviderConfig,
     ampeco_app_headers,
+    ampeco_operator_country_params,
 )
 from .ampeco_stations_data import normalize_ampeco_catalog
 from .charging_accounts_data import deduplicate_account_records
@@ -134,8 +135,9 @@ class AmpecoStationsClient:
             "limit": "5000",
             "withCurrentTypes": "true",
             "includeAvailability": "true",
-            "operatorCountry": self.operator_country,
         }
+        if country_params := ampeco_operator_country_params(self.config):
+            params.update(country_params)
         payload = None
         token = self._access_token()
         for access_token in ((token, None) if token else (None,)):
@@ -163,7 +165,7 @@ class AmpecoStationsClient:
         for access_token in ((token, None) if token else (None,)):
             async with session.post(
                 f"https://{self.host}/api/v1/app/locations",
-                params={"operatorCountry": self.operator_country},
+                params=ampeco_operator_country_params(self.config),
                 headers=self._headers(access_token),
                 json={
                     "locations": {

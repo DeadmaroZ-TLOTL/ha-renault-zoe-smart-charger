@@ -489,6 +489,90 @@ class ChargingAccountsDataTest(unittest.TestCase):
             by_transaction["receipt:ignitis_on:0000462549"]["total_cost_eur"],
         )
 
+    def test_unmatched_direct_operator_transactions_are_kept(self) -> None:
+        sessions = [
+            {
+                "start": "2026-09-04T11:49:28+00:00",
+                "end": "2026-09-04T12:13:47+00:00",
+                "start_soc": 60,
+                "end_soc": 90,
+                "estimated_battery_energy_kwh": 15.6,
+                "status": "ok",
+            }
+        ]
+        transactions = [
+            {
+                "transaction_id": "1564258",
+                "source_account_type": "ignitis_on",
+                "provider": "Ignitis ON",
+                "operator": "Ignitis ON",
+                "station_name": "Alūksne MINI RIMI",
+                "connector_code": "2065-01",
+                "start": "2026-09-04T11:03:43+00:00",
+                "end": "2026-09-04T11:09:59+00:00",
+                "energy_kwh": 4.456,
+                "total_cost_eur": 1.74,
+                "price_source": "ignitis_on_app",
+                "provider_reported_cost": True,
+                "provider_reported_energy": True,
+            },
+            {
+                "transaction_id": "1564421",
+                "source_account_type": "ignitis_on",
+                "provider": "Ignitis ON",
+                "operator": "Ignitis ON",
+                "station_name": "Alūksne MINI RIMI",
+                "connector_code": "2065-01",
+                "start": "2026-09-04T11:35:58+00:00",
+                "end": "2026-09-04T11:40:16+00:00",
+                "energy_kwh": 3.082,
+                "total_cost_eur": 1.2,
+                "price_source": "ignitis_on_app",
+                "provider_reported_cost": True,
+                "provider_reported_energy": True,
+            },
+            {
+                "transaction_id": "1564493",
+                "source_account_type": "ignitis_on",
+                "provider": "Ignitis ON",
+                "operator": "Ignitis ON",
+                "station_name": "Alūksne MAXIMA Pils",
+                "connector_code": "2026-01",
+                "start": "2026-09-04T11:49:28+00:00",
+                "end": "2026-09-04T12:13:47+00:00",
+                "energy_kwh": 17.57,
+                "total_cost_eur": 6.85,
+                "price_source": "ignitis_on_app",
+                "provider_reported_cost": True,
+                "provider_reported_energy": True,
+            },
+        ]
+
+        matched = charging_data.apply_provider_transactions(sessions, transactions)
+
+        self.assertEqual(3, len(matched))
+        by_transaction = {
+            session["provider_transaction_id"]: session for session in matched
+        }
+        self.assertFalse(by_transaction["1564493"].get("renault_session_missing"))
+        self.assertEqual(17.57, by_transaction["1564493"]["grid_energy_kwh"])
+        self.assertTrue(by_transaction["1564493"]["operator_data_available"])
+        self.assertTrue(by_transaction["1564258"]["operator_only_session"])
+        self.assertTrue(by_transaction["1564258"]["renault_session_missing"])
+        self.assertTrue(by_transaction["1564258"]["soc_estimated"])
+        self.assertEqual(
+            "operator_energy_next_renault_anchor",
+            by_transaction["1564258"]["soc_source"],
+        )
+        self.assertEqual(47.1, by_transaction["1564258"]["start_soc"])
+        self.assertEqual(54.7, by_transaction["1564258"]["end_soc"])
+        self.assertEqual(4.456, by_transaction["1564258"]["grid_energy_kwh"])
+        self.assertEqual(1.74, by_transaction["1564258"]["total_cost_eur"])
+        self.assertTrue(by_transaction["1564421"]["operator_only_session"])
+        self.assertEqual(54.7, by_transaction["1564421"]["start_soc"])
+        self.assertEqual(60.0, by_transaction["1564421"]["end_soc"])
+        self.assertEqual("Alūksne MINI RIMI", by_transaction["1564421"]["station_name"])
+
     def test_stop_restart_rows_are_one_physical_charge(self) -> None:
         sessions = [
             {
@@ -657,7 +741,44 @@ class ChargingAccountsDataTest(unittest.TestCase):
         self.assertEqual("Elektrum Drive", corrected[0]["station_network"])
         self.assertEqual(15.0881, corrected[0]["total_cost_eur"])
         self.assertFalse(corrected[0]["provider_reported_cost"])
-        self.assertTrue(corrected[0]["payment_provider_confirmed"])
+        self.assertFalse(corrected[0]["payment_provider_confirmed"])
+        self.assertTrue(corrected[0]["payment_provider_attribution_confirmed"])
+
+    def test_user_confirmed_ignitis_replaces_home_nordpool_attribution(self) -> None:
+        sessions = [
+            {
+                "start": "2026-09-03T14:03:30+00:00",
+                "end": "2026-09-03T14:43:40+00:00",
+                "price_source": "home_nord_pool",
+                "grid_energy_kwh": 17.06,
+                "total_rate_c_per_kwh": 16.19,
+                "total_cost_eur": 2.76,
+            }
+        ]
+        overrides = [
+            {
+                "start": "2026-09-03T14:03:00Z",
+                "end": "2026-09-03T14:44:00Z",
+                "provider": "Ignitis ON",
+                "station_network": "Ignitis ON",
+                "price_source": "ignitis_on_confirmed",
+                "station_name": "Ignitis ON",
+                "match_tolerance_seconds": 600,
+            }
+        ]
+
+        corrected = charging_data.apply_session_provider_overrides(
+            sessions, overrides
+        )
+
+        self.assertEqual("Ignitis ON", corrected[0]["payment_provider"])
+        self.assertEqual("Ignitis ON", corrected[0]["station_network"])
+        self.assertEqual("Ignitis ON", corrected[0]["station_name"])
+        self.assertEqual("ignitis_on_confirmed", corrected[0]["price_source"])
+        self.assertEqual(2.76, corrected[0]["total_cost_eur"])
+        self.assertFalse(corrected[0]["provider_reported_cost"])
+        self.assertFalse(corrected[0]["payment_provider_confirmed"])
+        self.assertTrue(corrected[0]["payment_provider_attribution_confirmed"])
 
     def test_exact_provider_transaction_wins_over_manual_override(self) -> None:
         sessions = [
