@@ -880,7 +880,7 @@
         hash ^= coordinates.charCodeAt(i);
         hash = Math.imul(hash, 16777619);
       }
-      return `renault-road-route-v3-${(hash >>> 0).toString(16)}`;
+      return `renault-road-route-v4-${(hash >>> 0).toString(16)}`;
     }
 
     function buildFiveSecondSamples(coordinates, speeds, durations) {
