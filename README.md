@@ -250,7 +250,9 @@ and do not need manual start/stop buttons.
 The Stations view uses authenticated integration API endpoints and must run
 inside Home Assistant. PlugShare is displayed through its public embedded map
 because PlugShare declined station-data API access for this use case. The local
-catalog instead consumes Latvia's CC0 National Access Point
+catalog uses OpenStreetMap raster tiles directly, so no CARTO or Google Maps
+API key is required for the built-in map. Station data instead consumes
+Latvia's CC0 National Access Point
 [infrastructure](https://transportdata.gov.lv/en/card/d8e419c3-1585-4666-9067-85712befd2c4)
 and [live status/price](https://transportdata.gov.lv/en/card/a377a160-baa1-4b67-b4e8-6612cd289e22)
 DATEX II feeds. Rotating download URLs are resolved from public metadata on

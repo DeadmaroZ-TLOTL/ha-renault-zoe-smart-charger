@@ -729,9 +729,10 @@ function formatError(error) {
 function ensureMap() {
   if (map) return;
   map = L.map("map", { preferCanvas: true, zoomControl: true }).setView(DEFAULT_CENTER, DEFAULT_ZOOM);
-  L.tileLayer("https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png", {
-    maxZoom: 20,
-    attribution: "&copy; OpenStreetMap contributors &copy; CARTO",
+  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+    subdomains: "abc",
+    maxZoom: 19,
+    attribution: "&copy; OpenStreetMap contributors",
   }).addTo(map);
   stationLayer = typeof L.markerClusterGroup === "function"
     ? L.markerClusterGroup({

@@ -1435,10 +1435,10 @@
     function ensureMap() {
       if (map) return;
       map = L.map("map", { zoomControl: true });
-      L.tileLayer("https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png", {
-        subdomains: "abcd",
-        maxZoom: 20,
-        attribution: "&copy; OpenStreetMap contributors &copy; CARTO",
+      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+        subdomains: "abc",
+        maxZoom: 19,
+        attribution: "&copy; OpenStreetMap contributors",
       }).addTo(map);
       routeLayer = L.layerGroup().addTo(map);
       markerLayer = L.layerGroup().addTo(map);
