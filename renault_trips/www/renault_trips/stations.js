@@ -729,8 +729,7 @@ function formatError(error) {
 function ensureMap() {
   if (map) return;
   map = L.map("map", { preferCanvas: true, zoomControl: true }).setView(DEFAULT_CENTER, DEFAULT_ZOOM);
-  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-    subdomains: "abc",
+  L.tileLayer("https://tile.openstreetmap.de/{z}/{x}/{y}.png", {
     maxZoom: 19,
     attribution: "&copy; OpenStreetMap contributors",
   }).addTo(map);
