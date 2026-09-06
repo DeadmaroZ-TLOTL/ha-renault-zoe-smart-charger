@@ -914,17 +914,10 @@
       return samples;
     }
 
-    async function getRoadRoute(points) {
-      const waypoints = routeWaypoints(points);
-      if (waypoints.length < 2) return { latlngs: [], samples: [], distance: 0, duration: 0 };
-
-      const key = routeCacheKey(waypoints);
-      const cached = parseMaybeJson(localStorage.getItem(key));
-      if (Array.isArray(cached?.latlngs) && cached.latlngs.length >= 2) return cached;
-
+    async function fetchRoadRouteData(waypoints, timeoutMs = 15000) {
       const coordinates = waypoints.map((point) => `${point.lon},${point.lat}`).join(";");
       const controller = new AbortController();
-      const timeout = window.setTimeout(() => controller.abort(), 15000);
+      const timeout = window.setTimeout(() => controller.abort(), timeoutMs);
       try {
         const response = await fetch(
           `${ROAD_ROUTER_URL}/${coordinates}?alternatives=false&steps=false&overview=full&geometries=geojson&annotations=speed,duration,distance`,
@@ -943,15 +936,84 @@
           distance: route.distance,
           duration: route.duration,
         };
-        try {
-          localStorage.setItem(key, JSON.stringify(routeData));
-        } catch (err) {
-          console.debug("Route cache is full", err);
-        }
         return routeData;
       } finally {
         window.clearTimeout(timeout);
       }
+    }
+
+    async function getRoadRouteByEdges(waypoints) {
+      const latlngs = [];
+      const samples = [];
+      let totalDistance = 0;
+      let totalDuration = 0;
+      let routedEdges = 0;
+      let directShortEdges = 0;
+
+      for (let index = 1; index < waypoints.length; index += 1) {
+        const previous = waypoints[index - 1];
+        const point = waypoints[index];
+        const directDistanceKm = kmBetween(previous, point);
+        if (directDistanceKm < 0.02) continue;
+        try {
+          const edgeRoute = await fetchRoadRouteData([previous, point], 8000);
+          const routeDistanceKm = Number(edgeRoute.distance) / 1000;
+          const maximum = Math.max(2.5, directDistanceKm * 4.5);
+          if (!Number.isFinite(routeDistanceKm) || routeDistanceKm > maximum) {
+            throw new Error(t("routeNotFound"));
+          }
+          const edgeLatLngs = [...edgeRoute.latlngs];
+          if (latlngs.length && edgeLatLngs.length) edgeLatLngs.shift();
+          latlngs.push(...edgeLatLngs);
+          samples.push(...edgeRoute.samples);
+          totalDistance += edgeRoute.distance || 0;
+          totalDuration += edgeRoute.duration || 0;
+          routedEdges += 1;
+        } catch (err) {
+          console.debug("Road edge route unavailable", err);
+          if (directDistanceKm > 0.25) return null;
+          if (!latlngs.length) latlngs.push([previous.lat, previous.lon]);
+          latlngs.push([point.lat, point.lon]);
+          samples.push({ lat: previous.lat, lon: previous.lon, speed: 0, elapsed: totalDuration });
+          totalDuration += Math.max(0, ((point.t || 0) - (previous.t || 0)) / 1000);
+          samples.push({ lat: point.lat, lon: point.lon, speed: 0, elapsed: totalDuration });
+          totalDistance += directDistanceKm * 1000;
+          directShortEdges += 1;
+        }
+      }
+
+      if (!routedEdges || latlngs.length < 2) return null;
+      return {
+        latlngs,
+        samples,
+        distance: totalDistance,
+        duration: totalDuration,
+        partial: directShortEdges > 0,
+      };
+    }
+
+    async function getRoadRoute(points) {
+      const waypoints = routeWaypoints(points);
+      if (waypoints.length < 2) return { latlngs: [], samples: [], distance: 0, duration: 0 };
+
+      const key = routeCacheKey(waypoints);
+      const cached = parseMaybeJson(localStorage.getItem(key));
+      if (Array.isArray(cached?.latlngs) && cached.latlngs.length >= 2) return cached;
+
+      let routeData;
+      try {
+        routeData = await fetchRoadRouteData(waypoints);
+      } catch (err) {
+        console.debug("Full road route unavailable, trying per-edge routing", err);
+        routeData = await getRoadRouteByEdges(waypoints);
+        if (!routeData) throw err;
+      }
+      try {
+        localStorage.setItem(key, JSON.stringify(routeData));
+      } catch (err) {
+        console.debug("Route cache is full", err);
+      }
+      return routeData;
     }
 
     function tripDisplayStart(trip) {
