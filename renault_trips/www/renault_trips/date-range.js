@@ -57,7 +57,6 @@
 
     function syncVisualState() {
       const custom = Boolean(startEl.value || endEl.value);
-      periodEl.disabled = custom;
       startEl.classList.toggle("active", custom);
       endEl.classList.toggle("active", custom);
       clearEl.hidden = !custom;
