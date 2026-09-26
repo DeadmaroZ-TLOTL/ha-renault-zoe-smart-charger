@@ -14,11 +14,14 @@ from homeassistant.components.recorder.history import get_significant_states
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from custom_components.zoe_new_extended.charging_accounts_data import (
-    apply_provider_transactions,
     apply_session_provider_overrides,
     combine_charge_fragments,
     load_session_provider_overrides,
     parse_nordpool_day_ahead_prices,
+)
+from custom_components.zoe_new_extended.charging_location_data import (
+    check_transaction_locations,
+    apply_location_verified_transactions,
 )
 
 
@@ -51,7 +54,7 @@ EXACT_PROVIDER_PRICE_SOURCES = {
     "ikrautas_app",
     "ikrautas_receipt",
 }
-PYSCRIPT_REVISION = "provider_attribution_v8"
+PYSCRIPT_REVISION = "provider_attribution_v9_location"
 
 _refresh_in_progress = False
 _nordpool_archive_cache = {}
@@ -236,6 +239,36 @@ def _provider_transactions():
         return []
     transactions = current.attributes.get("transactions") or []
     return [dict(item) for item in transactions if isinstance(item, dict)]
+
+
+async def _verify_provider_locations(transactions):
+    starts = [_parse_datetime(item.get('start')) for item in transactions]
+    ends = [_parse_datetime(item.get('end')) for item in transactions]
+    starts = [item for item in starts if item is not None]
+    ends = [item for item in ends if item is not None]
+    points = []
+    domain_data = Function.hass.data.get('zoe_new_extended', {})
+    stations = []
+    for catalog in domain_data.get('_station_source_catalog_cache', {}).values():
+        stations.extend(catalog.get('stations', []))
+    if starts and ends:
+        location = Function.hass.states.get('binary_sensor.renault_zoe_new_smart_charging_location_allowed')
+        entity_id = location.attributes.get('location_entity_id') if location else None
+        entity_id = entity_id or 'device_tracker.location'
+        query = partial(get_significant_states, Function.hass, min(starts), max(ends),
+                        [entity_id], include_start_time_state=False,
+                        significant_changes_only=False, no_attributes=False)
+        try:
+            history = await get_instance(Function.hass).async_add_executor_job(query)
+            for item in history.get(entity_id, []):
+                attributes = _history_state_attributes(item)
+                points.append({'time': _history_state_time(item),
+                               'latitude': attributes.get('latitude'),
+                               'longitude': attributes.get('longitude'),
+                               'gps_accuracy': attributes.get('gps_accuracy')})
+        except Exception as exc:
+            log.warning('Zoe charging GPS verification unavailable: ' + type(exc).__name__)
+    return check_transaction_locations(transactions, points, stations)
 
 
 async def _get_price_history(
@@ -989,12 +1022,16 @@ async def zoe_charge_sessions_update():
             )
             for item in meaningful_sessions
         ]
+        provider_transactions = await _verify_provider_locations(_provider_transactions())
+        mismatched_keys = {(str(t.get('account_id') or ''), str(t.get('transaction_id') or ''))
+                           for t in provider_transactions if t.get('vehicle_location_match') is False}
+        stored_provider_sessions = {k:v for k,v in stored_provider_sessions.items()
+                                   if (str(v.get('provider_account_id') or ''), str(v.get('provider_transaction_id') or '')) not in mismatched_keys}
         meaningful_sessions = _inherit_stored_exact_provider_sessions(
             meaningful_sessions,
             stored_provider_sessions,
         )
-        provider_transactions = _provider_transactions()
-        meaningful_sessions = apply_provider_transactions(
+        meaningful_sessions = apply_location_verified_transactions(
             meaningful_sessions,
             provider_transactions,
         )
@@ -1020,6 +1057,8 @@ async def zoe_charge_sessions_update():
             "pyscript_revision": PYSCRIPT_REVISION,
             "stored_exact_provider_session_count": len(stored_provider_sessions),
             "provider_transaction_count": len(provider_transactions),
+            "provider_location_mismatch_count": len(mismatched_keys),
+            "provider_location_verified_count": sum([t.get('vehicle_location_match') is True for t in provider_transactions]),
             "provider_override_count": len(provider_overrides),
             "nordpool_archive_slot_count": len(archive_price_history),
             "charging_accounts_entity": CHARGING_ACCOUNTS_ENTITY,

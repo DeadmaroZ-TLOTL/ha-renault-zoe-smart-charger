@@ -156,6 +156,26 @@ ID are stored in the Home Assistant config entry. The older **Link Elektrum
 agreement** Smart-ID flow remains available for profiles where Elektrum offers
 agreement enrollment. Personal codes are discarded immediately. Account
 secrets are not exposed as entity attributes or saved in this repository.
+
+#### Shared accounts and vehicle attribution
+
+An operator account may contain charges for other vehicles. The charge-history
+Pyscript checks historical GPS from the configured Zoe location entity against
+the operator's cached station coordinates, using provider and station ID together.
+Two in-session observations separated by up to a required one-minute interval
+are needed: all within 500 m confirms a location; all beyond 2 km rejects it.
+Mixed, inaccurate, or missing GPS evidence remains unknown. Current GPS and
+samples from outside the charging interval are never used as historical proof.
+
+A rejected transaction does not price a Renault session. An account-only charge
+requires positive location evidence before appearing in the Zoe ledger; without
+that evidence it remains in the operator account history, not the vehicle costs.
+Unknown location can still retain an exact payment matched to a Renault charging
+record. The source operator transactions and receipts are not deleted. History
+sensor attributes expose verified and mismatched transaction counts. This needs
+retained Recorder GPS history and a populated station catalog; missing coverage
+is not silently treated as a match.
+
 Ignitis ON uses the official app's email/password OAuth flow. Home Assistant
 sends the password directly to Ignitis over HTTPS, discards it immediately,
 and stores only the renewable AMPECO session. IKRAUTAS additionally supports
